@@ -12,6 +12,9 @@ export class SpaceStore {
     this.activity = new Map();
     /** @type {Map<string, object>} */
     this.receipts = new Map();
+    /** @type {Map<string, object>} Work Orders keyed by jobId */
+    this.jobs = new Map();
+    this._nextJobSeq = 1;
 
     // Seed with canonical Procurement Space
     this.seedProcurementSpace();
@@ -170,5 +173,393 @@ export class SpaceStore {
 
   getActivity(spaceId) {
     return this.activity.get(spaceId) || [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // First-class Work lifecycle (mirrors AgenticCommerce.sol on X Layer)
+  //
+  // Money must never move without a Work Order and verifiable deliverable
+  // proof. State machine:
+  //   Open -> Funded -> Submitted -> Completed / Rejected / Expired
+  //
+  // Gaia exception handling: on Rejected or Expired, 100% of escrowed funds
+  // are refunded to the Space balance via claimRefund semantics.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Parse a deadline into epoch millis. Accepts ISO strings, ms numbers, or
+   * seconds numbers (heuristic: < 1e12 treated as seconds).
+   */
+  _parseDeadline(deadline) {
+    if (deadline === undefined || deadline === null || deadline === '') {
+      throw new Error('Work Order requires a future deadline');
+    }
+    let ms;
+    if (typeof deadline === 'number') {
+      ms = deadline < 1e12 ? deadline * 1000 : deadline;
+    } else if (typeof deadline === 'string' && /^\d+$/.test(deadline.trim())) {
+      const n = Number(deadline.trim());
+      ms = n < 1e12 ? n * 1000 : n;
+    } else {
+      ms = Date.parse(deadline);
+    }
+    if (!Number.isFinite(ms)) {
+      throw new Error(`Invalid deadline '${deadline}': must be ISO date or epoch`);
+    }
+    return ms;
+  }
+
+  _getSpaceOrThrow(spaceId) {
+    const space = this.spaces.get(spaceId);
+    if (!space) {
+      throw new Error(`Space '${spaceId}' not found`);
+    }
+    return space;
+  }
+
+  _getJobOrThrow(spaceId, jobId) {
+    const job = this.jobs.get(jobId);
+    if (!job || job.spaceId !== spaceId) {
+      throw new Error(`Work Order '${jobId}' not found in Space '${spaceId}'`);
+    }
+    return job;
+  }
+
+  /**
+   * Gaia exception refund: return 100% of escrowed funds to the Space balance.
+   * Mirrors AgenticCommerce.claimRefund() on X Layer.
+   */
+  _claimRefund(space, job, trigger) {
+    const escrowed = toBaseUnits(job.escrowedAmount || job.budget || '0');
+    if (escrowed > 0n && !job.refunded) {
+      const balanceBefore = toBaseUnits(space.balance);
+      space.balance = fromBaseUnits(balanceBefore + escrowed);
+      job.refunded = true;
+      job.refundedAmount = fromBaseUnits(escrowed);
+    } else if (!job.refunded) {
+      job.refunded = true;
+      job.refundedAmount = '0.000000';
+    }
+    const timestamp = new Date().toISOString();
+    const record = {
+      type: trigger === 'expiry' ? 'WORK_EXPIRED' : 'WORK_REJECTED',
+      jobId: job.jobId,
+      spaceId: space.id,
+      refundedAmount: job.refundedAmount,
+      gaiaException: true,
+      exceptionReason: job.feedback || job.exceptionReason || 'Gaia exception refund',
+      spaceBalance: space.balance,
+      timestamp,
+    };
+    this.activity.get(space.id).push(record);
+    return record;
+  }
+
+  /**
+   * Apply expiry lazily: a Funded/Submitted job past its deadline becomes
+   * Expired with a full Gaia refund. Returns true if expiry was applied.
+   */
+  _applyExpiry(space, job) {
+    if (job.status !== 'Funded' && job.status !== 'Submitted') {
+      return false;
+    }
+    if (Date.now() < job.deadlineMs) {
+      return false;
+    }
+    job.status = 'Expired';
+    job.exceptionReason = `Deadline exceeded (${job.deadline}) — Gaia exception refund`;
+    job.expiredAt = new Date().toISOString();
+    this._claimRefund(space, job, 'expiry');
+    return true;
+  }
+
+  /**
+   * Create a Work Order and escrow funds from the Space balance.
+   * Transitions: Open -> Funded (atomic within this call).
+   */
+  createJob({ spaceId, actorId, provider, evaluator, description, budget, deadline }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    if (!provider) {
+      throw new Error('Work Order requires a provider');
+    }
+    if (!evaluator) {
+      throw new Error('Work Order requires an evaluator');
+    }
+    if (!description) {
+      throw new Error('Work Order requires a description');
+    }
+    if (budget === undefined || budget === null || budget === '') {
+      throw new Error('Work Order requires a budget');
+    }
+
+    let budgetBase;
+    try {
+      budgetBase = toBaseUnits(budget);
+    } catch {
+      throw new Error(`Invalid budget '${budget}': must be a USDC decimal string`);
+    }
+    if (budgetBase <= 0n) {
+      throw new Error(`Invalid budget '${budget}': must be greater than zero`);
+    }
+
+    const deadlineMs = this._parseDeadline(deadline);
+    if (deadlineMs <= Date.now()) {
+      throw new Error('Work Order deadline must be in the future');
+    }
+
+    // Space policy gate: the escrowed budget must satisfy Space rules
+    // (maxPerTransaction, daily budget, counterparty allowlist, balance).
+    const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
+    const evaluation = evaluateSpacePayment(space, {
+      actionId,
+      actorId,
+      recipient: provider,
+      amount: String(budget),
+      memo: description,
+    });
+    const timestamp = new Date().toISOString();
+    if (!evaluation.allowed) {
+      const record = {
+        type: 'WORK_DENIED',
+        actionId,
+        actorId,
+        provider,
+        budget: String(budget),
+        reasons: evaluation.reasons,
+        denialProof: evaluation.denialProof,
+        timestamp,
+      };
+      this.activity.get(spaceId).push(record);
+      return {
+        status: 'REJECTED',
+        actionId,
+        reasons: evaluation.reasons,
+        denialProof: evaluation.denialProof,
+        spaceBalance: space.balance,
+      };
+    }
+
+    // Escrow: move funds out of the spendable Space balance into the job.
+    const balanceBefore = toBaseUnits(space.balance);
+    space.balance = fromBaseUnits(balanceBefore - budgetBase);
+
+    const jobId = `job-${String(this._nextJobSeq++).padStart(4, '0')}`;
+    const job = {
+      jobId,
+      spaceId,
+      client: actorId,
+      provider,
+      evaluator,
+      description,
+      budget: fromBaseUnits(budgetBase),
+      escrowedAmount: fromBaseUnits(budgetBase),
+      status: 'Funded',
+      statusHistory: [
+        { status: 'Open', timestamp },
+        { status: 'Funded', timestamp },
+      ],
+      deliverableHash: null,
+      evidenceUri: null,
+      feedback: null,
+      deadline: new Date(deadlineMs).toISOString(),
+      deadlineMs,
+      createdAt: timestamp,
+      fundedAt: timestamp,
+      submittedAt: null,
+      completedAt: null,
+      refunded: false,
+      refundedAmount: null,
+      settlement: null,
+      actionId,
+      authHash: evaluation.approvedIntent.authHash,
+    };
+    this.jobs.set(jobId, job);
+    this.activity.get(spaceId).push({
+      type: 'WORK_CREATED',
+      jobId,
+      actionId,
+      actorId,
+      provider,
+      evaluator,
+      budget: job.budget,
+      deadline: job.deadline,
+      fromStatus: 'Open',
+      toStatus: 'Funded',
+      spaceBalance: space.balance,
+      timestamp,
+    });
+
+    return {
+      status: 'Funded',
+      job: { ...job },
+      spaceBalance: space.balance,
+    };
+  }
+
+  /**
+   * Provider submits verifiable deliverable proof (hash + evidence URI).
+   * Transition: Funded -> Submitted.
+   */
+  submitDeliverable({ spaceId, jobId, actorId, deliverableHash, evidenceUri }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const job = this._getJobOrThrow(spaceId, jobId);
+
+    if (this._applyExpiry(space, job)) {
+      return {
+        status: 'Expired',
+        job: { ...job },
+        spaceBalance: space.balance,
+        gaiaRefund: job.refundedAmount,
+      };
+    }
+
+    if (job.status !== 'Funded') {
+      throw new Error(`Work Order '${jobId}' is '${job.status}': only Funded work can accept a deliverable`);
+    }
+    if (actorId !== job.provider) {
+      throw new Error(`Only provider '${job.provider}' can submit deliverables for Work Order '${jobId}'`);
+    }
+    if (!deliverableHash) {
+      throw new Error('submitDeliverable requires a deliverableHash (verifiable proof)');
+    }
+
+    const timestamp = new Date().toISOString();
+    job.deliverableHash = deliverableHash;
+    job.evidenceUri = evidenceUri || null;
+    job.status = 'Submitted';
+    job.submittedAt = timestamp;
+    job.statusHistory.push({ status: 'Submitted', timestamp });
+
+    this.activity.get(spaceId).push({
+      type: 'WORK_SUBMITTED',
+      jobId,
+      actorId,
+      deliverableHash,
+      evidenceUri: job.evidenceUri,
+      fromStatus: 'Funded',
+      toStatus: 'Submitted',
+      timestamp,
+    });
+
+    return {
+      status: 'Submitted',
+      job: { ...job },
+      spaceBalance: space.balance,
+    };
+  }
+
+  /**
+   * Evaluator approves or rejects the submitted deliverable.
+   * Approved:   Submitted -> Completed (settles on OKX X Layer).
+   * Rejected:   Submitted/Funded -> Rejected (Gaia full refund to Space).
+   */
+  evaluateJob({ spaceId, jobId, evaluatorId, approved, feedback }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const job = this._getJobOrThrow(spaceId, jobId);
+
+    if (this._applyExpiry(space, job)) {
+      return {
+        status: 'Expired',
+        job: { ...job },
+        spaceBalance: space.balance,
+        gaiaRefund: job.refundedAmount,
+      };
+    }
+
+    if (evaluatorId !== job.evaluator) {
+      throw new Error(`Only evaluator '${job.evaluator}' can evaluate Work Order '${jobId}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+
+    if (approved === true) {
+      if (job.status !== 'Submitted') {
+        throw new Error(`Work Order '${jobId}' is '${job.status}': only Submitted work can be approved`);
+      }
+      if (!job.deliverableHash) {
+        throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: money cannot move without proof`);
+      }
+      job.status = 'Completed';
+      job.feedback = feedback || null;
+      job.completedAt = timestamp;
+      job.statusHistory.push({ status: 'Completed', timestamp });
+
+      // Settle escrowed funds to the provider on OKX X Layer (mock receipt).
+      const mockTxHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+      const receipt = {
+        receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
+        actionId: job.actionId,
+        spaceId,
+        jobId,
+        actorId: job.client,
+        provider: job.provider,
+        evaluator: job.evaluator,
+        recipient: job.provider,
+        amount: job.budget,
+        asset: space.currency,
+        network: 'OKX X Layer Testnet',
+        chainId: space.chainId,
+        txHash: mockTxHash,
+        status: 'SETTLED',
+        deliverableHash: job.deliverableHash,
+        evidenceUri: job.evidenceUri,
+        timestamp,
+      };
+      job.settlement = receipt;
+      this.receipts.set(receipt.receiptId, receipt);
+
+      const spentBefore = toBaseUnits(space.totalSpentToday);
+      space.totalSpentToday = fromBaseUnits(spentBefore + toBaseUnits(job.budget));
+
+      this.activity.get(spaceId).push({
+        type: 'WORK_COMPLETED',
+        jobId,
+        evaluatorId,
+        feedback: job.feedback,
+        fromStatus: 'Submitted',
+        toStatus: 'Completed',
+        settlement: receipt,
+        spaceBalance: space.balance,
+        timestamp,
+      });
+
+      return {
+        status: 'Completed',
+        job: { ...job },
+        receipt,
+        spaceBalance: space.balance,
+      };
+    }
+
+    if (approved === false) {
+      if (job.status !== 'Submitted' && job.status !== 'Funded') {
+        throw new Error(`Work Order '${jobId}' is '${job.status}': cannot reject from terminal state`);
+      }
+      const fromStatus = job.status;
+      job.status = 'Rejected';
+      job.feedback = feedback || null;
+      job.completedAt = timestamp;
+      job.statusHistory.push({ status: 'Rejected', timestamp });
+      const refundRecord = this._claimRefund(space, job, 'reject');
+      return {
+        status: 'Rejected',
+        job: { ...job },
+        gaiaRefund: job.refundedAmount,
+        spaceBalance: space.balance,
+        refundRecord,
+      };
+    }
+
+    throw new Error(`evaluateJob requires approved to be true or false`);
+  }
+
+  /**
+   * Read a Work Order by ID (applies lazy expiry first).
+   */
+  getJob({ spaceId, jobId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const job = this._getJobOrThrow(spaceId, jobId);
+    this._applyExpiry(space, job);
+    return { ...job };
   }
 }

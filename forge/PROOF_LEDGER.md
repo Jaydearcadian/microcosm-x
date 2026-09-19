@@ -16,12 +16,39 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **CHAIN-3** | X Layer | `ClaimEscrow.sol` holds funds and releases only upon verified claim | `VERIFIED` | `contracts/test/SettlementFlows.t.sol` (`testCreateAndClaimEscrowTransfersFundsFromEscrow` PASS) | 2026-09-19 |
 | **MCP-1** | MCP Agent | Agent can list Space capabilities and request valid payment via MCP | `VERIFIED` | `npm run test:mcp` (`MCP-1`, `MCP-2` PASS) | 2026-09-19 |
 | **MCP-2** | MCP Agent | Agent payment request exceeding rule is rejected with `isError: true` and denial proof | `VERIFIED` | `npm run test:mcp` (`MCP-3` PASS) | 2026-09-19 |
+| **WORK-1** | Work Lifecycle | Work creation escrows budget from Space balance (`Open` → `Funded`) | `VERIFIED` | `npm run test:mcp` (`WORK-1` PASS) | 2026-09-19 |
+| **WORK-2** | Work Lifecycle | Provider submits deliverable hash (`Funded` → `Submitted`) with evidence URI | `VERIFIED` | `npm run test:mcp` (`WORK-2` PASS) | 2026-09-19 |
+| **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles on OKX X Layer (receipt + txHash) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-19 |
+| **WORK-4** | Gaia Exception | Evaluator rejects → `Rejected`, Gaia refund returns 100% to Space ($0 lost); expiry → `Expired` with full refund; no payout without deliverable proof | `VERIFIED` | `npm run test:mcp` (`WORK-4`, `WORK-5`, `WORK-6` PASS) | 2026-09-19 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (All 5 steps pass live) | 2026-09-19 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (36 tests passed, 0 failed) | 2026-09-19 |
+| **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded) | `VERIFIED` | `npm run demo` (All 8 steps pass live) | 2026-09-19 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (42 tests passed, 0 failed) | 2026-09-19 |
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-19: First-Class Work Lifecycle & Gaia Exception Handling (WORK-1…WORK-4, E2E-2, SUITE-1)
+* **Command**: `make test` && `npm run demo`
+* **Output**:
+  ```text
+  make test:
+    - 23 Solidity contract tests PASS (SettlementFlows 4, AgenticCommerce 11, EnvelopeRegistry 8)
+    - 8 Space policy engine tests PASS (SPACE-1…SPACE-7 + boundary)
+    - 11 MCP server tests PASS (MCP-1…MCP-4 + WORK-1…WORK-6)
+    Total: 42 passed, 0 failed
+
+  npm run demo:
+    - Step 1: Agent discovers Space (Autonomous Procurement Space, $5,000 USDC)
+    - Step 2: Agent queries capabilities (Max $500/tx, $2,000/day, approved vendors)
+    - Step 3: Work Order job-0001 created ($350.00 escrowed, Open -> Funded)
+    - Step 4: Provider submits deliverable hash (Funded -> Submitted, ipfs evidence)
+    - Step 5: Evaluator approves -> Completed, settles on X Layer (receipt + txHash 0x…)
+    - Step 6: Out-of-policy $900 payment deterministically rejected (DenialProof, $0 lost)
+    - Step 7: Rejected work job-0002 triggers Gaia refund ($200.00 returned, $0 lost)
+    - Step 8: Full Space activity ledger verified (WORK_CREATED/SUBMITTED/COMPLETED/REJECTED + PAYMENT_DENIED)
+  ```
+* **Status**: `VERIFIED` on WORK-1, WORK-2, WORK-3, WORK-4, E2E-2, SUITE-1.
 
 ### 2026-09-19: MCP Server & E2E Demo Suite (MCP-1, MCP-2, E2E-1, SUITE-1)
 * **Command**: `make test` && `npm run demo`

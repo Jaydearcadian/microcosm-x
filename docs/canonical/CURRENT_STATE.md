@@ -19,8 +19,8 @@
 ## 2. What Is Implemented
 * **Smart Contracts (`contracts/`)**: `SettlementRouter.sol`, `ClaimEscrow.sol`, `EnvelopeRegistry.sol`, `AgenticCommerce.sol`.
 * **Policy Engine (`packages/policy-engine/`)**: Pure, deterministic Space policy evaluation, boundary checks, and `DenialProof` creation.
-* **MCP Server (`mcp/`)**: Native Stdio Model Context Protocol server exposing `spaces_list`, `spaces_capabilities`, `payments_request`, and `activity_list`.
-* **Demonstration Runner (`scripts/demo-procurement-space.mjs`)**: End-to-end interactive simulation of the Procurement Space flow on OKX X Layer.
+* **MCP Server (`mcp/`)**: Native Stdio Model Context Protocol server exposing `spaces_list`, `spaces_capabilities`, `payments_request`, `activity_list`, plus first-class Work tools `work_create`, `work_submit`, `work_evaluate`, `work_get` (escrow → deliverable proof → approve-settle / reject-refund, mirroring `AgenticCommerce.sol`).
+* **Demonstration Runner (`scripts/demo-procurement-space.mjs`)**: End-to-end interactive simulation of the Procurement Space flow on OKX X Layer: Space → Work Order → deliverable hash → evaluator approval → X Layer settlement → out-of-bounds denial → Gaia refund.
 
 ---
 
@@ -32,8 +32,8 @@
 ## 4. What Is Tested
 * **Foundry Contracts Suite**: 23 tests pass (`SettlementFlows`, `AgenticCommerce`, `EnvelopeRegistry`).
 * **Space Policy Engine Suite**: 8 tests pass with boundary and unit-conversion coverage.
-* **MCP Agent Tool Suite**: 5 tests pass covering capability discovery, compliant settlements, and deterministic rejections.
-* **Total Green Tests**: 36 passed, 0 failed via `make test`.
+* **MCP Agent Tool Suite**: 11 tests pass covering capability discovery, compliant settlements, deterministic rejections, and the full Work lifecycle (escrow, submit, approve-settle, reject-refund, expiry, proof-gating).
+* **Total Green Tests**: 42 passed, 0 failed via `make test`.
 
 ---
 

@@ -23,3 +23,8 @@ This log records major architectural and engineering decisions.
 * **Context**: OpenRails already solved onchain vault custody, EIP-712 settlement routing, and payment lifecycle mechanics in `Jaydearcadian/mcosm-OpenRails`.
 * **Decision**: Absorb and simplify the relevant financial execution components directly into Microcosm, rather than building Microcosm as a loose external client of OpenRails.
 * **Consequence**: High internal cohesion, single codebase, robust provenance continuity.
+
+### DEC-005: Work as First-Class Citizen with Gaia Exception Refunds
+* **Context**: Money must never move without a Work Order and verifiable deliverable proof; failed or expired work must not strand or lose funds.
+* **Decision**: Elevate Work Orders (`createJob` → `submitDeliverable` → `evaluateJob`, mirroring `AgenticCommerce.sol` states `Open/Funded/Submitted/Completed/Rejected/Expired`) into the Space runtime and MCP surface (`work_create`, `work_submit`, `work_evaluate`, `work_get`). `Rejected`/`Expired` outcomes trigger a Gaia exception refund returning 100% of escrow to the Space balance.
+* **Consequence**: Every settlement is bound to deliverable evidence; every failure has a deterministic, audited refund path ($0 lost).
