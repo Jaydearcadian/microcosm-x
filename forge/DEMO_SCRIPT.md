@@ -45,24 +45,28 @@
 
 ---
 
-## Part 4: The Control Boundary Test & Gaia Exception (2:15 – 2:50)
+## Part 4: The Control Boundary, Gaia Exception & Internet Court (2:15 – 3:00)
 
-* **Visual**: Terminal highlighting Step 6 and Step 7 of the demo runner.
+* **Visual**: Terminal highlighting Steps 6, 7, and 8 of the demo runner.
 * **Audio / Voiceover**:
-  > *"Now watch what happens under adversarial conditions:*
+  > *"Now watch what happens under adversarial and subjective conditions:*
   >
   > * **Step 6**: A prompt injection instructs the agent to buy an unauthorized $900 hardware asset. The agent attempts `payments_request`. Microcosm intercepts the call before it touches the blockchain. Because $900 exceeds the $500 cap, it is deterministically rejected with a cryptographic `DenialProof`. Treasury impact? Exactly zero dollars.
   >
-  > * **Step 7**: What if a provider submits low-quality work? In Step 7, an agent rejects an unsatisfactory $200 task. Microcosm activates the **Gaia exception handler**: 100% of escrowed funds are instantly returned to the Space balance. Zero funds lost."*
+  > * **Step 7**: What if a provider submits low-quality work? In Step 7, an agent rejects an unsatisfactory $200 task. Microcosm activates the **Gaia exception handler**: 100% of escrowed funds are instantly returned to the Space balance. Zero funds lost.
+  >
+  > * **Step 8**: What if the deliverable is subjective and requires decentralized dispute resolution? In Step 8, the deliverable is referred to an **Internet Court** (`IAdjudicator.sol`). Payouts are halted in the onchain contract during adjudication. Once the court delivers its verdict via `work_post_verdict`, escrow releases cleanly to the provider on OKX X Layer.
+  >
+  > * **Step 9**: Every action, denial, and settlement generates an immutable audit record in the Space activity ledger."*
 
 ---
 
-## Part 5: Conclusion & OKX Ecosystem Value (2:50 – 3:15)
+## Part 5: Conclusion & OKX Ecosystem Value (3:00 – 3:30)
 
-* **Visual**: Terminal running `make verify` (all 42 tests and 15 claims passing green) and showing smart contract addresses.
+* **Visual**: Terminal running `make verify` (all 63 tests and 23 claims passing green) and showing smart contract deployment architecture.
 * **Audio / Voiceover**:
-  > *"Microcosm does not compete with AI agent marketplaces — it is the missing **corporate governance and settlement layer** that enables businesses to safely hire and fund marketplace agents on OKX X Layer.
+  > *"Microcosm does not compete with AI agent marketplaces — it is the missing **corporate governance, bounded authority, and settlement layer** that enables businesses to safely hire and fund autonomous agents on OKX X Layer.
   >
-  > With 42 tests passing across contracts, policy runtime, and MCP tooling, Microcosm provides the bounded economic infrastructure the autonomous agent economy needs to scale safely on OKX X Layer.
+  > Featuring EIP-712 cryptographic attestation, native Internet Court adjudication, and full OpenRails exception handling — backed by 63 passing tests and 23 verified claims — Microcosm provides the economic infrastructure the agent economy needs to scale safely on OKX X Layer.
   >
   > Thank you!"*
