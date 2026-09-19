@@ -359,3 +359,71 @@ test('WORK-6 (negative): money never moves without verifiable deliverable proof'
   assert.equal(denied.status, 'REJECTED');
   assert.ok(denied.denialProof);
 });
+
+test('WORK-7 (regression): concurrent escrows cannot breach the daily budget; refunds restore headroom', async () => {
+  const store = new SpaceStore();
+  const S = WORK_SPACE;
+  const d = futureDeadline();
+
+  // $490 x 5 = $2,450 committed, but the daily budget is only $2,000. The
+  // daily check must count outstanding escrows, so the 5th job must be denied.
+  for (let i = 0; i < 4; i++) {
+    const r = await handleToolCall(store, 'work_create', {
+      spaceId: S,
+      actorId: WORK_CLIENT,
+      provider: WORK_VENDOR,
+      evaluator: WORK_EVALUATOR,
+      description: `Concurrent job ${i}`,
+      budget: '490.00',
+      deadline: d,
+    });
+    assert.equal(r.isError, undefined, `job ${i} should escrow fine`);
+  }
+  assert.equal(store.getSpace(S).totalSpentToday, '1960.000000');
+
+  const fifth = await handleToolCall(store, 'work_create', {
+    spaceId: S,
+    actorId: WORK_CLIENT,
+    provider: WORK_VENDOR,
+    evaluator: WORK_EVALUATOR,
+    description: 'Budget-breaching job',
+    budget: '490.00',
+    deadline: d,
+  });
+  assert.equal(fifth.isError, true);
+  const deniedDaily = JSON.parse(fifth.content[0].text);
+  assert.equal(deniedDaily.status, 'REJECTED');
+  assert.ok(deniedDaily.reasons.some((x) => x.includes('daily budget')));
+
+  // Gaia refund on rejection restores daily headroom ($0 lost, $0 stranded).
+  const firstJobId = store.getActivity(S).find((a) => a.type === 'WORK_CREATED').jobId;
+  await handleToolCall(store, 'work_submit', {
+    spaceId: S,
+    jobId: firstJobId,
+    actorId: WORK_VENDOR,
+    deliverableHash: '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+  });
+  await handleToolCall(store, 'work_evaluate', {
+    spaceId: S,
+    jobId: firstJobId,
+    evaluatorId: WORK_EVALUATOR,
+    approved: false,
+    feedback: 'Rejected to restore headroom',
+  });
+  assert.equal(store.getSpace(S).balance, '3530.000000'); // $490 refunded in full (5000 - 4*490 + 490)
+  assert.equal(store.getSpace(S).totalSpentToday, '1470.000000'); // headroom restored
+
+  // With headroom restored, a new $490 escrow is now allowed.
+  const retry = await handleToolCall(store, 'work_create', {
+    spaceId: S,
+    actorId: WORK_CLIENT,
+    provider: WORK_VENDOR,
+    evaluator: WORK_EVALUATOR,
+    description: 'Retry within restored headroom',
+    budget: '490.00',
+    deadline: d,
+  });
+  assert.equal(retry.isError, undefined);
+  const retryData = JSON.parse(retry.content[0].text);
+  assert.equal(retryData.status, 'Funded');
+});

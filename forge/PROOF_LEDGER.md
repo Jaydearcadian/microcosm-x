@@ -20,9 +20,10 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **WORK-2** | Work Lifecycle | Provider submits deliverable hash (`Funded` → `Submitted`) with evidence URI | `VERIFIED` | `npm run test:mcp` (`WORK-2` PASS) | 2026-09-19 |
 | **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles on OKX X Layer (receipt + txHash) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-19 |
 | **WORK-4** | Gaia Exception | Evaluator rejects → `Rejected`, Gaia refund returns 100% to Space ($0 lost); expiry → `Expired` with full refund; no payout without deliverable proof | `VERIFIED` | `npm run test:mcp` (`WORK-4`, `WORK-5`, `WORK-6` PASS) | 2026-09-19 |
+| **WORK-7** | Policy Boundary | Concurrent Work Order escrows count against the daily budget at creation (no collective daily-cap breach); Gaia refunds restore daily headroom | `VERIFIED` | `npm run test:mcp` (`WORK-7` PASS) | 2026-09-19 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (All 5 steps pass live) | 2026-09-19 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded) | `VERIFIED` | `npm run demo` (All 8 steps pass live) | 2026-09-19 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (42 tests passed, 0 failed) | 2026-09-19 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (43 tests passed, 0 failed) | 2026-09-19 |
 
 ---
 
@@ -35,8 +36,8 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
   make test:
     - 23 Solidity contract tests PASS (SettlementFlows 4, AgenticCommerce 11, EnvelopeRegistry 8)
     - 8 Space policy engine tests PASS (SPACE-1…SPACE-7 + boundary)
-    - 11 MCP server tests PASS (MCP-1…MCP-4 + WORK-1…WORK-6)
-    Total: 42 passed, 0 failed
+    - 12 MCP server tests PASS (MCP-1…MCP-4 + WORK-1…WORK-7 incl. daily-budget escrow regression)
+    Total: 43 passed, 0 failed
 
   npm run demo:
     - Step 1: Agent discovers Space (Autonomous Procurement Space, $5,000 USDC)

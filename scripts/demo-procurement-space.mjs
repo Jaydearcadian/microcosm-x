@@ -168,11 +168,11 @@ async function main() {
   console.log('\n[STEP 8] Space Audit & Provenance Trail...');
   const actRes = await handleToolCall(store, 'activity_list', { spaceId: SPACE_ID });
   const { activity } = JSON.parse(actRes.content[0].text);
-  console.log(`  Total Recorded Records: ${activity.length}`);
   activity.forEach((act, idx) => {
-    const amount = act.amount || act.budget || act.refundedAmount || act.settlement?.amount || '?';
+    const rawAmount = act.amount || act.budget || act.refundedAmount || act.settlement?.amount;
+    const amountDisplay = rawAmount ? `$${rawAmount}` : 'N/A';
     const id = act.actionId || act.jobId || '?';
-    console.log(`  [${idx + 1}] ${act.type} | Amount: $${amount} | Ref: ${id} | Timestamp: ${act.timestamp}`);
+    console.log(`  [${idx + 1}] ${act.type.padEnd(15)} | Amount: ${amountDisplay.padEnd(12)} | Ref: ${id.padEnd(12)} | Timestamp: ${act.timestamp}`);
   });
 
   header('DEMONSTRATION COMPLETE: WORK LOOP + POLICY BOUNDARIES VERIFIED LIVE');

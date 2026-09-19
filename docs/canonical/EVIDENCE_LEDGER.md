@@ -19,7 +19,7 @@ Refer to [`forge/PROOF_LEDGER.md`](file:///home/jay/okx/forge/PROOF_LEDGER.md) f
 * **Command**: `make test` && `npm run demo`
 * **Output**:
   ```text
-  make test: 23 contract + 8 policy + 11 MCP = 42 passed, 0 failed
+  make test: 23 contract + 8 policy + 12 MCP = 43 passed, 0 failed
   npm run demo: Work Order created -> deliverable hash submitted -> evaluator
   approves -> settles on X Layer -> out-of-bounds $900 blocked -> rejected
   work refunded 100% ($0 lost). All 8 demo steps pass live.
@@ -28,6 +28,7 @@ Refer to [`forge/PROOF_LEDGER.md`](file:///home/jay/okx/forge/PROOF_LEDGER.md) f
 * **Negative controls executed**: evaluator reject restores full escrow (`WORK-4`);
   expired work auto-refunds via `claimRefund` semantics (`WORK-5`); approval
   without deliverable proof fails, non-provider submit fails, over-cap
-  `work_create` denied with `DenialProof` (`WORK-6`).
+  `work_create` denied with `DenialProof` (`WORK-6`); concurrent escrows
+  cannot breach the daily budget and refunds restore headroom (`WORK-7`).
 * **Mirrors**: `contracts/src/AgenticCommerce.sol` (`Open/Funded/Submitted/
   Completed/Rejected/Expired` + `claimRefund`) — 11/11 Foundry tests green.

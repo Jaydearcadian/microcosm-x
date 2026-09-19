@@ -339,11 +339,8 @@ export async function handleToolCall(store, name, args) {
     case 'work_evaluate': {
       try {
         const result = store.evaluateJob(args);
-        if (result.status === 'Rejected' || result.status === 'Expired') {
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        }
+        // Both approve-settle and reject-refund are valid, successful outcomes;
+        // the payload itself carries status + settlement / gaiaRefund evidence.
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };

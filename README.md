@@ -5,7 +5,7 @@
 [![OKX X Layer](https://img.shields.io/badge/Network-OKX_X_Layer_(195/196)-blue.svg)](https://www.okx.com/xlayer)
 [![EVM Solidity](https://img.shields.io/badge/Solidity-0.8.24-orange.svg)](https://soliditylang.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(42/42_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
+[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(43/43_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
 
 ---
 
@@ -81,7 +81,7 @@ Microcosm operates under the **FORGE 1.4** control plane. Every feature and mech
 
 ### Run Tests
 ```bash
-# Run entire test suite (42 tests: 23 contracts, 8 policy engine, 11 MCP)
+# Run entire test suite (43 tests: 23 contracts, 8 policy engine, 12 MCP)
 make test
 
 # Run contracts suite alone (Foundry)
@@ -157,7 +157,7 @@ To add Microcosm to Claude Desktop, Cursor, or Cline, add the following to your 
 │   └── test/                     # Foundry unit & invariant tests (23 tests)
 ├── packages/
 │   └── policy-engine/       # Pure deterministic Space policy evaluator (8 tests)
-├── mcp/                     # Native Stdio Model Context Protocol server (11 tests)
+├── mcp/                     # Native Stdio Model Context Protocol server (12 tests)
 │   ├── src/
 │   │   ├── index.js         # Stdio JSON-RPC transport
 │   │   ├── space-store.js   # Space state machine & Gaia exception logic

@@ -234,6 +234,11 @@ export class SpaceStore {
     if (escrowed > 0n && !job.refunded) {
       const balanceBefore = toBaseUnits(space.balance);
       space.balance = fromBaseUnits(balanceBefore + escrowed);
+      // Daily-budget headroom: the escrow committed funds against the daily
+      // budget at creation, so a Gaia refund restores that headroom ($0 lost).
+      const spentBefore = toBaseUnits(space.totalSpentToday || '0');
+      const restored = spentBefore > escrowed ? spentBefore - escrowed : 0n;
+      space.totalSpentToday = fromBaseUnits(restored);
       job.refunded = true;
       job.refundedAmount = fromBaseUnits(escrowed);
     } else if (!job.refunded) {
@@ -342,6 +347,13 @@ export class SpaceStore {
     // Escrow: move funds out of the spendable Space balance into the job.
     const balanceBefore = toBaseUnits(space.balance);
     space.balance = fromBaseUnits(balanceBefore - budgetBase);
+    // Daily-budget accounting: escrow commits funds immediately, so it counts
+    // against the daily budget at creation. Without this, concurrent Work
+    // Orders could collectively breach the daily cap (each checked against a
+    // stale totalSpentToday of 0). Settlement does not double-count; Gaia
+    // refunds restore headroom.
+    const spentTodayBefore = toBaseUnits(space.totalSpentToday || '0');
+    space.totalSpentToday = fromBaseUnits(spentTodayBefore + budgetBase);
 
     const jobId = `job-${String(this._nextJobSeq++).padStart(4, '0')}`;
     const job = {
@@ -508,8 +520,8 @@ export class SpaceStore {
       job.settlement = receipt;
       this.receipts.set(receipt.receiptId, receipt);
 
-      const spentBefore = toBaseUnits(space.totalSpentToday);
-      space.totalSpentToday = fromBaseUnits(spentBefore + toBaseUnits(job.budget));
+      // Note: daily budget was already consumed at escrow time (createJob);
+      // settlement must not double-count it.
 
       this.activity.get(spaceId).push({
         type: 'WORK_COMPLETED',
@@ -535,7 +547,6 @@ export class SpaceStore {
       if (job.status !== 'Submitted' && job.status !== 'Funded') {
         throw new Error(`Work Order '${jobId}' is '${job.status}': cannot reject from terminal state`);
       }
-      const fromStatus = job.status;
       job.status = 'Rejected';
       job.feedback = feedback || null;
       job.completedAt = timestamp;

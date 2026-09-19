@@ -6,7 +6,7 @@
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
 * **Repository**: https://github.com/Jaydearcadian/microcosm
 * **Live Demo Video**: [Demo Walkthrough Video (Follows forge/DEMO_SCRIPT.md)]
-* **Status**: Complete & Verified (42 tests passing across contracts, policy runtime, and MCP server)
+* **Status**: Complete & Verified (43 tests passing across contracts, policy runtime, and MCP server)
 
 ---
 
@@ -89,7 +89,7 @@ Instead of handing private keys to LLMs, humans and agents operate inside progra
 Microcosm adheres to the **FORGE 1.4** control plane. Every single claim is backed by executed command evidence in `forge/PROOF_LEDGER.md`.
 
 ```bash
-# Run entire test suite (42 tests: 23 contracts + 8 policy + 11 MCP)
+# Run entire test suite (43 tests: 23 contracts + 8 policy + 12 MCP)
 make test
 
 # Run full verification gate & proof ledger audit
@@ -102,5 +102,5 @@ npm run demo
 ### Local Test Breakdown:
 * **Contract Tests (`make test-contracts`)**: 23 Foundry tests passing (SettlementFlows, AgenticCommerce, EnvelopeRegistry).
 * **Policy Engine Tests (`npm run test:policy`)**: 8 deterministic boundary and unit tests passing.
-* **MCP Server Tests (`npm run test:mcp`)**: 11 end-to-end tool execution and Work lifecycle tests passing.
-* **Proof Ledger (`make verify`)**: 15/15 claims verified green.
+* **MCP Server Tests (`npm run test:mcp`)**: 12 end-to-end tool execution and Work lifecycle tests passing (including concurrent daily-budget escrow regression).
+* **Proof Ledger (`make verify`)**: 16/16 claims verified green.

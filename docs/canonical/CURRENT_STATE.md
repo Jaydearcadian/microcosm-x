@@ -32,8 +32,8 @@
 ## 4. What Is Tested
 * **Foundry Contracts Suite**: 23 tests pass (`SettlementFlows`, `AgenticCommerce`, `EnvelopeRegistry`).
 * **Space Policy Engine Suite**: 8 tests pass with boundary and unit-conversion coverage.
-* **MCP Agent Tool Suite**: 11 tests pass covering capability discovery, compliant settlements, deterministic rejections, and the full Work lifecycle (escrow, submit, approve-settle, reject-refund, expiry, proof-gating).
-* **Total Green Tests**: 42 passed, 0 failed via `make test`.
+* **MCP Agent Tool Suite**: 12 tests pass covering capability discovery, compliant settlements, deterministic rejections, and the full Work lifecycle (escrow, submit, approve-settle, reject-refund, expiry, proof-gating).
+* **Total Green Tests**: 43 passed, 0 failed via `make test`.
 
 ---
 

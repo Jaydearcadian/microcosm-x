@@ -11,9 +11,9 @@ Tracks the state of all primary system capabilities according to the **BUILD FOU
 | **Deterministic Space Policy Engine** | Core Domain | `TESTED` | [`packages/policy-engine/test/space-policy.test.js`](file:///home/jay/okx/packages/policy-engine/test/space-policy.test.js) (8 passed) | None |
 | **SettlementRouter Contract** | Contracts / X Layer | `TESTED` | [`contracts/test/SettlementFlows.t.sol`](file:///home/jay/okx/contracts/test/SettlementFlows.t.sol) (4 passed) | Local EVM verified; onchain deploy pending key |
 | **ClaimEscrow Contract** | Contracts / X Layer | `TESTED` | [`contracts/test/SettlementFlows.t.sol`](file:///home/jay/okx/contracts/test/SettlementFlows.t.sol) (PASS) | Local EVM verified; onchain deploy pending key |
-| **Space MCP Server** | Interface / Agent | `TESTED` | [`mcp/test/mcp-server.test.js`](file:///home/jay/okx/mcp/test/mcp-server.test.js) (11 passed) | Stdio transport active |
-| **First-Class Work Lifecycle** | Core Domain | `TESTED` | [`mcp/src/space-store.js`](file:///home/jay/okx/mcp/src/space-store.js) (`createJob`, `submitDeliverable`, `evaluateJob` — `WORK-1…WORK-6` PASS) | Mirrors `AgenticCommerce.sol` states |
+| **Space MCP Server** | Interface / Agent | `TESTED` | [`mcp/test/mcp-server.test.js`](file:///home/jay/okx/mcp/test/mcp-server.test.js) (12 passed) | Stdio transport active |
+| **First-Class Work Lifecycle** | Core Domain | `TESTED` | [`mcp/src/space-store.js`](file:///home/jay/okx/mcp/src/space-store.js) (`createJob`, `submitDeliverable`, `evaluateJob` — `WORK-1…WORK-7` PASS) | Mirrors `AgenticCommerce.sol` states |
 | **Gaia Exception Refund** | Core Domain | `TESTED` | [`mcp/src/space-store.js`](file:///home/jay/okx/mcp/src/space-store.js) (`Rejected`/`Expired` → 100% refund — `WORK-4`, `WORK-5` PASS) | Lazy expiry on read/submit/evaluate |
-| **Local Verification Runner** | Harness | `E2E_VERIFIED` | [`Makefile`](file:///home/jay/okx/Makefile) (`make test`: 42 green) | None |
+| **Local Verification Runner** | Harness | `E2E_VERIFIED` | [`Makefile`](file:///home/jay/okx/Makefile) (`make test`: 43 green) | None |
 | **OKX X Layer Testnet Deployment** | Onchain Substrate | `PROPOSED` | RPC configured in [`forge.json`](file:///home/jay/okx/forge.json) | Broadcast script pending funded key |
 | **E2E Procurement Scenario** | Demo / Flow | `E2E_VERIFIED` | [`scripts/demo-procurement-space.mjs`](file:///home/jay/okx/scripts/demo-procurement-space.mjs) (`npm run demo` PASS) | None |
