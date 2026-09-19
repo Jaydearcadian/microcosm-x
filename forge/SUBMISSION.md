@@ -4,7 +4,7 @@
 * **Project Name**: Microcosm
 * **Track**: Build a Company (Agentic Wallet Tooling, Onchain Services, Payment / MCP Services)
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
-* **Repository**: https://github.com/Jaydearcadian/microcosm
+* **Repository**: https://github.com/Jaydearcadian/microcosm-x
 * **Live Demo Video**: [Demo Walkthrough Video (Follows forge/DEMO_SCRIPT.md)]
 * **Status**: Complete & Verified (63 tests passing across contracts, policy runtime, and MCP server)
 
