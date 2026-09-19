@@ -1,0 +1,1 @@
+{"id":"7b85e1546613c019","source_id_to_path":{"0":"src/AgenticCommerce.sol","1":"src/ClaimEscrow.sol","2":"src/EnvelopeRegistry.sol","3":"src/SettlementRouter.sol","4":"src/interfaces/IERC20.sol","5":"src/test/MockERC20.sol","6":"test/AgenticCommerce.t.sol","7":"test/EnvelopeRegistry.t.sol","8":"test/SettlementFlows.t.sol"},"language":"Solidity"}
