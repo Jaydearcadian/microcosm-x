@@ -1,0 +1,79 @@
+{
+  "forgeVersion": "1.4",
+  "project": "Microcosm",
+  "network": "OKX X Layer",
+  "networks": {
+    "testnet": {
+      "chainId": 195,
+      "name": "X Layer Testnet",
+      "rpc": "https://xlayertestrpc.okx.com",
+      "explorer": "https://www.oklink.com/xlayer-test",
+      "nativeCurrency": "OKB"
+    },
+    "mainnet": {
+      "chainId": 196,
+      "name": "X Layer Mainnet",
+      "rpc": "https://rpc.xlayer.tech",
+      "explorer": "https://www.oklink.com/xlayer",
+      "nativeCurrency": "OKB"
+    }
+  },
+  "platform": "TypeScript / Foundry / MCP / Node.js",
+  "track": "Build a Company (Agentic Wallet Tooling, Onchain Services, Payment/MCP Services)",
+  "currentPhase": "phase-0-substrate-and-harness",
+  "productSentence": "Commerce OS for humans and agents on OKX X Layer.",
+  "loadBearingMechanism": "Space Bounded Economic Authority",
+  "loadBearingStatement": "Agents operate within persistent, bounded Spaces where authority, budget, work, counterparties, and settlement remain strictly bound and cryptographically enforceable.",
+  "criticalInvariant": "An agent cannot spend, disburse, or settle funds outside its Space rules. Violations are deterministically rejected with auditable cryptographic/runtime evidence.",
+  "canonicalModel": {
+    "contextContainer": "Space (people, agents, money, permissions, rules, counterparties, activity)",
+    "actorInterface": "MCP Tools / REST API / TypeScript SDK",
+    "financialKernel": "OpenRails execution kernel (Vault, payments, streams, receipts, ledger)",
+    "settlementLayer": "OKX X Layer (EVM Layer 2 with native USDC settlement)"
+  },
+  "criticalTestCommands": {
+    "contracts": "forge test",
+    "runtime": "npm test",
+    "all": "make test"
+  },
+  "claimStatuses": ["UNTESTED", "PARTIAL", "FAILED", "VERIFIED", "REGRESSED"],
+  "knownProofClaims": [
+    {
+      "id": "SPACE-1",
+      "claim": "A Space enforces deterministic transaction limits on member agents",
+      "status": "UNTESTED",
+      "evidence": "Pending local test in packages/policy-engine / test/space-policy.test.ts"
+    },
+    {
+      "id": "SPACE-2",
+      "claim": "Out-of-policy payment request by agent is deterministically rejected with audit reason",
+      "status": "UNTESTED",
+      "evidence": "Pending local test in packages/policy-engine / test/space-boundary.test.ts"
+    },
+    {
+      "id": "CHAIN-1",
+      "claim": "Contracts compile with solc for OKX X Layer (EVM Cancun / Shanghai compatibility)",
+      "status": "UNTESTED",
+      "evidence": "Pending forge build"
+    },
+    {
+      "id": "CHAIN-2",
+      "claim": "SettlementRouter executes valid Space disbursement on X Layer with native USDC",
+      "status": "UNTESTED",
+      "evidence": "Pending contracts/test/SettlementRouter.t.sol"
+    },
+    {
+      "id": "MCP-1",
+      "claim": "Autonomous AI agent can discover Space capabilities and request payment via MCP protocol",
+      "status": "UNTESTED",
+      "evidence": "Pending mcp/test/mcp-server.test.ts"
+    },
+    {
+      "id": "SUITE-1",
+      "claim": "Full test suite (contracts + runtime + policy + MCP) passes green locally",
+      "status": "UNTESTED",
+      "evidence": "make test"
+    }
+  ],
+  "sourceOfTruth": "Repository files under /forge and the test suites. Prior chat summaries are NOT authoritative."
+}
