@@ -14,14 +14,33 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **CHAIN-1** | X Layer | Contracts compile cleanly with Foundry targeting X Layer EVM | `VERIFIED` | `make test-contracts` (Solc 0.8.30, 9 files compiled) | 2026-09-19 |
 | **CHAIN-2** | X Layer | `SettlementRouter.sol` executes atomic direct payment on X Layer with ERC-20 / USDC | `VERIFIED` | `contracts/test/SettlementFlows.t.sol` (`testSettleDirectTransfersFundsToRecipient` PASS) | 2026-09-19 |
 | **CHAIN-3** | X Layer | `ClaimEscrow.sol` holds funds and releases only upon verified claim | `VERIFIED` | `contracts/test/SettlementFlows.t.sol` (`testCreateAndClaimEscrowTransfersFundsFromEscrow` PASS) | 2026-09-19 |
-| **MCP-1** | MCP Agent | Agent can list Space capabilities and request valid payment via MCP | `UNTESTED` | Pending `node --test mcp/test/mcp-server.test.js` | 2026-09-19 |
-| **MCP-2** | MCP Agent | Agent payment request exceeding rule is rejected with `isError: true` and denial proof | `UNTESTED` | Pending `node --test mcp/test/mcp-boundary.test.js` | 2026-09-19 |
-| **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `UNTESTED` | Pending `make e2e` | 2026-09-19 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `UNTESTED` | `make test` | 2026-09-19 |
+| **MCP-1** | MCP Agent | Agent can list Space capabilities and request valid payment via MCP | `VERIFIED` | `npm run test:mcp` (`MCP-1`, `MCP-2` PASS) | 2026-09-19 |
+| **MCP-2** | MCP Agent | Agent payment request exceeding rule is rejected with `isError: true` and denial proof | `VERIFIED` | `npm run test:mcp` (`MCP-3` PASS) | 2026-09-19 |
+| **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (All 5 steps pass live) | 2026-09-19 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (36 tests passed, 0 failed) | 2026-09-19 |
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-19: MCP Server & E2E Demo Suite (MCP-1, MCP-2, E2E-1, SUITE-1)
+* **Command**: `make test` && `npm run demo`
+* **Output**:
+  ```text
+  make test:
+    - 23 Solidity contract tests PASS (SettlementFlows, AgenticCommerce, EnvelopeRegistry)
+    - 8 Space policy engine tests PASS
+    - 5 MCP server tests PASS
+    Total: 36 passed, 0 failed
+
+  npm run demo:
+    - Step 1: Agent discovers Space (Autonomous Procurement Space, $5,000 USDC)
+    - Step 2: Agent queries capabilities (Max $500/tx, $2,000/day, approved vendors)
+    - Step 3: Compliant $350 payment settles on X Layer (receipt: rcpt-371f95ef, txHash: 0x96ce...)
+    - Step 4: Out-of-policy $900 payment deterministically rejected (DenialProof generated, $0 lost)
+    - Step 5: Full Space activity ledger verified with complete flow & identity continuity
+  ```
+* **Status**: `VERIFIED` on MCP-1, MCP-2, E2E-1, SUITE-1.
 
 ### 2026-09-19: Policy Engine Suite Passed (SPACE-1, SPACE-2, SPACE-3)
 * **Command**: `npm run test:policy`

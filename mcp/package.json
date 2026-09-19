@@ -1,0 +1,12 @@
+{
+  "name": "@microcosm/mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "microcosm-mcp": "./src/server.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

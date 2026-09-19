@@ -17,22 +17,26 @@
 ---
 
 ## 2. What Is Implemented
-* Governance, manifests, and local execution harness.
+* **Smart Contracts (`contracts/`)**: `SettlementRouter.sol`, `ClaimEscrow.sol`, `EnvelopeRegistry.sol`, `AgenticCommerce.sol`.
+* **Policy Engine (`packages/policy-engine/`)**: Pure, deterministic Space policy evaluation, boundary checks, and `DenialProof` creation.
+* **MCP Server (`mcp/`)**: Native Stdio Model Context Protocol server exposing `spaces_list`, `spaces_capabilities`, `payments_request`, and `activity_list`.
+* **Demonstration Runner (`scripts/demo-procurement-space.mjs`)**: End-to-end interactive simulation of the Procurement Space flow on OKX X Layer.
 
 ---
 
 ## 3. What Is Deployed
-* No contracts or services deployed to OKX X Layer yet (`UNTESTED`).
+* Smart contracts verified locally on Foundry EVM; testnet deployment to OKX X Layer Testnet (Chain ID 195) pending broadcast key.
 
 ---
 
 ## 4. What Is Tested
-* Local make targets validated; test suites awaiting package initialization.
+* **Foundry Contracts Suite**: 23 tests pass (`SettlementFlows`, `AgenticCommerce`, `EnvelopeRegistry`).
+* **Space Policy Engine Suite**: 8 tests pass with boundary and unit-conversion coverage.
+* **MCP Agent Tool Suite**: 5 tests pass covering capability discovery, compliant settlements, and deterministic rejections.
+* **Total Green Tests**: 36 passed, 0 failed via `make test`.
 
 ---
 
 ## 5. What Remains Unresolved (Active Gaps)
-1. **Substrate Audit**: Specific native USDC contract address and gas limits on OKX X Layer Testnet (Chain ID 195).
-2. **OpenRails Machinery Ingestion**: Migrating `SettlementRouter.sol` and `ClaimEscrow.sol` from `mcosm-OpenRails` to the new `contracts/` directory with Foundry tests.
-3. **Space Policy Engine**: Implementing the pure semantic policy engine (`maxPerTransaction`, daily velocity, counterparty whitelisting) and unit tests.
-4. **MCP Server**: Packaging Space actions as clean MCP tools for AI agents.
+1. **Live X Layer Testnet Broadcast**: Running `forge script` against `https://xlayertestrpc.okx.com` with funded testnet OKB key.
+2. **Video & Demo Capture**: Recording the 2-4 minute walkthrough showcasing the CLI/MCP agent flow and deterministic boundary defense for hackathon submission.

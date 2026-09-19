@@ -7,11 +7,11 @@ Tracks the state of all primary system capabilities according to the **BUILD FOU
 
 | Capability | Domain | Status | Evidence | Known Limitations |
 |---|---|---|---|---|
-| **Space Operating Context** | Core Domain | `PROPOSED` | Specification in [`forge/PRODUCT.md`](file:///home/jay/okx/forge/PRODUCT.md) | Ingestion from OpenRails and schema pending |
-| **Deterministic Space Policy Engine** | Core Domain | `PROPOSED` | Design in [`forge/INVARIANTS.md`](file:///home/jay/okx/forge/INVARIANTS.md) | Policy evaluation code pending |
-| **SettlementRouter Contract** | Contracts / X Layer | `PROPOSED` | Existing in `mcosm-OpenRails` | Port to X Layer and Foundry suite pending |
-| **ClaimEscrow Contract** | Contracts / X Layer | `PROPOSED` | Existing in `mcosm-OpenRails` | Port to X Layer and Foundry suite pending |
-| **Space MCP Server** | Interface / Agent | `PROPOSED` | Tool schemas drafted | Server bootstrap pending |
-| **Local Verification Runner** | Harness | `IMPLEMENTED` | [`Makefile`](file:///home/jay/okx/Makefile) | Concrete test suites pending creation |
-| **OKX X Layer Testnet Deployment** | Onchain Substrate | `PROPOSED` | RPC configured in [`forge.json`](file:///home/jay/okx/forge.json) | Broadcast script pending execution |
-| **E2E Procurement Scenario** | Demo / Flow | `PROPOSED` | Flow specified in [`forge/PRODUCT.md`](file:///home/jay/okx/forge/PRODUCT.md) | Integration runner pending |
+| **Space Operating Context** | Core Domain | `INTEGRATED` | [`mcp/src/space-store.js`](file:///home/jay/okx/mcp/src/space-store.js) | Full DB persistence pending migration |
+| **Deterministic Space Policy Engine** | Core Domain | `TESTED` | [`packages/policy-engine/test/space-policy.test.js`](file:///home/jay/okx/packages/policy-engine/test/space-policy.test.js) (8 passed) | None |
+| **SettlementRouter Contract** | Contracts / X Layer | `TESTED` | [`contracts/test/SettlementFlows.t.sol`](file:///home/jay/okx/contracts/test/SettlementFlows.t.sol) (4 passed) | Local EVM verified; onchain deploy pending key |
+| **ClaimEscrow Contract** | Contracts / X Layer | `TESTED` | [`contracts/test/SettlementFlows.t.sol`](file:///home/jay/okx/contracts/test/SettlementFlows.t.sol) (PASS) | Local EVM verified; onchain deploy pending key |
+| **Space MCP Server** | Interface / Agent | `TESTED` | [`mcp/test/mcp-server.test.js`](file:///home/jay/okx/mcp/test/mcp-server.test.js) (5 passed) | Stdio transport active |
+| **Local Verification Runner** | Harness | `E2E_VERIFIED` | [`Makefile`](file:///home/jay/okx/Makefile) (`make test`: 36 green) | None |
+| **OKX X Layer Testnet Deployment** | Onchain Substrate | `PROPOSED` | RPC configured in [`forge.json`](file:///home/jay/okx/forge.json) | Broadcast script pending funded key |
+| **E2E Procurement Scenario** | Demo / Flow | `E2E_VERIFIED` | [`scripts/demo-procurement-space.mjs`](file:///home/jay/okx/scripts/demo-procurement-space.mjs) (`npm run demo` PASS) | None |
