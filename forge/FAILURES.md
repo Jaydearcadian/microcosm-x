@@ -25,3 +25,18 @@ This document catalogs every edge case, failure mode, and adversarial vector eva
 * **Attack**: A transaction is broadcast to OKX X Layer, but network congestion or RPC timeout leaves the status uncertain.
 * **Defense**: The runtime maintains an explicit pending state machine with exponential backoff status checks against the X Layer JSON-RPC. If unconfirmed after timeout threshold, the payment transitions to `FAILED` or `ESCROWED` with automatic unlock.
 * **Result**: **No double-spending; state continuity preserved**.
+
+---
+
+## 2. External Deployment Gaps (Blocked, Not Failures)
+
+### EXT-01: Live X Layer Testnet Fork / Broadcast / OKLink Verification
+* **Status**: `BLOCKED_EXTERNAL` — no network route to `https://xlayertestrpc.okx.com` from this environment, and no funded `PRIVATE_KEY` / `OKLINK_API_KEY` is provisioned.
+* **Mitigation executed**: the full deployment pipeline was proven locally —
+  `forge script script/DeployXLayer.s.sol:DeployXLayer --broadcast` against a local EVM completed with 5/5 receipts `status 0x1` and runtime bytecode at all deployed addresses (see `DEPLOY-1` in `PROOF_LEDGER.md`).
+* **To unblock**: provision `.env` from `.env.example`, then run `make fork-test` (zero-cost pre-flight), `make deploy-testnet` (Chain ID 195), and `make verify-contracts ROUTER_ADDR=… COMMERCE_ADDR=… OKLINK_API_KEY=…`.
+
+### EXT-02: Forged Attestation / Impostor Court
+* **Attack**: An attacker crafts an authorization or verdict without the Controller's / court's key.
+* **Defense**: Contracts recover the signer via `ecrecover` over the EIP-712 domain (`Microcosm`, `1`, chainId, verifying contract) and require a registered Controller (`SettlementRouter`) or the job's evaluator / bound adjudicator contract (`AgenticCommerce`). Nonces block replays; deadlines block stale intents; chainId blocks cross-chain replays.
+* **Result**: **Rejected onchain** — proven by `ATTEST-2` and `ADJUD-2` negative tests.

@@ -6,6 +6,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # Foundry / Solidity
+out/
+cache/
 contracts/out/
 contracts/cache/
 broadcast/

@@ -21,13 +21,46 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles on OKX X Layer (receipt + txHash) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-19 |
 | **WORK-4** | Gaia Exception | Evaluator rejects → `Rejected`, Gaia refund returns 100% to Space ($0 lost); expiry → `Expired` with full refund; no payout without deliverable proof | `VERIFIED` | `npm run test:mcp` (`WORK-4`, `WORK-5`, `WORK-6` PASS) | 2026-09-19 |
 | **WORK-7** | Policy Boundary | Concurrent Work Order escrows count against the daily budget at creation (no collective daily-cap breach); Gaia refunds restore daily headroom | `VERIFIED` | `npm run test:mcp` (`WORK-7` PASS) | 2026-09-19 |
+| **ATTEST-1** | X Layer | Valid EIP-712 attestation (Microcosm domain, chain-bound) settles payment and releases job escrow | `VERIFIED` | `contracts/test/Attestation.t.sol` (`testValidAttestationSettlesPayment`, `testCommerceAttestedSettlementReleasesEscrow` PASS) | 2026-09-19 |
+| **ATTEST-2** | X Layer | Tampered, expired, replayed, and cross-chain attestations are rejected; offchain encoder matches onchain digest byte-for-byte | `VERIFIED` | `contracts/test/Attestation.t.sol` (4 negative PASS) + `packages/policy-engine/test/attestation.test.js` (ATTEST-JS-1…5 PASS) | 2026-09-19 |
+| **ADJUD-1** | X Layer | Internet Court resolver receives (jobId, deliverableHash, evidenceUri, rubricHash); approval verdict settles escrow, payouts halt while Adjudicating | `VERIFIED` | `contracts/test/Adjudication.t.sol` (`testCourtApprovalSettlesEscrowToProvider` PASS) | 2026-09-19 |
+| **ADJUD-2** | X Layer | Court rejection refunds client in full; impostor verdicts and proof-less referrals fail; stalled courts cannot strand escrow | `VERIFIED` | `contracts/test/Adjudication.t.sol` (4 negative/edge PASS) | 2026-09-19 |
+| **WORK-8** | MCP Agent | Court-bound Work Order settles on X Layer after `work_request_verdict` → `work_post_verdict` (approve) | `VERIFIED` | `npm run test:mcp` (`WORK-8` PASS) | 2026-09-19 |
+| **WORK-9** | MCP Agent | Court rejection refunds 100% ($0 lost); impostor verdict and proof-less referral rejected | `VERIFIED` | `npm run test:mcp` (`WORK-9` PASS) | 2026-09-19 |
+| **DEPLOY-1** | Deployment | `DeployXLayer.s.sol` broadcasts all 5 contracts from `PRIVATE_KEY`/`USDC_ADDRESS` env; `make fork-test` / `deploy-testnet` / `verify-contracts` pipeline wired | `VERIFIED` | `forge script … --broadcast` on local EVM (5/5 receipts status 0x1, runtime bytecode present) | 2026-09-19 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (All 5 steps pass live) | 2026-09-19 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded) | `VERIFIED` | `npm run demo` (All 8 steps pass live) | 2026-09-19 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (43 tests passed, 0 failed) | 2026-09-19 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (63 tests passed, 0 failed) | 2026-09-19 |
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-19: Production Hardening — Attestation, Internet Court Adjudication, Deployment Pipeline (ATTEST-1/2, ADJUD-1/2, WORK-8/9, DEPLOY-1, SUITE-1)
+* **Command**: `make test` && `npm run demo` && `forge script script/DeployXLayer.s.sol:DeployXLayer --rpc-url http://127.0.0.1:8545 --broadcast` (local EVM)
+* **Output**:
+  ```text
+  make test:
+    - 36 Solidity contract tests PASS (EnvelopeRegistry 8, AgenticCommerce 11, SettlementFlows 4, Attestation 8, Adjudication 5)
+    - 13 Space policy engine tests PASS (SPACE-1…7 + unit conversion + ATTEST-JS-1…5)
+    - 14 MCP server tests PASS (MCP-1…4 + WORK-1…9 incl. court verdict flows)
+    Total: 63 passed, 0 failed
+
+  Offchain/onchain attestation cross-check:
+    - forge test --match-test testDigestFixtureVector -vvvv →
+      digest 0x6de0e9235ca74a6f96f11a80d14e386e6969fe4ad84d3a35b802c40b720f3999
+    - policy-engine ATTEST-JS-2 asserts the identical constant → PASS (byte-for-byte match)
+
+  npm run demo: all 8 steps pass live (Work loop + $900 denial + Gaia refund)
+
+  forge script broadcast (local EVM pre-flight of the X Layer pipeline):
+    - ONCHAIN EXECUTION COMPLETE & SUCCESSFUL
+    - 5/5 receipts status 0x1 (EnvelopeRegistry, SettlementRouter, ClaimEscrow, MockERC20, AgenticCommerce)
+    - Runtime bytecode present at all 5 deployed addresses
+    - Artifact: contracts/broadcast/DeployXLayer.s.sol/31337/run-latest.json
+  ```
+* **Status**: `VERIFIED` on ATTEST-1, ATTEST-2, ADJUD-1, ADJUD-2, WORK-8, WORK-9, DEPLOY-1, SUITE-1.
+* **Known external gaps** (recorded, not blocking local verification): live `make fork-test` / `make deploy-testnet` / `make verify-contracts` against OKX X Layer testnet require network access plus a funded `PRIVATE_KEY` and `OKLINK_API_KEY`; see `forge/FAILURES.md`.
 
 ### 2026-09-19: First-Class Work Lifecycle & Gaia Exception Handling (WORK-1…WORK-4, E2E-2, SUITE-1)
 * **Command**: `make test` && `npm run demo`

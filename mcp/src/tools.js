@@ -105,6 +105,14 @@ export const TOOL_DEFINITIONS = [
           type: 'string',
           description: 'Description of the requested work and acceptance criteria.',
         },
+        adjudicator: {
+          type: 'string',
+          description: 'Optional: Internet Court resolver ID. Court-bound work settles only through the court verdict.',
+        },
+        rubricHash: {
+          type: 'string',
+          description: 'Optional: hash of the acceptance rubric the court judges against.',
+        },
         budget: {
           type: 'string',
           description: 'Budget in USDC decimal string (e.g. "350.00"). Escrowed immediately.',
@@ -193,6 +201,58 @@ export const TOOL_DEFINITIONS = [
         },
       },
       required: ['spaceId', 'jobId'],
+    },
+  },
+  {
+    name: 'work_request_verdict',
+    description: 'Refer a submitted deliverable to the bound Internet Court resolver. Payouts halt until the verdict.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: {
+          type: 'string',
+          description: 'The Space ID that governs the work.',
+        },
+        jobId: {
+          type: 'string',
+          description: 'The submitted Work Order ID to refer.',
+        },
+        actorId: {
+          type: 'string',
+          description: 'The client, provider, or evaluator requesting adjudication.',
+        },
+      },
+      required: ['spaceId', 'jobId', 'actorId'],
+    },
+  },
+  {
+    name: 'work_post_verdict',
+    description: 'Court verdict callback: approve to settle on X Layer, or reject for a full Space refund.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: {
+          type: 'string',
+          description: 'The Space ID that governs the work.',
+        },
+        jobId: {
+          type: 'string',
+          description: 'The adjudicating Work Order ID.',
+        },
+        adjudicatorId: {
+          type: 'string',
+          description: 'The court resolver posting the verdict (must match the bound adjudicator).',
+        },
+        approved: {
+          type: 'boolean',
+          description: 'True to settle payment to the provider; false to refund the Space in full.',
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for the court verdict.',
+        },
+      },
+      required: ['spaceId', 'jobId', 'adjudicatorId', 'approved'],
     },
   },
 ];
@@ -357,6 +417,34 @@ export async function handleToolCall(store, name, args) {
         const job = store.getJob(args);
         return {
           content: [{ type: 'text', text: JSON.stringify({ job }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'work_request_verdict': {
+      try {
+        const result = store.requestVerdict(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'work_post_verdict': {
+      try {
+        const result = store.postVerdict(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
       } catch (err) {
         return {

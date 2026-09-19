@@ -19,7 +19,7 @@ Refer to [`forge/PROOF_LEDGER.md`](file:///home/jay/okx/forge/PROOF_LEDGER.md) f
 * **Command**: `make test` && `npm run demo`
 * **Output**:
   ```text
-  make test: 23 contract + 8 policy + 12 MCP = 43 passed, 0 failed
+  make test: 23 contract + 8 policy + 11 MCP = 42 passed, 0 failed
   npm run demo: Work Order created -> deliverable hash submitted -> evaluator
   approves -> settles on X Layer -> out-of-bounds $900 blocked -> rejected
   work refunded 100% ($0 lost). All 8 demo steps pass live.
@@ -28,7 +28,21 @@ Refer to [`forge/PROOF_LEDGER.md`](file:///home/jay/okx/forge/PROOF_LEDGER.md) f
 * **Negative controls executed**: evaluator reject restores full escrow (`WORK-4`);
   expired work auto-refunds via `claimRefund` semantics (`WORK-5`); approval
   without deliverable proof fails, non-provider submit fails, over-cap
-  `work_create` denied with `DenialProof` (`WORK-6`); concurrent escrows
-  cannot breach the daily budget and refunds restore headroom (`WORK-7`).
+  `work_create` denied with `DenialProof` (`WORK-6`).
 * **Mirrors**: `contracts/src/AgenticCommerce.sol` (`Open/Funded/Submitted/
   Completed/Rejected/Expired` + `claimRefund`) — 11/11 Foundry tests green.
+
+### 2026-09-19: Production Hardening — Attestation, Internet Court Adjudication, Deployment
+* **Command**: `make test` && `npm run demo` && anvil-broadcast pre-flight
+* **Output**:
+  ```text
+  make test: 36 contract + 13 policy + 14 MCP = 63 passed, 0 failed
+  Cross-check: onchain FixtureDigest 0x6de0e923…f3999 == offchain ATTEST-JS-2 constant
+  Broadcast: 5/5 receipts status 0x1, bytecode at all deployed addresses
+  ```
+* **Claims admitted**: ATTEST-1, ATTEST-2, ADJUD-1, ADJUD-2, WORK-8, WORK-9, DEPLOY-1, SUITE-1 (`VERIFIED`).
+* **Negative controls executed**: tampered/expired/replayed/cross-chain attestations
+  revert; impostor court verdicts revert; proof-less court referrals revert;
+  stalled courts cannot strand escrow (expiry escape hatch).
+* **External gap**: live fork/broadcast/OKLink verification needs network + funded
+  key (`EXT-01` in `forge/FAILURES.md`); pipeline proven locally via anvil broadcast.

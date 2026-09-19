@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 
+export * from './attestation.js';
+
 /**
  * Converts a decimal string or number to cents (e.g. "500.00" -> 50000)
  * to avoid floating-point rounding errors.

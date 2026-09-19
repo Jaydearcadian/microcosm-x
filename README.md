@@ -5,7 +5,7 @@
 [![OKX X Layer](https://img.shields.io/badge/Network-OKX_X_Layer_(195/196)-blue.svg)](https://www.okx.com/xlayer)
 [![EVM Solidity](https://img.shields.io/badge/Solidity-0.8.24-orange.svg)](https://soliditylang.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(43/43_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
+[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(63/63_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
 
 ---
 
@@ -81,7 +81,7 @@ Microcosm operates under the **FORGE 1.4** control plane. Every feature and mech
 
 ### Run Tests
 ```bash
-# Run entire test suite (43 tests: 23 contracts, 8 policy engine, 12 MCP)
+# Run entire test suite (63 tests: 36 contracts, 13 policy engine, 14 MCP)
 make test
 
 # Run contracts suite alone (Foundry)
@@ -115,7 +115,7 @@ This executes an 8-step simulation demonstrating:
 
 ## 🔌 Model Context Protocol (MCP) Reference
 
-Microcosm exposes 8 production-grade MCP tools over standard I/O (`mcp/src/index.js`):
+Microcosm exposes 10 production-grade MCP tools over standard I/O (`mcp/src/index.js`):
 
 | Tool Name | Description | Key Parameters |
 |:---|:---|:---|
@@ -127,6 +127,8 @@ Microcosm exposes 8 production-grade MCP tools over standard I/O (`mcp/src/index
 | `work_submit` | Provider submits deliverable proof hash and evidence URI | `jobId`, `providerId`, `deliverableHash`, `evidenceUri` |
 | `work_evaluate` | Evaluator approves or rejects work (triggers X Layer settlement or Gaia refund) | `jobId`, `evaluatorId`, `approved`, `reason` |
 | `work_get` | Query real-time status and escrow state of a Work Order | `jobId` |
+| `work_request_verdict` | Refer a submitted deliverable to the Internet Court adjudicator | `spaceId`, `jobId`, `actorId` |
+| `work_post_verdict` | Bound adjudicator posts final verdict (settles or triggers Gaia refund) | `spaceId`, `jobId`, `adjudicatorId`, `approve`, `reason` |
 
 To add Microcosm to Claude Desktop, Cursor, or Cline, add the following to your MCP config:
 ```json
@@ -148,20 +150,21 @@ To add Microcosm to Claude Desktop, Cursor, or Cline, add the following to your 
 .
 ├── contracts/               # Solidity smart contracts for OKX X Layer
 │   ├── src/
-│   │   ├── AgenticCommerce.sol   # Work order escrow & deliverable validation
-│   │   ├── SettlementRouter.sol  # Nonce-ordered direct settlement
+│   │   ├── AgenticCommerce.sol   # Work order escrow, deliverable validation & court interface
+│   │   ├── SettlementRouter.sol  # Nonce-ordered direct settlement with EIP-712 attestation
 │   │   ├── ClaimEscrow.sol       # Conditional escrow & receipts
-│   │   └── EnvelopeRegistry.sol  # Policy anchor registry
+│   │   ├── EnvelopeRegistry.sol  # Policy anchor registry
+│   │   └── IAdjudicator.sol      # Internet Court adjudication adapter
 │   ├── script/
 │   │   └── DeployXLayer.s.sol    # Automated Foundry broadcast script
-│   └── test/                     # Foundry unit & invariant tests (23 tests)
+│   └── test/                     # Foundry unit, invariant, and attestation tests (36 tests)
 ├── packages/
-│   └── policy-engine/       # Pure deterministic Space policy evaluator (8 tests)
-├── mcp/                     # Native Stdio Model Context Protocol server (12 tests)
+│   └── policy-engine/       # Pure deterministic Space policy & EIP-712 evaluator (13 tests)
+├── mcp/                     # Native Stdio Model Context Protocol server (14 tests)
 │   ├── src/
 │   │   ├── index.js         # Stdio JSON-RPC transport
-│   │   ├── space-store.js   # Space state machine & Gaia exception logic
-│   │   └── tools.js         # Tool definitions & schemas
+│   │   ├── space-store.js   # Space state machine, Gaia exceptions & court adapter
+│   │   └── tools.js         # Tool definitions & schemas (10 tools)
 ├── scripts/
 │   ├── demo-procurement-space.mjs # Live 8-step end-to-end simulation runner
 │   └── verify-proof-ledger.mjs    # Proof ledger audit script

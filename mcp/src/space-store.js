@@ -261,11 +261,13 @@ export class SpaceStore {
   }
 
   /**
-   * Apply expiry lazily: a Funded/Submitted job past its deadline becomes
-   * Expired with a full Gaia refund. Returns true if expiry was applied.
+   * Apply expiry lazily: a Funded/Submitted/Adjudicating job past its
+   * deadline becomes Expired with a full Gaia refund. Returns true if
+   * expiry was applied. Adjudicating jobs expire too: the escape hatch
+   * guarantees a stalled court can never strand escrowed funds.
    */
   _applyExpiry(space, job) {
-    if (job.status !== 'Funded' && job.status !== 'Submitted') {
+    if (job.status !== 'Funded' && job.status !== 'Submitted' && job.status !== 'Adjudicating') {
       return false;
     }
     if (Date.now() < job.deadlineMs) {
@@ -281,8 +283,12 @@ export class SpaceStore {
   /**
    * Create a Work Order and escrow funds from the Space balance.
    * Transitions: Open -> Funded (atomic within this call).
+   *
+   * Optional court binding: pass `adjudicator` (Internet Court resolver ID)
+   * with a `rubricHash` to route contested deliverables to adjudication
+   * instead of single-evaluator settlement, mirroring AgenticCommerce.sol.
    */
-  createJob({ spaceId, actorId, provider, evaluator, description, budget, deadline }) {
+  createJob({ spaceId, actorId, provider, evaluator, adjudicator, rubricHash, description, budget, deadline }) {
     const space = this._getSpaceOrThrow(spaceId);
     if (!provider) {
       throw new Error('Work Order requires a provider');
@@ -310,6 +316,24 @@ export class SpaceStore {
     const deadlineMs = this._parseDeadline(deadline);
     if (deadlineMs <= Date.now()) {
       throw new Error('Work Order deadline must be in the future');
+    }
+
+    // Optional Internet Court binding: a resolver ID plus the acceptance
+    // rubric hash. Court-bound work skips single-evaluator settlement and
+    // resolves only through requestVerdict/postVerdict.
+    let courtAdjudicator = null;
+    let courtRubric = null;
+    if (adjudicator !== undefined && adjudicator !== null && adjudicator !== '') {
+      if (typeof adjudicator !== 'string') {
+        throw new Error('Work Order adjudicator must be a resolver ID string');
+      }
+      courtAdjudicator = adjudicator;
+    }
+    if (rubricHash !== undefined && rubricHash !== null && rubricHash !== '') {
+      if (typeof rubricHash !== 'string') {
+        throw new Error('Work Order rubricHash must be a string');
+      }
+      courtRubric = rubricHash;
     }
 
     // Space policy gate: the escrowed budget must satisfy Space rules
@@ -362,6 +386,9 @@ export class SpaceStore {
       client: actorId,
       provider,
       evaluator,
+      adjudicator: courtAdjudicator,
+      rubricHash: courtRubric,
+      adjudication: null,
       description,
       budget: fromBaseUnits(budgetBase),
       escrowedAmount: fromBaseUnits(budgetBase),
@@ -393,6 +420,8 @@ export class SpaceStore {
       actorId,
       provider,
       evaluator,
+      adjudicator: courtAdjudicator,
+      rubricHash: courtRubric,
       budget: job.budget,
       deadline: job.deadline,
       fromStatus: 'Open',
@@ -461,9 +490,67 @@ export class SpaceStore {
   }
 
   /**
+   * Settle escrowed funds to the provider on OKX X Layer (mock receipt).
+   * Shared by evaluator approval and Internet Court verdict settlement.
+   * The daily budget was already consumed at escrow time; settlement must
+   * not double-count it.
+   */
+  _settleJob(space, job, fromStatus, decidedBy, feedback) {
+    const timestamp = new Date().toISOString();
+    job.status = 'Completed';
+    job.feedback = feedback || null;
+    job.completedAt = timestamp;
+    job.statusHistory.push({ status: 'Completed', timestamp });
+
+    const mockTxHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+    const receipt = {
+      receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
+      actionId: job.actionId,
+      spaceId: space.id,
+      jobId: job.jobId,
+      actorId: job.client,
+      provider: job.provider,
+      evaluator: job.evaluator,
+      recipient: job.provider,
+      amount: job.budget,
+      asset: space.currency,
+      network: 'OKX X Layer Testnet',
+      chainId: space.chainId,
+      txHash: mockTxHash,
+      status: 'SETTLED',
+      deliverableHash: job.deliverableHash,
+      evidenceUri: job.evidenceUri,
+      timestamp,
+    };
+    job.settlement = receipt;
+    this.receipts.set(receipt.receiptId, receipt);
+
+    this.activity.get(space.id).push({
+      type: 'WORK_COMPLETED',
+      jobId: job.jobId,
+      evaluatorId: decidedBy,
+      feedback: job.feedback,
+      fromStatus,
+      toStatus: 'Completed',
+      settlement: receipt,
+      spaceBalance: space.balance,
+      timestamp,
+    });
+
+    return {
+      status: 'Completed',
+      job: { ...job },
+      receipt,
+      spaceBalance: space.balance,
+    };
+  }
+
+  /**
    * Evaluator approves or rejects the submitted deliverable.
    * Approved:   Submitted -> Completed (settles on OKX X Layer).
    * Rejected:   Submitted/Funded -> Rejected (Gaia full refund to Space).
+   * Court-bound work and Adjudicating work never settle here: payouts halt
+   * until the Internet Court posts its verdict.
    */
   evaluateJob({ spaceId, jobId, evaluatorId, approved, feedback }) {
     const space = this._getSpaceOrThrow(spaceId);
@@ -476,6 +563,14 @@ export class SpaceStore {
         spaceBalance: space.balance,
         gaiaRefund: job.refundedAmount,
       };
+    }
+
+    if (job.status === 'Adjudicating') {
+      throw new Error(`Work Order '${jobId}' is Adjudicating: payout halted until the court posts its verdict`);
+    }
+
+    if (job.adjudicator) {
+      throw new Error(`Work Order '${jobId}' is court-bound: refer it via work_request_verdict, verdict via work_post_verdict`);
     }
 
     if (evaluatorId !== job.evaluator) {
@@ -491,56 +586,7 @@ export class SpaceStore {
       if (!job.deliverableHash) {
         throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: money cannot move without proof`);
       }
-      job.status = 'Completed';
-      job.feedback = feedback || null;
-      job.completedAt = timestamp;
-      job.statusHistory.push({ status: 'Completed', timestamp });
-
-      // Settle escrowed funds to the provider on OKX X Layer (mock receipt).
-      const mockTxHash = `0x${crypto.randomBytes(32).toString('hex')}`;
-      const receipt = {
-        receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
-        actionId: job.actionId,
-        spaceId,
-        jobId,
-        actorId: job.client,
-        provider: job.provider,
-        evaluator: job.evaluator,
-        recipient: job.provider,
-        amount: job.budget,
-        asset: space.currency,
-        network: 'OKX X Layer Testnet',
-        chainId: space.chainId,
-        txHash: mockTxHash,
-        status: 'SETTLED',
-        deliverableHash: job.deliverableHash,
-        evidenceUri: job.evidenceUri,
-        timestamp,
-      };
-      job.settlement = receipt;
-      this.receipts.set(receipt.receiptId, receipt);
-
-      // Note: daily budget was already consumed at escrow time (createJob);
-      // settlement must not double-count it.
-
-      this.activity.get(spaceId).push({
-        type: 'WORK_COMPLETED',
-        jobId,
-        evaluatorId,
-        feedback: job.feedback,
-        fromStatus: 'Submitted',
-        toStatus: 'Completed',
-        settlement: receipt,
-        spaceBalance: space.balance,
-        timestamp,
-      });
-
-      return {
-        status: 'Completed',
-        job: { ...job },
-        receipt,
-        spaceBalance: space.balance,
-      };
+      return this._settleJob(space, job, 'Submitted', evaluatorId, feedback);
     }
 
     if (approved === false) {
@@ -562,6 +608,139 @@ export class SpaceStore {
     }
 
     throw new Error(`evaluateJob requires approved to be true or false`);
+  }
+
+  /**
+   * Refer a Submitted deliverable to the Internet Court. The resolver
+   * receives (jobId, deliverableHash, evidenceUri, rubricHash); the job
+   * moves to Adjudicating and all payouts halt until the verdict.
+   * Callable by the client, provider, or evaluator.
+   */
+  requestVerdict({ spaceId, jobId, actorId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const job = this._getJobOrThrow(spaceId, jobId);
+
+    if (this._applyExpiry(space, job)) {
+      return {
+        status: 'Expired',
+        job: { ...job },
+        spaceBalance: space.balance,
+        gaiaRefund: job.refundedAmount,
+      };
+    }
+
+    if (job.status !== 'Submitted') {
+      throw new Error(`Work Order '${jobId}' is '${job.status}': only Submitted work can be referred to the court`);
+    }
+    if (!job.deliverableHash) {
+      throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: the court has nothing to judge`);
+    }
+    if (!job.adjudicator) {
+      throw new Error(`Work Order '${jobId}' has no bound adjudicator`);
+    }
+    if (actorId !== job.client && actorId !== job.provider && actorId !== job.evaluator) {
+      throw new Error(`Actor '${actorId}' is not a party to Work Order '${jobId}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const caseId = `case-${job.jobId}-${crypto.randomUUID().slice(0, 8)}`;
+    job.status = 'Adjudicating';
+    job.adjudication = {
+      caseId,
+      requestedBy: actorId,
+      requestedAt: timestamp,
+      deliverableHash: job.deliverableHash,
+      evidenceUri: job.evidenceUri,
+      rubricHash: job.rubricHash,
+    };
+    job.statusHistory.push({ status: 'Adjudicating', timestamp });
+
+    const record = {
+      type: 'WORK_ADJUDICATION_REQUESTED',
+      jobId: job.jobId,
+      spaceId: space.id,
+      caseId,
+      adjudicator: job.adjudicator,
+      deliverableHash: job.deliverableHash,
+      evidenceUri: job.evidenceUri,
+      rubricHash: job.rubricHash,
+      requestedBy: actorId,
+      fromStatus: 'Submitted',
+      toStatus: 'Adjudicating',
+      note: 'Payout halted until the court posts its verdict',
+      timestamp,
+    };
+    this.activity.get(space.id).push(record);
+
+    return {
+      status: 'Adjudicating',
+      job: { ...job },
+      case: { ...job.adjudication },
+      spaceBalance: space.balance,
+    };
+  }
+
+  /**
+   * Verdict callback — callable ONLY by the job's bound adjudicator.
+   * Approval settles to the provider on X Layer; rejection refunds 100%
+   * to the Space (Gaia exception semantics).
+   */
+  postVerdict({ spaceId, jobId, adjudicatorId, approved, reason }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const job = this._getJobOrThrow(spaceId, jobId);
+
+    if (this._applyExpiry(space, job)) {
+      return {
+        status: 'Expired',
+        job: { ...job },
+        spaceBalance: space.balance,
+        gaiaRefund: job.refundedAmount,
+      };
+    }
+
+    if (job.status !== 'Adjudicating') {
+      throw new Error(`Work Order '${jobId}' is '${job.status}': verdicts require Adjudicating work`);
+    }
+    if (adjudicatorId !== job.adjudicator) {
+      throw new Error(`Only adjudicator '${job.adjudicator}' can post the verdict for Work Order '${jobId}'`);
+    }
+    if (approved !== true && approved !== false) {
+      throw new Error('postVerdict requires approved to be true or false');
+    }
+
+    const timestamp = new Date().toISOString();
+    if (approved === true) {
+      if (!job.deliverableHash) {
+        throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: money cannot move without proof`);
+      }
+      const result = this._settleJob(space, job, 'Adjudicating', adjudicatorId, reason || null);
+      this.activity.get(spaceId).push({
+        type: 'WORK_ADJUDICATION_RESOLVED',
+        jobId,
+        adjudicatorId,
+        approved: true,
+        reason: reason || null,
+        fromStatus: 'Adjudicating',
+        toStatus: 'Completed',
+        spaceBalance: space.balance,
+        timestamp,
+      });
+      return { ...result, verdict: 'approve' };
+    }
+
+    job.status = 'Rejected';
+    job.feedback = reason || null;
+    job.completedAt = timestamp;
+    job.statusHistory.push({ status: 'Rejected', timestamp });
+    const refundRecord = this._claimRefund(space, job, 'reject');
+    return {
+      status: 'Rejected',
+      job: { ...job },
+      verdict: 'reject',
+      gaiaRefund: job.refundedAmount,
+      spaceBalance: space.balance,
+      refundRecord,
+    };
   }
 
   /**

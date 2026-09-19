@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SpaceStore } from '../src/space-store.js';
 import { handleToolCall, TOOL_DEFINITIONS } from '../src/tools.js';
 
-test('MCP-TOOLS: Tool definitions list 8 Space operations (core + Work lifecycle)', () => {
-  assert.equal(TOOL_DEFINITIONS.length, 8);
+test('MCP-TOOLS: Tool definitions list 10 Space operations (core + Work lifecycle + court verdicts)', () => {
+  assert.equal(TOOL_DEFINITIONS.length, 10);
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
   assert.ok(toolNames.includes('spaces_list'));
   assert.ok(toolNames.includes('spaces_capabilities'));
@@ -14,6 +14,8 @@ test('MCP-TOOLS: Tool definitions list 8 Space operations (core + Work lifecycle
   assert.ok(toolNames.includes('work_submit'));
   assert.ok(toolNames.includes('work_evaluate'));
   assert.ok(toolNames.includes('work_get'));
+  assert.ok(toolNames.includes('work_request_verdict'));
+  assert.ok(toolNames.includes('work_post_verdict'));
 });
 
 test('MCP-1: Agent can discover Space capabilities and policy rules', async () => {
@@ -426,4 +428,172 @@ test('WORK-7 (regression): concurrent escrows cannot breach the daily budget; re
   assert.equal(retry.isError, undefined);
   const retryData = JSON.parse(retry.content[0].text);
   assert.equal(retryData.status, 'Funded');
+});
+
+test('WORK-8: Internet Court approval settles escrow on X Layer', async () => {
+  const store = new SpaceStore();
+  const COURT = 'court-genlayer-01';
+  const rubricHash = '0x' + '1'.repeat(64);
+
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'work_create', {
+        spaceId: WORK_SPACE,
+        actorId: WORK_CLIENT,
+        provider: WORK_VENDOR,
+        evaluator: WORK_EVALUATOR,
+        adjudicator: COURT,
+        rubricHash,
+        description: 'Court-gated GPU delivery',
+        budget: '300.00',
+        deadline: futureDeadline(),
+      })
+    ).content[0].text
+  );
+  assert.equal(created.status, 'Funded');
+  assert.equal(created.job.adjudicator, COURT);
+
+  const deliverableHash = '0x' + '2'.repeat(64);
+  await handleToolCall(store, 'work_submit', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    actorId: WORK_VENDOR,
+    deliverableHash,
+    evidenceUri: 'ipfs://QmCourtEvidence001',
+  });
+
+  // Court-bound work skips single-evaluator settlement.
+  const bypass = await handleToolCall(store, 'work_evaluate', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    evaluatorId: WORK_EVALUATOR,
+    approved: true,
+  });
+  assert.equal(bypass.isError, true);
+
+  // Refer to the court: the resolver receives the full case tuple.
+  const referred = JSON.parse(
+    (
+      await handleToolCall(store, 'work_request_verdict', {
+        spaceId: WORK_SPACE,
+        jobId: created.job.jobId,
+        actorId: WORK_CLIENT,
+      })
+    ).content[0].text
+  );
+  assert.equal(referred.status, 'Adjudicating');
+  assert.equal(referred.case.deliverableHash, deliverableHash);
+  assert.equal(referred.case.evidenceUri, 'ipfs://QmCourtEvidence001');
+  assert.equal(referred.case.rubricHash, rubricHash);
+  assert.ok(referred.case.caseId.startsWith('case-'));
+
+  // Payouts halt while adjudicating.
+  const during = await handleToolCall(store, 'work_evaluate', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    evaluatorId: WORK_EVALUATOR,
+    approved: true,
+  });
+  assert.equal(during.isError, true);
+
+  // The court posts its verdict back: escrow settles on X Layer.
+  const verdict = JSON.parse(
+    (
+      await handleToolCall(store, 'work_post_verdict', {
+        spaceId: WORK_SPACE,
+        jobId: created.job.jobId,
+        adjudicatorId: COURT,
+        approved: true,
+        reason: 'Deliverable meets rubric: 100 GPU-hours verified',
+      })
+    ).content[0].text
+  );
+  assert.equal(verdict.status, 'Completed');
+  assert.equal(verdict.job.status, 'Completed');
+  assert.ok(verdict.receipt);
+  assert.equal(verdict.receipt.network, 'OKX X Layer Testnet');
+  assert.equal(verdict.receipt.chainId, 195);
+  assert.equal(verdict.receipt.deliverableHash, deliverableHash);
+  assert.equal(verdict.spaceBalance, '4700.000000');
+});
+
+test('WORK-9 (negative): court rejection refunds in full; impostor verdicts fail', async () => {
+  const store = new SpaceStore();
+  const COURT = 'court-genlayer-01';
+
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'work_create', {
+        spaceId: WORK_SPACE,
+        actorId: WORK_CLIENT,
+        provider: WORK_VENDOR,
+        evaluator: WORK_EVALUATOR,
+        adjudicator: COURT,
+        rubricHash: '0x' + '3'.repeat(64),
+        description: 'Court-gated dataset delivery',
+        budget: '200.00',
+        deadline: futureDeadline(),
+      })
+    ).content[0].text
+  );
+  await handleToolCall(store, 'work_submit', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    actorId: WORK_VENDOR,
+    deliverableHash: '0x' + '4'.repeat(64),
+  });
+  await handleToolCall(store, 'work_request_verdict', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    actorId: WORK_VENDOR,
+  });
+
+  // An impostor court cannot post verdicts.
+  const impostor = await handleToolCall(store, 'work_post_verdict', {
+    spaceId: WORK_SPACE,
+    jobId: created.job.jobId,
+    adjudicatorId: 'attacker-court',
+    approved: true,
+  });
+  assert.equal(impostor.isError, true);
+  assert.equal(store.getSpace(WORK_SPACE).balance, '4800.000000');
+
+  // The bound court rejects: 100% Gaia refund, $0 lost.
+  const verdict = JSON.parse(
+    (
+      await handleToolCall(store, 'work_post_verdict', {
+        spaceId: WORK_SPACE,
+        jobId: created.job.jobId,
+        adjudicatorId: COURT,
+        approved: false,
+        reason: 'Dataset fails rubric acceptance checks',
+      })
+    ).content[0].text
+  );
+  assert.equal(verdict.status, 'Rejected');
+  assert.equal(verdict.gaiaRefund, '200.000000');
+  assert.equal(verdict.spaceBalance, '5000.000000');
+  assert.equal(store.getSpace(WORK_SPACE).balance, '5000.000000');
+
+  // Referral before any deliverable proof fails (nothing to judge).
+  const early = JSON.parse(
+    (
+      await handleToolCall(store, 'work_create', {
+        spaceId: WORK_SPACE,
+        actorId: WORK_CLIENT,
+        provider: WORK_VENDOR,
+        evaluator: WORK_EVALUATOR,
+        adjudicator: COURT,
+        description: 'Proof-less referral attempt',
+        budget: '100.00',
+        deadline: futureDeadline(),
+      })
+    ).content[0].text
+  );
+  const noProof = await handleToolCall(store, 'work_request_verdict', {
+    spaceId: WORK_SPACE,
+    jobId: early.job.jobId,
+    actorId: WORK_CLIENT,
+  });
+  assert.equal(noProof.isError, true);
 });

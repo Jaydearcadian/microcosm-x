@@ -6,7 +6,7 @@
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
 * **Repository**: https://github.com/Jaydearcadian/microcosm
 * **Live Demo Video**: [Demo Walkthrough Video (Follows forge/DEMO_SCRIPT.md)]
-* **Status**: Complete & Verified (43 tests passing across contracts, policy runtime, and MCP server)
+* **Status**: Complete & Verified (63 tests passing across contracts, policy runtime, and MCP server)
 
 ---
 
@@ -89,7 +89,7 @@ Instead of handing private keys to LLMs, humans and agents operate inside progra
 Microcosm adheres to the **FORGE 1.4** control plane. Every single claim is backed by executed command evidence in `forge/PROOF_LEDGER.md`.
 
 ```bash
-# Run entire test suite (43 tests: 23 contracts + 8 policy + 12 MCP)
+# Run entire test suite (63 tests: 36 contracts + 13 policy + 14 MCP)
 make test
 
 # Run full verification gate & proof ledger audit
@@ -100,7 +100,7 @@ npm run demo
 ```
 
 ### Local Test Breakdown:
-* **Contract Tests (`make test-contracts`)**: 23 Foundry tests passing (SettlementFlows, AgenticCommerce, EnvelopeRegistry).
-* **Policy Engine Tests (`npm run test:policy`)**: 8 deterministic boundary and unit tests passing.
-* **MCP Server Tests (`npm run test:mcp`)**: 12 end-to-end tool execution and Work lifecycle tests passing (including concurrent daily-budget escrow regression).
-* **Proof Ledger (`make verify`)**: 16/16 claims verified green.
+* **Contract Tests (`make test-contracts`)**: 36 Foundry tests passing (SettlementFlows, AgenticCommerce, EnvelopeRegistry, Adjudication, Attestation).
+* **Policy Engine Tests (`npm run test:policy`)**: 13 deterministic boundary, EIP-712 hashing, and unit tests passing.
+* **MCP Server Tests (`npm run test:mcp`)**: 14 end-to-end tool execution, Work lifecycle, daily-budget regression, and Internet Court adjudication tests passing.
+* **Proof Ledger (`make verify`)**: 23/23 claims verified green.

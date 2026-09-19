@@ -28,3 +28,13 @@ This log records major architectural and engineering decisions.
 * **Context**: Money must never move without a Work Order and verifiable deliverable proof; failed or expired work must not strand or lose funds.
 * **Decision**: Elevate Work Orders (`createJob` → `submitDeliverable` → `evaluateJob`, mirroring `AgenticCommerce.sol` states `Open/Funded/Submitted/Completed/Rejected/Expired`) into the Space runtime and MCP surface (`work_create`, `work_submit`, `work_evaluate`, `work_get`). `Rejected`/`Expired` outcomes trigger a Gaia exception refund returning 100% of escrow to the Space balance.
 * **Consequence**: Every settlement is bound to deliverable evidence; every failure has a deterministic, audited refund path ($0 lost).
+
+### DEC-006: EIP-712 Attestation Binds Space Authority to Settlement
+* **Context**: Onchain contracts must not honor bare calls from anyone holding an RPC endpoint (ADV-02); agent intents need cryptographic provenance.
+* **Decision**: Settle only against EIP-712 authorizations over domain (`Microcosm`, `1`, chainId, verifying contract), verified via `ecrecover` against registered Space Controllers, with per-Space nonces and deadlines. Offchain SDK encoders in `packages/policy-engine` are cross-checked byte-for-byte against the onchain verifier via a shared fixture vector.
+* **Consequence**: Tampered, stale, replayed, or cross-chain intents revert deterministically.
+
+### DEC-007: Internet Court Adjudication Instead of Ad-Hoc Quorums
+* **Context**: Contested deliverables need a neutral verdict path; ad-hoc offchain voter quorums lack standards alignment and onchain enforceability.
+* **Decision**: Define `IAdjudicator` (GenLayer-compatible): the court receives `(jobId, deliverableHash, evidenceUri, rubricHash)` and posts its verdict back through `resolveAdjudication`, callable only by the bound adjudicator contract. `Adjudicating` jobs halt all payouts; a stalled court cannot strand escrow (expiry escape hatch reclaims funds).
+* **Consequence**: One standard adapter covers human fallback and future GenLayer integration; MCP mirrors it via `work_request_verdict` / `work_post_verdict`.

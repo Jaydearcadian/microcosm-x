@@ -39,3 +39,17 @@ Space state (budget, remaining allowance, authorized agents, transaction history
 Every payment flow must reach a definitive terminal state: `SETTLED`, `REJECTED`, or `ESCROWED`. A payment can never remain indefinitely in `PENDING` without an automated timeout and refund or resolution path.
 - **Enforcement:** State machine transition table validates terminal transitions; timeout worker handles unconfirmed transactions.
 - **Evidence:** `UNTESTED` — to be verified in `packages/runtime/test/state-machine.test.ts`.
+
+---
+
+## 3. Attestation & Adjudication Invariants (Production Hardening)
+
+### INV-A1 — No settlement without a valid EIP-712 authorization
+`settleWithAttestation` / `settleJobWithAttestation` release funds only for intents whose `ecrecover` signer is a registered Space Controller (or the job evaluator), with an unexpired deadline, an unconsumed nonce, and a chain-bound domain separator.
+- **Enforcement:** Onchain `ecrecover` over `EIP712Domain("Microcosm", "1", block.chainid, address(this))`; `usedNonces` replay map.
+- **Evidence:** `VERIFIED` — `contracts/test/Attestation.t.sol` (ATTEST-1, ATTEST-2).
+
+### INV-A2 — Money never moves without verifiable deliverable proof, including courts
+Attested job settlement and court verdicts require the exact submitted `deliverableHash`; adjudication can only be requested on `Submitted` work; a stalled court cannot strand escrow (expiry escape hatch refunds in full).
+- **Enforcement:** `auth.deliverableHash == job.deliverable` checks; `Adjudicating` payout halt; `claimRefund` covers `Adjudicating` past expiry.
+- **Evidence:** `VERIFIED` — `contracts/test/Adjudication.t.sol` (ADJUD-1, ADJUD-2), `mcp/test/mcp-server.test.js` (WORK-8, WORK-9).

@@ -34,7 +34,17 @@
   "criticalTestCommands": {
     "contracts": "forge test",
     "runtime": "npm test",
-    "all": "make test"
+    "all": "make test",
+    "fork": "make fork-test",
+    "deploy": "make deploy-testnet",
+    "verifyContracts": "make verify-contracts"
+  },
+  "deployment": {
+    "script": "contracts/script/DeployXLayer.s.sol:DeployXLayer",
+    "contracts": ["EnvelopeRegistry", "SettlementRouter", "ClaimEscrow", "MockERC20", "AgenticCommerce"],
+    "env": ["PRIVATE_KEY", "USDC_ADDRESS", "DEPLOYER_ADDRESS", "OKLINK_API_KEY"],
+    "broadcastArtifact": "contracts/broadcast/DeployXLayer.s.sol/<chainId>/run-latest.json",
+    "explorerVerify": "forge verify-contract --verifier oklink"
   },
   "claimStatuses": ["UNTESTED", "PARTIAL", "FAILED", "VERIFIED", "REGRESSED"],
   "knownProofClaims": [
