@@ -22,6 +22,7 @@ const SPACE_ID = 'space-procurement-001';
 const AGENT_ID = 'agent-procure-01';
 const EVALUATOR_ID = 'admin-01';
 const VENDOR_ADDRESS = '0x1111111111111111111111111111111111111111';
+const COURT_ADDRESS = '0x8888888888888888888888888888888888888888';
 
 function header(title) {
   console.log('\n' + '='.repeat(70));
@@ -164,15 +165,72 @@ async function main() {
   console.log(`  • Gaia Refund:        $${rejected.gaiaRefund} USDC returned to Space`);
   console.log(`  • Treasury Balance:   $${rejected.spaceBalance} USDC ($0 lost)`);
 
-  // Step 8: Audit Ledger
-  console.log('\n[STEP 8] Space Audit & Provenance Trail...');
+  // Step 8: Internet Court Adjudication Flow (Flagship Capability — DEC-007)
+  console.log('\n[STEP 8] Subjective deliverable referred to Internet Court (IAdjudicator)...');
+  const courtCreate = JSON.parse(
+    (
+      await handleToolCall(store, 'work_create', {
+        spaceId: SPACE_ID,
+        actorId: AGENT_ID,
+        provider: VENDOR_ADDRESS,
+        evaluator: EVALUATOR_ID,
+        adjudicator: COURT_ADDRESS,
+        rubricHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        description: 'Autonomous research report (court-arbitrated)',
+        budget: '300.00',
+        deadline: futureDeadline(),
+      })
+    ).content[0].text
+  );
+  console.log(`  Work Order ${courtCreate.job.jobId} funded ($300.00 escrowed, bound to Internet Court).`);
+
+  await handleToolCall(store, 'work_submit', {
+    spaceId: SPACE_ID,
+    jobId: courtCreate.job.jobId,
+    actorId: VENDOR_ADDRESS,
+    deliverableHash: '0x3333333333333333333333333333333333333333333333333333333333333333',
+    evidenceUri: 'ipfs://QmResearchReportEvidence7777',
+  });
+
+  const referral = JSON.parse(
+    (
+      await handleToolCall(store, 'work_request_verdict', {
+        spaceId: SPACE_ID,
+        jobId: courtCreate.job.jobId,
+        actorId: AGENT_ID,
+      })
+    ).content[0].text
+  );
+  console.log(`  Outcome: ${referral.status} (Submitted -> Adjudicating) ⚖️`);
+  console.log(`  • Case ID:            ${referral.case.caseId}`);
+  console.log(`  • Adjudicator:        ${COURT_ADDRESS}`);
+  console.log('  • Payout Status:      Halted pending court verdict');
+
+  const verdict = JSON.parse(
+    (
+      await handleToolCall(store, 'work_post_verdict', {
+        spaceId: SPACE_ID,
+        jobId: courtCreate.job.jobId,
+        adjudicatorId: COURT_ADDRESS,
+        approved: true,
+        reason: 'Research meets all methodological criteria in rubric',
+      })
+    ).content[0].text
+  );
+  console.log(`  Court Verdict: ${verdict.status} (Adjudicating -> Completed) ✅`);
+  console.log(`  • X Layer Tx Hash:    ${verdict.receipt.txHash}`);
+  console.log(`  • Paid to Provider:   $${verdict.receipt.amount} USDC`);
+  console.log(`  • Treasury Balance:   $${verdict.spaceBalance} USDC`);
+
+  // Step 9: Audit Ledger
+  console.log('\n[STEP 9] Space Audit & Provenance Trail...');
   const actRes = await handleToolCall(store, 'activity_list', { spaceId: SPACE_ID });
   const { activity } = JSON.parse(actRes.content[0].text);
   activity.forEach((act, idx) => {
     const rawAmount = act.amount || act.budget || act.refundedAmount || act.settlement?.amount;
     const amountDisplay = rawAmount ? `$${rawAmount}` : 'N/A';
     const id = act.actionId || act.jobId || '?';
-    console.log(`  [${idx + 1}] ${act.type.padEnd(15)} | Amount: ${amountDisplay.padEnd(12)} | Ref: ${id.padEnd(12)} | Timestamp: ${act.timestamp}`);
+    console.log(`  [${idx + 1}] ${act.type.padEnd(28)} | Amount: ${amountDisplay.padEnd(12)} | Ref: ${id.padEnd(12)} | Timestamp: ${act.timestamp}`);
   });
 
   header('DEMONSTRATION COMPLETE: WORK LOOP + POLICY BOUNDARIES VERIFIED LIVE');
