@@ -177,6 +177,7 @@ npm run demo
 
 ## Documentation Map
 
+* [`WHITEPAPER.md`](WHITEPAPER.md) — The canonical systems whitepaper: A Commerce Operating System for Human-Agent Economic Coordination.
 * [`AGENTS.md`](AGENTS.md) — Ground rules, FORGE 1.4 control plane, single kernel noun rule.
 * [`BUILD_FOUNDRY.md`](BUILD_FOUNDRY.md) — Evidence vocabulary, source-of-truth rules, stop conditions.
 * [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md) — Engineering governance and build cycle.

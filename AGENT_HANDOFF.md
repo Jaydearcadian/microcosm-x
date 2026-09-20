@@ -25,8 +25,11 @@ You are taking over lead engineering on **Microcosm**. Read this document comple
 When reasoning about this codebase, the following hierarchy of truth is strictly enforced (per `AGENTS.md`):
 
 1. **Code & Contracts (Ultimate Authority)**: What tests actually prove in `contracts/`, `packages/policy-engine/`, and `mcp/`.
-2. [`AGENTS.md`](AGENTS.md): Ground rules, non-negotiable status vocabulary (`UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`), and local verification commands.
-3. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md):
+2. [`WHITEPAPER.md`](WHITEPAPER.md) (or [`docs/whitepaper/MICROCOSM_WHITEPAPER_v0.1.md`](docs/whitepaper/MICROCOSM_WHITEPAPER_v0.1.md)):
+   * **The Canonical Systems Thesis**: *A Commerce Operating System for Human-Agent Economic Coordination*.
+   * **Mandate**: Read this first to understand the long-term systems thesis: the problem of commercial fragmentation across systems, the `Space` as the unified operating context connecting `who → did what → for whom → under what authority → according to which rules → with what economic consequence`, contextual authority, and why Microcosm is not merely a wallet, workflow engine, or payment protocol.
+3. [`AGENTS.md`](AGENTS.md): Ground rules, non-negotiable status vocabulary (`UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`), and local verification commands.
+4. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md):
    * **Mandate**: Acts as the project's engineering operating system.
    * **The 10-Phase Cycle**: `Discover → Define → Design → Implement → Verify → Evidence → Document → Review → Integrate → Reassess`.
    * **Strictly Rejected Anti-Patterns**:
