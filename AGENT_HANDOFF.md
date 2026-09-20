@@ -26,8 +26,18 @@ When reasoning about this codebase, the following hierarchy of truth is strictly
 
 1. **Code & Contracts (Ultimate Authority)**: What tests actually prove in `contracts/`, `packages/policy-engine/`, and `mcp/`.
 2. [`AGENTS.md`](AGENTS.md): Ground rules, non-negotiable status vocabulary (`UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`), and local verification commands.
-3. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md): Engineering program governance, anti-patterns (no README-driven fiction), and the Virtuous Build Cycle.
-4. [`BUILD_FOUNDRY.md`](BUILD_FOUNDRY.md): Evidence vocabulary, source-of-truth rules, stop conditions.
+3. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md):
+   * **Mandate**: Acts as the project's engineering operating system.
+   * **The 10-Phase Cycle**: `Discover → Define → Design → Implement → Verify → Evidence → Document → Review → Integrate → Reassess`.
+   * **Strictly Rejected Anti-Patterns**:
+     * *README-Driven Fiction*: Never describe architecture or behavior the code does not contain.
+     * *Architecture Theatre*: Do not create speculative, empty folders for unbuilt components.
+     * *Success-State Collapse*: Never treat `SUBMITTED` as `SETTLED`.
+     * *Integration by Naming*: Never list an integration or partner without executed CLI evidence.
+4. [`BUILD_FOUNDRY.md`](BUILD_FOUNDRY.md):
+   * **Mandate**: Strict evidence vocabulary, proof ledger integrity, and stop conditions.
+   * **Allowed Statuses**: Only use `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
+   * **Stop Conditions**: If a test or gate fails, never weaken the assertion to pass. Fix the implementation or log it under [`forge/FAILURES.md`](forge/FAILURES.md).
 5. [`/forge`](forge/): The FORGE 1.4 control plane:
    * [`forge/PRODUCT.md`](forge/PRODUCT.md) — Product definition and load-bearing mechanisms.
    * [`forge/INVARIANTS.md`](forge/INVARIANTS.md) — System invariants that must never break (e.g. INV-1 through INV-6, INV-A1, INV-A2).
