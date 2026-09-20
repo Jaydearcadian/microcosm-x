@@ -35,7 +35,7 @@ Status vocabulary strictly adheres to `BUILD_FOUNDRY.md`: `UNTESTED · PARTIAL �
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `PLANNED` | Phase 3 (Whitepaper Section 5.1) |
 | **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) |
-| **M14** | **Standardized Protocol Interoperability (A2A & AP2)** | `PLANNED` | Phase 3 (Whitepaper Section 15) |
+| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `PLANNED` | Phase 3 (Whitepaper Section 8 & 15) |
 | **M15** | **Multi-Tenant Enterprise Security & Fine-Grained Privacy** | `PLANNED` | Phase 4 (Whitepaper Section 20 & 21) |
 | **M16** | **Cross-Chain Settlement Rails (Circle CCTP / OKX Bridge)** | `PLANNED` | Phase 4 (Whitepaper Section 26) |
 
@@ -184,12 +184,20 @@ Status vocabulary strictly adheres to `BUILD_FOUNDRY.md`: `UNTESTED · PARTIAL �
 
 ---
 
-### Milestone M14: Standardized Protocol Interoperability (A2A & AP2)
-* **Claim**: External autonomous agents can negotiate commercial terms via A2A protocol and submit payment authorizations via AP2 mandates directly into the Space.
-* **Whitepaper Reference**: Section 15 (*Relationship to Emerging Agent Protocols*).
-* **Behavior**:
-  * Exposes A2A capability manifests so external agents discover Space counterparties.
-  * Accepts AP2 payment authorization mandates and translates them into Space-compliant settlement intents.
+### Milestone M14: Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)
+* **Claim**: Autonomous agents operating within a Space can consume and monetize API services, data streams, and compute using HTTP 402-based machine payment protocols (x402, MPP) and agent protocols (AP2, A2A) under Space-bounded economic authority.
+* **Whitepaper Reference**: Section 15 (*Relationship to Emerging Agent Protocols*) & Section 8 (*Money*).
+* **Protocol Roles in Microcosm**:
+  * **`x402` (Crypto-Native HTTP 402 Pay-Per-Request)**:
+    * *Outbound*: An agent hitting an x402-gated API requests an authorized payment intent from its Space. Microcosm evaluates policy, signs the EIP-712 challenge, settles USDC on OKX X Layer, and binds the HTTP receipt to the active Work Order.
+    * *Inbound*: A Space can gate its own deliverables, data endpoints, or agentic services behind an x402 paywall, collecting USDC directly into the Space treasury.
+  * **`MPP` (Machine Payments Protocol — Stripe & Tempo Standard)**:
+    * *Session Budgets*: Ingests MPP session-based payment models. The Space provisions an ephemeral, cryptographically capped spending allowance that an agent can consume across high-frequency API calls without per-call human authorization.
+    * *Multi-Rail Compatibility*: Allows agents to settle MPP challenges via OKX X Layer USDC while maintaining full Space audit provenance.
+  * **`AP2` (Agent Payments Protocol — Google/W3C Standard)**:
+    * Ingests structured payment authorization mandates and Verifiable Credential receipts, connecting them to Space Work Orders.
+  * **`A2A` (Agent-to-Agent Protocol)**:
+    * Exposes Space capability manifests so external autonomous agents can discover counterparties and negotiate commercial terms peer-to-peer.
 
 ---
 
