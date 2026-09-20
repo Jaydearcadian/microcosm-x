@@ -39,10 +39,37 @@ When reasoning about this codebase, the following hierarchy of truth is strictly
 6. [`docs/canonical/`](docs/canonical/):
    * [`docs/canonical/CURRENT_STATE.md`](docs/canonical/CURRENT_STATE.md) — State of the codebase.
    * [`docs/canonical/DECISIONS.md`](docs/canonical/DECISIONS.md) — Architecture Decision Records (DEC-001 through DEC-007).
+7. **Core Operational Skills (Vendored in [`skills/`](skills/))**:
+   * [`skills/onchain-systems-engineering/`](skills/onchain-systems-engineering/SKILL.md): The discipline governing smart contract invariants, adversarial fuzzing, non-custodial escrow security, and OKX X Layer execution boundaries.
+   * [`skills/system-wholeness/`](skills/system-wholeness/SKILL.md): The discipline governing flow continuity, identity continuity, and consistent truth across contracts, policy runtime, MCP tools, and the upcoming Charcoal UI.
 
 ---
 
-## 3. Current Verified Engineering State
+## 3. The Two Governing Skills & How to Apply Them
+
+The repository vendors two foundational skills in [`skills/`](skills/). The incoming agent must actively consult and apply them:
+
+### A. `onchain-systems-engineering` ([`skills/onchain-systems-engineering/SKILL.md`](skills/onchain-systems-engineering/SKILL.md))
+* **When to use**: When evaluating, auditing, or touching contracts, cryptographic attestations, or onchain settlement flows.
+* **Core Mandate**: 
+  * Never accept "the code compiles" as evidence.
+  * Rigorously enforce state machine transitions, replay protections (EIP-712 domain binding to Chain ID 195/196 and verifying contract address), non-reentrancy, and invariant preservation.
+  * Protect the core invariant: **Money never moves without verified deliverable proof and valid Space authorization.**
+
+### B. `system-wholeness` ([`skills/system-wholeness/SKILL.md`](skills/system-wholeness/SKILL.md))
+* **When to use**: When building the upcoming Charcoal UI, expanding MCP tools, or connecting interfaces.
+* **Core Mandate**:
+  * Ensure **one coherent system** where the UI, MCP server, runtime store, and onchain contracts tell the exact same truth.
+  * **The 5 Wholeness Invariants must never break**:
+    1. *Flow Continuity*: What the Space policy engine approves is what the X Layer router consumes.
+    2. *Identity Continuity*: `spaceId`, `jobId`, `deliverableHash`, and `txHash` remain unbroken across MCP, contracts, and the UI.
+    3. *State Continuity*: Every state transition (`Open → Funded → Submitted → Completed / Rejected / Adjudicating`) is deterministic and provable.
+    4. *Terminal Outcome*: No work order or escrow can be left in an ambiguous, unhandled, or permanently stranded state.
+    5. *Consistent Truth*: The UI must directly drive and reflect real protocol states—never build a disconnected, superficial mockup skin.
+
+---
+
+## 4. Current Verified Engineering State
 
 Every component is runnable and verified locally:
 
