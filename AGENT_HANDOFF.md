@@ -28,8 +28,10 @@ When reasoning about this codebase, the following hierarchy of truth is strictly
 2. [`WHITEPAPER.md`](WHITEPAPER.md) (or [`docs/whitepaper/MICROCOSM_WHITEPAPER_v0.1.md`](docs/whitepaper/MICROCOSM_WHITEPAPER_v0.1.md)):
    * **The Canonical Systems Thesis**: *A Commerce Operating System for Human-Agent Economic Coordination*.
    * **Mandate**: Read this first to understand the long-term systems thesis: the problem of commercial fragmentation across systems, the `Space` as the unified operating context connecting `who → did what → for whom → under what authority → according to which rules → with what economic consequence`, contextual authority, and why Microcosm is not merely a wallet, workflow engine, or payment protocol.
-3. [`AGENTS.md`](AGENTS.md): Ground rules, non-negotiable status vocabulary (`UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`), and local verification commands.
-4. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md):
+3. [`MILESTONES.md`](MILESTONES.md) (or [`docs/canonical/ROADMAP_AND_MILESTONES.md`](docs/canonical/ROADMAP_AND_MILESTONES.md)):
+   * **The Milestone & Roadmap Specification**: Tracks Track 1 (Production Readiness M0–M8) and Track 2 (Full Commerce OS M9–M16), defining exact behavioral claims, invariants, inputs, and evidence gates.
+4. [`AGENTS.md`](AGENTS.md): Ground rules, non-negotiable status vocabulary (`UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`), and local verification commands.
+5. [`Repository_Starter_Virtuous_Build_Cycle.md`](Repository_Starter_Virtuous_Build_Cycle.md):
    * **Mandate**: Acts as the project's engineering operating system.
    * **The 10-Phase Cycle**: `Discover → Define → Design → Implement → Verify → Evidence → Document → Review → Integrate → Reassess`.
    * **Strictly Rejected Anti-Patterns**:
@@ -37,11 +39,11 @@ When reasoning about this codebase, the following hierarchy of truth is strictly
      * *Architecture Theatre*: Do not create speculative, empty folders for unbuilt components.
      * *Success-State Collapse*: Never treat `SUBMITTED` as `SETTLED`.
      * *Integration by Naming*: Never list an integration or partner without executed CLI evidence.
-4. [`BUILD_FOUNDRY.md`](BUILD_FOUNDRY.md):
+6. [`BUILD_FOUNDRY.md`](BUILD_FOUNDRY.md):
    * **Mandate**: Strict evidence vocabulary, proof ledger integrity, and stop conditions.
    * **Allowed Statuses**: Only use `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
    * **Stop Conditions**: If a test or gate fails, never weaken the assertion to pass. Fix the implementation or log it under [`forge/FAILURES.md`](forge/FAILURES.md).
-5. [`/forge`](forge/): The FORGE 1.4 control plane:
+7. [`/forge`](forge/): The FORGE 1.4 control plane:
    * [`forge/PRODUCT.md`](forge/PRODUCT.md) — Product definition and load-bearing mechanisms.
    * [`forge/INVARIANTS.md`](forge/INVARIANTS.md) — System invariants that must never break (e.g. INV-1 through INV-6, INV-A1, INV-A2).
    * [`forge/ARCHITECTURE.md`](forge/ARCHITECTURE.md) — Architectural decomposition.
