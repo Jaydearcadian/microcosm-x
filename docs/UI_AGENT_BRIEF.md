@@ -59,7 +59,7 @@ instrument owns the app**, bridged by these tokens.
 
 | # | Section | Eyebrow → H1 (green = highlighted) | Media slot |
 |---|---|---|---|
-| 1 | Hero | `COMMERCE OS · OKX X LAYER` → "Give agents **budgets**, not bank accounts." + sub + [Create a Space] [Watch a boundary hold] | Live Gauge (binds `GET /bounds` later; static numbers now) + latest-ledger ticker |
+| 1 | Hero | `COMMERCE OS · OKX X LAYER` → "One shared **Space** where people and software get work done." + sub "Requests, work, payments, and proof — coordinated under rules everyone can see, settled on OKX X Layer." + [Create a Space] [Watch a boundary hold] | Live Gauge (binds `GET /bounds` later; static numbers now) + latest-ledger ticker |
 | 2 | The loop | `THE LOOP` → "Request → Work → **Result** → Payment" + 4 node diagram | CountUp stats: 72 tests green · 5 contracts · $0 lost |
 | 3 | Boundary proof | `BOUNDARIES HOLD` → "The $900 purchase that **never happened**" | Denial cards (active/inactive rail): over-cap, rejected work, expired escrow |
 | 4 | Live work | `LIVE WORK` → "Every work order, **on the board**" | Sticky Kanban preview, columns swap per step |
