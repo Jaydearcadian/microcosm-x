@@ -272,8 +272,13 @@ async function bootLocalChain(port, rpc) {
     await bannerReady;
     await waitForRpc(rpc);
     const { accounts, keys } = parseAnvilBanner(banner);
-    // Release the banner: the stdout listener stays attached (keeps the
-    // pipe drained) but must not accumulate megabytes of logs.
+    // Detach the banner listener and resume as a pure drain: keeping
+    // `banner += chunk` alive turns every log line into an O(n) copy of a
+    // multi-megabyte string, starving the harness event loop until anvil's
+    // own 64KB pipe fills and the node freezes deaf-but-alive. resume()
+    // without listeners discards at O(1).
+    child.stdout.removeAllListeners('data');
+    child.stdout.resume();
     banner = '';
     if (!/^0x[0-9a-fA-F]{64}$/.test(keys[0]) || !/^0x[0-9a-fA-F]{64}$/.test(keys[1])) {
       throw new Error('chain harness: parsed anvil keys are malformed — refusing to continue');
