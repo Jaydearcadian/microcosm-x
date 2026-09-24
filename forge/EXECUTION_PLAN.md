@@ -54,7 +54,7 @@ Phase 5: Submission Wrap & Hackathon Artifacts (Demo Video, Docs, X Layer Verifi
   - Step 7: Low-quality deliverable rejected → Gaia exception refund returns 100% to Space ($0 lost).
   - Step 8: Subjective deliverable referred to Internet Court (`IAdjudicator`) → halted, verdict posted, escrow settled.
   - Step 9: Full provenance audit trail verified.
-- [x] Execute tests locally via `make test` (63 passed) and verify with `make verify` (`scripts/verify-proof-ledger.mjs`).
+- [x] Execute tests locally via `make test` (78+ passed across contracts, policy, MCP offline, server persistence, SDK) and verify with hardened `node scripts/verify-proof-ledger.mjs` (26 verified claims).
 
 ## Advanced Hardening Sprints (Post-MVP Production Hardening)
 - [x] **Sprint 1 — EIP-712 Attestation**:

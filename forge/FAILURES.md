@@ -51,3 +51,20 @@ This document catalogs every edge case, failure mode, and adversarial vector eva
 * **Attack**: An attacker crafts an authorization or verdict without the Controller's / court's key.
 * **Defense**: Contracts recover the signer via `ecrecover` over the EIP-712 domain (`Microcosm`, `1`, chainId, verifying contract) and require a registered Controller (`SettlementRouter`) or the job's evaluator / bound adjudicator contract (`AgenticCommerce`). Nonces block replays; deadlines block stale intents; chainId blocks cross-chain replays.
 * **Result**: **Rejected onchain** — proven by `ATTEST-2` and `ADJUD-2` negative tests.
+
+---
+
+## 3. Product Behavior & Test Drift Backlog (Filed for Backend Owner)
+
+### FAIL-SRV-01: `conformance.test.js` Variable Reference Drift (`AGENT is not defined`)
+* **File**: `packages/server/test/conformance.test.js:96:108`
+* **Symptom**: Test `M3-2` fails with `ReferenceError: AGENT is not defined` when executed against the live Anvil harness.
+* **Root Cause**: The test references variable `AGENT` which was refactored or left out of the local scope during Slice 9 / M3 integration.
+* **Action Filed**: Handed off to backend owner to bind the participant ID/address constant in `conformance.test.js`.
+
+### FAIL-SDK-01: `wizard.test.js` Local Chain ID vs Space Default Mismatch
+* **File**: `packages/sdk/test/wizard.test.js:76:16`
+* **Symptom**: `WIZARD` test fails on settlement step with `Chain mismatch: Space expects chain 1952, adapter targets 31337 (http://127.0.0.1:18546)`.
+* **Root Cause**: Space creation inside `wizard.test.js` inherited the default chain ID (1952), but the spawned test Anvil node runs on chain ID 31337. `XLayerAdapter` enforces strict chain matching.
+* **Action Filed**: Backend owner to pass `chainId: chain.chainId` when creating the Space in `wizard.test.js` or align the default testnet override.
+

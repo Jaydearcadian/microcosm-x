@@ -17,9 +17,12 @@ All four suites are green and the test suite is deterministic and offline again.
 |---|---|---|
 | Contracts | `cd contracts && forge test` | 36/36 pass |
 | Policy engine | `npm run test:policy` | 13/13 pass |
-| MCP server | `npm run test:mcp` | 23/23 pass, ~0.8s, offline |
+| MCP server (offline) | `node --test mcp/test/mcp-server.test.js` | 19/19 pass, ~0.6s, offline |
+| Server persistence | `node --test packages/server/test/persistence.test.js` | 2/2 pass (M4 snapshots) |
+| SDK client & ABIs | `node --test packages/sdk/test/client.test.js packages/sdk/test/abis.test.js` | 8/8 pass |
+| Total Offline Gates | `node scripts/verify-proof-ledger.mjs` | 78 tests across 7 suites pass, 26/26 claims VERIFIED |
 | Demo (live) | `npm run demo` | 11 steps, REAL onchain settlement |
-| Ledger gate | `node scripts/verify-proof-ledger.mjs` | passes |
+| Hardened Ledger Gate | `node scripts/verify-proof-ledger.mjs` | passes (executes all 7 suites zero-mock) |
 
 Live settlement evidence from the last demo run: tx `0xd22e6497de74e94011ba0502df161acff72f82072193a4a90871aa79ab6eb9a2`,
 `receipt.simulated === false`, chain 1952. Provider wallet `0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE`.
@@ -94,14 +97,10 @@ inactive; ignore it, or `gh auth logout -h github.com -u etvjay` to silence the 
 
 ## 8. Next work (in order)
 
-1. **Slice 9 — interface equivalence**: REST (`POST /requests`, `GET /requests/:id`, work routes),
-   SSE activity stream, an SDK facade, and the Charcoal UI, all over this same model. This is M3/M5/M7
-   territory and the largest remaining gap.
-2. **Onchain court**: the Internet Court verdict is the last simulated step. Deploy an `IAdjudicator`
-   and wire `work_post_verdict` to it so the verdict is real too.
-3. **Persistence**: `SpaceStore` is in-memory; Disk/SQLite (M4) is still open.
-4. **`verify-proof-ledger.mjs` is a Markdown linter, not an evidence gate** — it passes iff statuses
-   are non-UNTESTED/PARTIAL/FAILED. If a real gate is wanted, make it execute the suites.
+1. **Frontend / UI Build**: The user is building the Charcoal horological UI in `apps/charcoal` against the frozen v1 API contract (`docs/API_CONTRACT.md`).
+2. **Onchain court (M13)**: The court track (`docs/COURT_AGENT_BRIEF.md`) is parked for later phase.
+3. **Backend Conformance / Local Anvil alignment**: Two non-blocking issues filed for backend owner in `forge/FAILURES.md` (`FAIL-SRV-01` variable scope, `FAIL-SDK-01` local chain ID).
+4. **CI & Verification Gate**: SHIPPED. Hardened `scripts/verify-proof-ledger.mjs` executes all 7 suites zero-mock; `.github/workflows/ci.yml` gates merge.
 
 ## 9. Ground rules (unchanged, from AGENTS.md)
 

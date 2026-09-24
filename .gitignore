@@ -1,24 +1,57 @@
-# Node
+# ======================================================================
+# MICROCOSM — .gitignore (Hygiene Audit)
+# ======================================================================
+
+# Node & Package Managers
 node_modules/
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Foundry / Solidity
+# Next.js / Frontend Build Outputs
+.next/
+**/.next/
 out/
+**/out/
+dist/
+**/dist/
+build/
+**/build/
+
+# Foundry / Solidity Compilation & Broadcasts
 cache/
+**/cache/
+broadcast/
+**/broadcast/
 contracts/out/
 contracts/cache/
-broadcast/
+contracts/broadcast/
 
-# Environment / Local
+# Logs & Test Runtime Artifacts
+*.log
+anvil*.log
+*.anvil.log
+anvil-*.log
+coverage/
+.nyc_output/
+
+# Environment Variables & Secrets (CRITICAL: NEVER COMMIT)
 .env
+.env.*
 .env.local
+.env.*.local
+*.env
+!.env.example
+
+# Editor & OS Artifacts
 *.swp
 *~
 .DS_Store
+Thumbs.db
 
-# M4 snapshots (local + deployed state, never committed)
+# Microcosm State Snapshots & Lockfiles
 microcosm-data.json
-microcosm-data.json.*.tmp
+microcosm-data.json.*
+/tmp/microcosm-*

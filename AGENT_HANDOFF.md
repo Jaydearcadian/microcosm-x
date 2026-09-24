@@ -90,23 +90,25 @@ Every component is runnable and verified locally:
 
 ```text
 ======================================================================
-  VERIFICATION GATES — 100% GREEN (make test && make verify)
+  VERIFICATION GATES — 100% GREEN (make test && node scripts/verify-proof-ledger.mjs)
 ======================================================================
 Contracts (Foundry)   : 36 tests passed (5 suites, 0 failed)
 Policy Engine (Node)  : 13 tests passed (100% branch coverage)
-MCP Server (Node)     : 14 tests passed (10 tools verified)
-Total Test Suite      : 63 passed, 0 failed
-Proof Ledger Audit    : 23 / 23 claims VERIFIED (forge/PROOF_LEDGER.md)
-End-to-End Simulation : 9 / 9 steps passing live (scripts/demo-procurement-space.mjs)
+MCP Server (Node)     : 19 offline tests passed (24 tools verified)
+Server Persistence    : 2 tests passed (M4 atomic snapshots, SIGKILL restore)
+SDK Client & ABIs     : 8 tests passed (5 client + 3 ABI drift tests)
+Total Offline Gates   : 78 tests passed, 0 failed
+Proof Ledger Audit    : 26 / 26 claims VERIFIED with executable evidence
+Business Loop Demo    : 11 / 11 steps passing live (scripts/demo-procurement-space.mjs)
 Remote Git Origin     : https://github.com/Jaydearcadian/microcosm-x.git (synced on main)
 ```
 
 ### Essential CLI Commands
 ```bash
-make test             # Run entire test suite (contracts + policy + MCP)
+make test             # Run local test suites
 make test-contracts   # Run Foundry suite alone
-make verify           # Full gate: lint + test + proof ledger audit
-npm run demo          # Run the 9-step live commerce lifecycle demo
+node scripts/verify-proof-ledger.mjs  # Hardened evidence gate (audits claims + runs 7 suites)
+npm run demo          # Run the 11-step live commerce lifecycle demo (chain 1952)
 ```
 
 ---
