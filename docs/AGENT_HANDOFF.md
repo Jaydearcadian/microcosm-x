@@ -1,6 +1,6 @@
 # Agent Handoff — Microcosm rebaseline build
 
-Date: 2026-09-22 (session) · Branch `main` @ local commit `049d239` · **not pushed** (see §7)
+Date: 2026-09-22 (session) · Branch `main` @ commit `37a3712` · **pushed to GitHub** (`Jaydearcadian/microcosm-x`)
 
 ## 1. Where we are (one paragraph)
 
@@ -76,30 +76,31 @@ MCP now exposes **24 tools**. Language rule held: only `Space`-nouns leak extern
    the store resolves member id/name → wallet address before `createJob`.
 4. **Request↔Work binding lives in the store**, not the demo.
 
-## 7. Blocked: push to GitHub (needs credentials)
+## 7. Push status: DONE
 
-Commit `049d239` is made locally on `main`. Push failed and this is the current blocker:
+Pushed to `github.com/Jaydearcadian/microcosm-x` (canonical name; the lowercase URL redirects).
+`gh auth setup-git` wired HTTPS credentials from the `Jaydearcadian` account, and `origin` was
+updated to the canonical URL so git stops following the redirect.
 
-- `git push` over HTTPS → `Invalid username or token` (no PAT).
-- `gh auth status` → token in `/root/.config/gh/hosts.yml` **invalid** for account `etvjay`.
-- `ssh -T git@github.com` → `Permission denied (publickey)`.
-- AWS instance route (`i-07bd826a6cba642fa`) → **AWS session expired**, and `aws login` needs an
-  interactive browser round-trip.
+```
+31aada6..37a3712  main -> main
+```
 
-**To unblock**: either `gh auth login` (or `gh auth refresh`) with a valid token, or set a PAT:
-`git remote set-url origin https://<user>:<token>@github.com/jaydearcadian/microcosm-x.git`, then
-`git push origin main`. Nothing is published until that happens.
+Verified remotely with `gh api repos/Jaydearcadian/microcosm-x/commits/main` → `37a3712`,
+and `mcp/src` on GitHub now lists `provider-key.js server.js space-store.js tools.js xlayer.js`.
+
+Note: `/root/.config/gh/hosts.yml` also holds a broken `etvjay` account (invalid token). It is
+inactive; ignore it, or `gh auth logout -h github.com -u etvjay` to silence the warning.
 
 ## 8. Next work (in order)
 
-1. **Push** the existing commit once credentials exist.
-2. **Slice 9 — interface equivalence**: REST (`POST /requests`, `GET /requests/:id`, work routes),
+1. **Slice 9 — interface equivalence**: REST (`POST /requests`, `GET /requests/:id`, work routes),
    SSE activity stream, an SDK facade, and the Charcoal UI, all over this same model. This is M3/M5/M7
    territory and the largest remaining gap.
-3. **Onchain court**: the Internet Court verdict is the last simulated step. Deploy an `IAdjudicator`
+2. **Onchain court**: the Internet Court verdict is the last simulated step. Deploy an `IAdjudicator`
    and wire `work_post_verdict` to it so the verdict is real too.
-4. **Persistence**: `SpaceStore` is in-memory; Disk/SQLite (M4) is still open.
-5. **`verify-proof-ledger.mjs` is a Markdown linter, not an evidence gate** — it passes iff statuses
+3. **Persistence**: `SpaceStore` is in-memory; Disk/SQLite (M4) is still open.
+4. **`verify-proof-ledger.mjs` is a Markdown linter, not an evidence gate** — it passes iff statuses
    are non-UNTESTED/PARTIAL/FAILED. If a real gate is wanted, make it execute the suites.
 
 ## 9. Ground rules (unchanged, from AGENTS.md)
