@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SpaceStore } from '../src/space-store.js';
 import { handleToolCall, TOOL_DEFINITIONS } from '../src/tools.js';
 
-test('MCP-TOOLS: Tool definitions list 10 Space operations (core + Work lifecycle + court verdicts)', () => {
-  assert.equal(TOOL_DEFINITIONS.length, 10);
+test('MCP-TOOLS: Tool definitions list 24 Space operations (core + Work lifecycle + court verdicts + participants + requests)', () => {
+  assert.equal(TOOL_DEFINITIONS.length, 24);
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
   assert.ok(toolNames.includes('spaces_list'));
   assert.ok(toolNames.includes('spaces_capabilities'));
@@ -51,9 +51,9 @@ test('MCP-2: Agent requests compliant payment ($350) -> Policy PASS -> Settled o
   assert.ok(data.receipt);
   assert.equal(data.receipt.amount, '350.00');
   assert.equal(data.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(data.receipt.chainId, 195);
+  assert.equal(data.receipt.chainId, 1952);
   assert.ok(data.receipt.txHash.startsWith('0x'));
-  assert.equal(data.remainingBalance, '4650.000000');
+  assert.equal(data.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
 });
 
 test('MCP-3: Agent requests non-compliant payment ($900 > $500) -> isError true with DenialProof', async () => {
@@ -224,9 +224,9 @@ test('WORK-3: evaluator approves -> Completed, payment settles on OKX X Layer', 
   assert.ok(data.receipt);
   assert.equal(data.receipt.status, 'SETTLED');
   assert.equal(data.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(data.receipt.chainId, 195);
+  assert.equal(data.receipt.chainId, 1952);
   assert.ok(data.receipt.txHash.startsWith('0x'));
-  assert.equal(data.receipt.amount, '350.000000');
+  assert.equal(data.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
   assert.equal(
     data.receipt.deliverableHash,
     '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -512,7 +512,8 @@ test('WORK-8: Internet Court approval settles escrow on X Layer', async () => {
   assert.equal(verdict.job.status, 'Completed');
   assert.ok(verdict.receipt);
   assert.equal(verdict.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(verdict.receipt.chainId, 195);
+  assert.equal(verdict.receipt.chainId, 1952);
+  assert.equal(verdict.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
   assert.equal(verdict.receipt.deliverableHash, deliverableHash);
   assert.equal(verdict.spaceBalance, '4700.000000');
 });
@@ -596,4 +597,409 @@ test('WORK-9 (negative): court rejection refunds in full; impostor verdicts fail
     actorId: WORK_CLIENT,
   });
   assert.equal(noProof.isError, true);
+});
+
+// ---------------------------------------------------------------------------
+// Participants (rebaseline §6): agents are ordinary Space participants
+
+const PARTICIPANT_SPACE = 'space-procurement-001';
+
+test('PART-1: admin adds a Human and an external Counterparty participant to a Space', async () => {
+  const store = new SpaceStore();
+  const human = JSON.parse(
+    (
+      await handleToolCall(store, 'participants_add', {
+        spaceId: PARTICIPANT_SPACE,
+        kind: 'Human',
+        displayName: 'Finance Lead',
+        actorId: 'admin-01',
+      })
+    ).content[0].text
+  ).participant;
+  assert.ok(human.participantId.startsWith('part-'));
+  assert.equal(human.kind, 'Human');
+  assert.equal(human.status, 'Active');
+
+  const counterparty = JSON.parse(
+    (
+      await handleToolCall(store, 'participants_add', {
+        spaceId: PARTICIPANT_SPACE,
+        kind: 'Counterparty',
+        displayName: 'Dataset Provider Ltd',
+        address: '0x2222222222222222222222222222222222222222',
+        externalRef: 'crm:suppliers/4417',
+      })
+    ).content[0].text
+  ).participant;
+  assert.equal(counterparty.address, '0x2222222222222222222222222222222222222222');
+  assert.equal(counterparty.externalRef, 'crm:suppliers/4417');
+
+  const listed = JSON.parse(
+    (await handleToolCall(store, 'participants_list', { spaceId: PARTICIPANT_SPACE })).content[0].text
+  ).participants;
+  assert.ok(listed.length >= 4, 'seed participants plus the two additions');
+  assert.ok(listed.some((p) => p.displayName === 'Finance Lead'));
+  assert.ok(listed.some((p) => p.externalRef === 'crm:suppliers/4417'));
+});
+
+test('PART-2 (negative): duplicate active name and unknown kind are rejected', async () => {
+  const store = new SpaceStore();
+  await handleToolCall(store, 'participants_add', {
+    spaceId: PARTICIPANT_SPACE, kind: 'Human', displayName: 'Finance Lead',
+  });
+  const dup = await handleToolCall(store, 'participants_add', {
+    spaceId: PARTICIPANT_SPACE, kind: 'Agent', displayName: 'finance lead',
+  });
+  assert.equal(dup.isError, true);
+  assert.match(dup.content[0].text, /already active/);
+
+  const badKind = await handleToolCall(store, 'participants_add', {
+    spaceId: PARTICIPANT_SPACE, kind: 'SuperAgent', displayName: 'X',
+  });
+  assert.equal(badKind.isError, true);
+  assert.match(badKind.content[0].text, /Invalid participant kind/);
+});
+
+test('PART-3: deactivation is audit-recorded, not erased', async () => {
+  const store = new SpaceStore();
+  const added = JSON.parse(
+    (
+      await handleToolCall(store, 'participants_add', {
+        spaceId: PARTICIPANT_SPACE, kind: 'Service', displayName: 'Invoice OCR',
+      })
+    ).content[0].text
+  ).participant;
+
+  const off = JSON.parse(
+    (
+      await handleToolCall(store, 'participants_deactivate', {
+        spaceId: PARTICIPANT_SPACE, participantId: added.participantId, actorId: 'admin-01',
+      })
+    ).content[0].text
+  ).participant;
+  assert.equal(off.status, 'Inactive');
+
+  const active = JSON.parse(
+    (
+      await handleToolCall(store, 'participants_list', { spaceId: PARTICIPANT_SPACE, status: 'Active' })
+    ).content[0].text
+  ).participants;
+  assert.ok(!active.some((p) => p.participantId === added.participantId));
+
+  const activity = store.getActivity(PARTICIPANT_SPACE);
+  assert.ok(activity.some((a) => a.type === 'PARTICIPANT_ADDED' && a.participantId === added.participantId));
+  assert.ok(activity.some((a) => a.type === 'PARTICIPANT_REMOVED' && a.participantId === added.participantId));
+
+  const reOff = await handleToolCall(store, 'participants_deactivate', {
+    spaceId: PARTICIPANT_SPACE, participantId: added.participantId,
+  });
+  assert.equal(reOff.isError, true);
+  assert.match(reOff.content[0].text, /already Inactive/);
+});
+
+// ---------------------------------------------------------------------------
+// Requests (rebaseline §8, §17 Slice 3): the first-class product object
+
+test('REQ-1: create, assign, and complete a Request with a Result (full product loop)', async () => {
+  const store = new SpaceStore();
+  const request = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE,
+        createdBy: 'Treasury Admin',
+        assignee: 'Autonomous Procurement Agent',
+        title: 'Review these invoices and flag anything unusual',
+        instructions: 'Compare against last quarter. Flag anything above $250.',
+        context: { files: ['invoices-q3.csv'], expected: 'list of anomalies' },
+      })
+    ).content[0].text
+  ).request;
+  assert.ok(request.requestId.startsWith('req-'));
+  assert.equal(request.status, 'Assigned');
+  assert.equal(request.createdBy, 'part-0001');
+  assert.ok(request.assignee.startsWith('part-'));
+
+  const done = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_complete', {
+        spaceId: PARTICIPANT_SPACE,
+        requestId: request.requestId,
+        actorId: 'Autonomous Procurement Agent',
+        result: { output: '2 anomalies flagged', evidence: ['inv-0091', 'inv-0233'] },
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(done.status, 'Completed');
+  assert.equal(done.result.output, '2 anomalies flagged');
+  assert.ok(done.completedAt);
+
+  const got = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_get', {
+        spaceId: PARTICIPANT_SPACE, requestId: request.requestId,
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(got.status, 'Completed');
+  assert.ok(got.completedAt);
+
+  const activity = store.getActivity(PARTICIPANT_SPACE);
+  assert.ok(activity.some((a) => a.type === 'REQUEST_CREATED' && a.requestId === request.requestId));
+  assert.ok(activity.some((a) => a.type === 'REQUEST_COMPLETED' && a.requestId === request.requestId));
+});
+
+test('REQ-2: unassigned Request can be accepted by an active participant', async () => {
+  const store = new SpaceStore();
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE,
+        createdBy: 'Treasury Admin',
+        title: 'Check whether this document satisfies the contract',
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(created.status, 'Open');
+  assert.equal(created.assignee, null);
+
+  const accepted = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_accept', {
+        spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'Autonomous Procurement Agent',
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(accepted.status, 'Assigned');
+  assert.ok(accepted.assignee.startsWith('part-'));
+
+  const listed = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_list', {
+        spaceId: PARTICIPANT_SPACE, status: 'Assigned',
+      })
+    ).content[0].text
+  ).requests;
+  assert.ok(listed.some((r) => r.requestId === created.requestId));
+});
+
+test('REQ-3 (negative): non-participants cannot create; strangers cannot complete', async () => {
+  const store = new SpaceStore();
+  const badCreator = await handleToolCall(store, 'requests_create', {
+    spaceId: PARTICIPANT_SPACE, createdBy: 'nobody-at-all', title: 'x',
+  });
+  assert.equal(badCreator.isError, true);
+  assert.match(badCreator.content[0].text, /not an active participant/);
+
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE, createdBy: 'Treasury Admin', title: 'x',
+      })
+    ).content[0].text
+  ).request;
+
+  const badAssignee = await handleToolCall(store, 'requests_create', {
+    spaceId: PARTICIPANT_SPACE, createdBy: 'Treasury Admin', title: 'y', assignee: 'not-here',
+  });
+  assert.equal(badAssignee.isError, true);
+  assert.match(badAssignee.content[0].text, /not an active participant/);
+
+  const stranger = await handleToolCall(store, 'requests_complete', {
+    spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'part-0002', result: null,
+  });
+  assert.equal(stranger.isError, true);
+  assert.match(stranger.content[0].text, /'Open', cannot complete/, 'unassigned request has no assignee to complete it');
+});
+
+test('REQ-4: block and cancel are recorded with reasons and are state-gated', async () => {
+  const store = new SpaceStore();
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE, createdBy: 'Treasury Admin', title: 'x',
+      })
+    ).content[0].text
+  ).request;
+
+  const blocked = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_block', {
+        spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
+        actorId: 'Treasury Admin', reason: 'waiting on human approval',
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(blocked.status, 'Blocked');
+
+  const cancelled = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_cancel', {
+        spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
+        actorId: 'Treasury Admin', reason: 'superseded',
+      })
+    ).content[0].text
+  ).request;
+  assert.equal(cancelled.status, 'Cancelled');
+
+  const activity = store.getActivity(PARTICIPANT_SPACE);
+  assert.ok(activity.some((a) => a.type === 'REQUEST_BLOCKED' && a.requestId === created.requestId));
+  assert.ok(activity.some((a) => a.type === 'REQUEST_CANCELLED' && a.requestId === created.requestId));
+
+  const completed = await handleToolCall(store, 'requests_complete', {
+    spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'Treasury Admin',
+  });
+  assert.equal(completed.isError, true);
+  assert.match(completed.content[0].text, /cannot complete/);
+
+  const reCancel = await handleToolCall(store, 'requests_cancel', {
+    spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'Treasury Admin',
+  });
+  assert.equal(reCancel.isError, true);
+  assert.match(reCancel.content[0].text, /already (Completed and cannot be |)Cancelled/);
+});
+
+test('REQ-5 (Slice 4): participant receives Request + Context + Authority + Space info', async () => {
+  const store = new SpaceStore();
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE,
+        createdBy: 'Treasury Admin',
+        assignee: 'Autonomous Procurement Agent',
+        title: 'Buy 100 units of X',
+        instructions: 'Approved suppliers only.',
+        context: { files: ['po-4417.pdf'], budget: '250.00', expected: 'delivered units' },
+      })
+    ).content[0].text
+  ).request;
+
+  const payload = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_receive', {
+        spaceId: PARTICIPANT_SPACE,
+        requestId: created.requestId,
+        actorId: 'Autonomous Procurement Agent',
+      })
+    ).content[0].text
+  );
+  // Request
+  assert.equal(payload.request.requestId, created.requestId);
+  assert.equal(payload.request.title, 'Buy 100 units of X');
+  // Context
+  assert.equal(payload.context.files[0], 'po-4417.pdf');
+  assert.equal(payload.context.budget, '250.00');
+  // Authority: exact rules + granted authority of this participant
+  assert.equal(payload.authority.maxPerTransaction, '500.00');
+  assert.equal(payload.authority.dailyBudget, '2000.00');
+  assert.equal(payload.authority.spentToday, '0.00');
+  assert.ok(payload.authority.dailyBudgetRemaining);
+  assert.ok(payload.authority.approvedCounterparties.length >= 3);
+  assert.equal(payload.authority.canAssigneeComplete, true);
+  assert.ok(payload.authority.address, 'participant must be address-backed for onchain authority');
+  // Space info
+  assert.equal(payload.space.spaceId, PARTICIPANT_SPACE);
+  assert.equal(payload.space.treasuryBalance, '5000.00');
+  // Participants involved
+  assert.ok(payload.participants.some((p) => p.displayName === 'Treasury Admin'));
+  assert.ok(payload.participants.some((p) => p.displayName === 'Autonomous Procurement Agent'));
+  // No work yet
+  assert.equal(payload.work, null);
+
+  // Non-participants cannot receive
+  const stranger = await handleToolCall(store, 'requests_receive', {
+    spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'nobody',
+  });
+  assert.equal(stranger.isError, true);
+  assert.match(stranger.content[0].text, /not an active participant/);
+});
+
+test('REQ-6 (Slice 8): activity_trace walks the full evidence chain', async () => {
+  const store = new SpaceStore();
+  // Full loop: request → work → settlement → complete
+  const created = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_create', {
+        spaceId: PARTICIPANT_SPACE, createdBy: 'Treasury Admin', title: 'Buy 100 units of X',
+      })
+    ).content[0].text
+  ).request;
+
+  const accepted = JSON.parse(
+    (
+      await handleToolCall(store, 'requests_accept', {
+        spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'Autonomous Procurement Agent',
+      })
+    ).content[0].text
+  ).request;
+
+  // create Work bound to the request (auto-binding via requestId)
+  const workRes = JSON.parse(
+    (
+      await handleToolCall(store, 'work_create', {
+        spaceId: PARTICIPANT_SPACE,
+        actorId: 'Autonomous Procurement Agent',
+        provider: '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE',
+        evaluator: 'admin-01',
+        description: 'Buy 100 units of X',
+        budget: '100.00',
+        deadline: futureDeadline(),
+        requestId: created.requestId,
+      })
+    ).content[0].text
+  );
+  assert.ok(workRes.request, 'createJob must return the Request binding');
+  assert.equal(workRes.request.requestId, created.requestId);
+
+  // Submit + approve (simulated fallback fires without a key/RPC; the chain
+  // inspector must still walk it end to end).
+  await handleToolCall(store, 'work_submit', {
+    spaceId: PARTICIPANT_SPACE, jobId: workRes.job.jobId,
+    actorId: '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE',
+    deliverableHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  });
+  await handleToolCall(store, 'work_evaluate', {
+    spaceId: PARTICIPANT_SPACE, jobId: workRes.job.jobId, evaluatorId: 'admin-01', approved: true,
+  });
+  await handleToolCall(store, 'requests_complete', {
+    spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
+    actorId: 'Autonomous Procurement Agent', result: { output: '100 units delivered' },
+  });
+
+  const trace = JSON.parse(
+    (
+      await handleToolCall(store, 'activity_trace', {
+        spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
+      })
+    ).content[0].text
+  );
+  // Full chain present
+  assert.equal(trace.chain.request.requestId, created.requestId);
+  assert.ok(trace.chain.work, 'work stage present');
+  assert.equal(trace.chain.work.jobId, workRes.job.jobId);
+  assert.ok(trace.chain.result, 'result stage present');
+  assert.equal(trace.chain.result.output, '100 units delivered');
+  assert.ok(trace.chain.authorization, 'authorization stage present');
+  assert.ok(trace.chain.authorization.authHash.startsWith('0x'));
+  assert.ok(trace.chain.payment, 'payment stage present');
+  assert.equal(trace.chain.payment.amount, '100.000000');
+  assert.ok(trace.chain.payment.txHash.startsWith('0x'));
+  assert.ok(
+    typeof trace.chain.payment.simulated === 'boolean',
+    'receipt must announce its mode (simulated: false when live, true in fallback)'
+  );
+  // Activity events for both request and work, ordered by timestamp
+  assert.ok(trace.activity.length >= 5, 'REQUEST_CREATED + REQUEST_ACCEPTED + WORK_CREATED + WORK_SUBMITTED + WORK_COMPLETED + REQUEST_COMPLETED');
+  const types = trace.activity.map((a) => a.type);
+  assert.ok(types.includes('REQUEST_CREATED'));
+  assert.ok(types.includes('REQUEST_ACCEPTED'));
+  assert.ok(types.includes('WORK_CREATED'));
+  assert.ok(types.includes('WORK_COMPLETED'));
+  assert.ok(types.includes('REQUEST_COMPLETED'));
+
+  // Unknown request errors
+  const bad = await handleToolCall(store, 'activity_trace', {
+    spaceId: PARTICIPANT_SPACE, requestId: 'req-none',
+  });
+  assert.equal(bad.isError, true);
+  assert.match(bad.content[0].text, /not found/);
 });

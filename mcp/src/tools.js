@@ -18,6 +18,34 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'spaces_create',
+    description: "Create a Space: the bounded operating context that keeps a group's requests, participants, work, payments, rules, and activity together. The founder becomes the first participant and Space admin.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Human-readable Space name.' },
+        description: { type: 'string', description: 'What this Space operates: its purpose and bounds.' },
+        network: { type: 'string', description: 'Settlement network (defaults to OKX X Layer Testnet).' },
+        chainId: { type: 'number', description: 'Settlement chain ID (defaults to 1952).' },
+        actorId: { type: 'string', description: 'Founder creating the Space.' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'spaces_fund',
+    description: 'Fund a Space treasury with USDC. Admin-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space to fund.' },
+        amount: { type: 'string', description: 'USDC amount to add to the treasury.' },
+        actorId: { type: 'string', description: 'Admin funding the Space.' },
+      },
+      required: ['spaceId', 'amount', 'actorId'],
+    },
+  },
+  {
     name: 'spaces_capabilities',
     description: 'Discover the exact rules, spending caps, daily allowance, and approved counterparties for a specific Space.',
     inputSchema: {
@@ -255,10 +283,214 @@ export const TOOL_DEFINITIONS = [
       required: ['spaceId', 'jobId', 'adjudicatorId', 'approved'],
     },
   },
+  {
+    name: 'participants_add',
+    description:
+      'Add a participant (Human, Agent, Service, Organization, or Counterparty) to a Space. Participants are Space members with a declared kind, so agents are ordinary participants rather than the centre of the architecture.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space to add the participant to.' },
+        kind: {
+          type: 'string',
+          enum: ['Human', 'Agent', 'Service', 'Organization', 'Counterparty'],
+          description: 'Participant kind.',
+        },
+        displayName: {
+          type: 'string',
+          description: 'Human-readable name. Must be unique among active participants.',
+        },
+        address: { type: 'string', description: 'Optional wallet address for onchain counterparties.' },
+        externalRef: {
+          type: 'string',
+          description: 'Optional reference to a source outside Microcosm (CRM, marketplace, directory).',
+        },
+        actorId: { type: 'string', description: 'Who is adding this participant.' },
+      },
+      required: ['spaceId', 'kind', 'displayName'],
+    },
+  },
+  {
+    name: 'participants_list',
+    description: 'List participants in a Space, optionally filtered by kind or status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space to list participants for.' },
+        kind: { type: 'string', description: 'Filter by participant kind.' },
+        status: { type: 'string', description: 'Filter by status (Active/Inactive).' },
+      },
+      required: ['spaceId'],
+    },
+  },
+  {
+    name: 'participants_deactivate',
+    description: 'Deactivate a participant. The audit trail is retained, not erased.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the participant belongs to.' },
+        participantId: { type: 'string', description: 'Participant to deactivate.' },
+        actorId: { type: 'string', description: 'Who is deactivating.' },
+      },
+      required: ['spaceId', 'participantId'],
+    },
+  },
+  {
+    name: 'requests_create',
+    description:
+      'Create a Request in a Space: the thing that asks a participant to do something. Optionally assign it to an active participant. Requests are the start of the product loop; Work Orders are one mechanism that can fulfil them.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        createdBy: { type: 'string', description: 'Active participant creating the Request.' },
+        assignee: { type: 'string', description: 'Optional active participant to assign immediately.' },
+        title: { type: 'string', description: 'One-line statement of what is being asked.' },
+        instructions: { type: 'string', description: 'Instructions for the assignee.' },
+        context: { type: 'object', description: 'Context the participant needs: files, records, budget, constraints, expected result.' },
+      },
+      required: ['spaceId', 'createdBy', 'title'],
+    },
+  },
+  {
+    name: 'requests_list',
+    description: 'List Requests in a Space, optionally filtered by status, assignee, or creator.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space to list Requests for.' },
+        status: { type: 'string', description: 'Filter by status (Open/Assigned/InProgress/Completed/Blocked/Cancelled).' },
+        assignee: { type: 'string', description: 'Filter by assignee participant.' },
+        createdBy: { type: 'string', description: 'Filter by creator participant.' },
+      },
+      required: ['spaceId'],
+    },
+  },
+  {
+    name: 'activity_trace',
+    description: 'Walk the full evidence chain for one Request: Request → Work → Result → Authorization → Payment → Receipt → Activity. One inspector, one chain.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to trace.' },
+      },
+      required: ['spaceId', 'requestId'],
+    },
+  },
+  {
+    name: 'requests_receive',
+    description: 'What a participant receives when taking a Request: the Request plus Context, Authority (the exact Space rules and the granted authority of this participant), and the relevant Space information. This is the receive-path payload.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to receive.' },
+        actorId: { type: 'string', description: 'Participant receiving the Request.' },
+      },
+      required: ['spaceId', 'requestId', 'actorId'],
+    },
+  },
+  {
+    name: 'requests_get',
+    description: 'Read one Request, including its Work, Result, and Payment linkage once those exist.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to read.' },
+      },
+      required: ['spaceId', 'requestId'],
+    },
+  },
+  {
+    name: 'requests_accept',
+    description: 'An active participant accepts an Open Request, becoming its assignee.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to accept.' },
+        actorId: { type: 'string', description: 'Participant accepting the Request.' },
+      },
+      required: ['spaceId', 'requestId', 'actorId'],
+    },
+  },
+  {
+    name: 'requests_complete',
+    description: 'Assignee completes a Request with a Result. The Result is what a Payment can be connected to.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to complete.' },
+        actorId: { type: 'string', description: 'Assignee completing the Request.' },
+        result: { type: 'object', description: 'Result: output, evidence, hashes, structured data, completion status.' },
+      },
+      required: ['spaceId', 'requestId', 'actorId'],
+    },
+  },
+  {
+    name: 'requests_block',
+    description: 'Block a Request, e.g. waiting on a human approval or a missing input.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to block.' },
+        actorId: { type: 'string', description: 'Participant blocking the Request.' },
+        reason: { type: 'string', description: 'Why it is blocked.' },
+      },
+      required: ['spaceId', 'requestId', 'actorId'],
+    },
+  },
+  {
+    name: 'requests_cancel',
+    description: 'Cancel a Request that has not completed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'Space the Request belongs to.' },
+        requestId: { type: 'string', description: 'Request to cancel.' },
+        actorId: { type: 'string', description: 'Participant cancelling the Request.' },
+        reason: { type: 'string', description: 'Why it is cancelled.' },
+      },
+      required: ['spaceId', 'requestId', 'actorId'],
+    },
+  },
 ];
 
 export async function handleToolCall(store, name, args) {
   switch (name) {
+    case 'spaces_fund': {
+      try {
+        const space = store.fundSpace(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ space }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'spaces_create': {
+      try {
+        const space = store.createSpace(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ space }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
     case 'spaces_list': {
       const spaces = store.listSpaces(args.actorId);
       return {
@@ -282,7 +514,7 @@ export async function handleToolCall(store, name, args) {
 
     case 'payments_request': {
       try {
-        const result = store.requestPayment(args);
+        const result = await store.requestPayment(args);
         if (result.status === 'REJECTED') {
           return {
             content: [
@@ -365,6 +597,7 @@ export async function handleToolCall(store, name, args) {
                 {
                   status: result.status,
                   job: result.job,
+                  request: result.request,
                   escrowedAmount: result.job.escrowedAmount,
                   remainingBalance: result.spaceBalance,
                 },
@@ -398,7 +631,7 @@ export async function handleToolCall(store, name, args) {
 
     case 'work_evaluate': {
       try {
-        const result = store.evaluateJob(args);
+        const result = await store.evaluateJob(args);
         // Both approve-settle and reject-refund are valid, successful outcomes;
         // the payload itself carries status + settlement / gaiaRefund evidence.
         return {
@@ -442,7 +675,7 @@ export async function handleToolCall(store, name, args) {
 
     case 'work_post_verdict': {
       try {
-        const result = store.postVerdict(args);
+        const result = await store.postVerdict(args);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
@@ -454,10 +687,146 @@ export async function handleToolCall(store, name, args) {
       }
     }
 
-    default:
+    case 'participants_add': {
+      try {
+        const participant = store.addParticipant(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ participant }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'participants_list': {
+      try {
+        const participants = store.listParticipants(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ participants }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'participants_deactivate': {
+      try {
+        const participant = store.deactivateParticipant(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ participant }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'requests_create': {
+      try {
+        const request = store.createRequest(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ request }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'requests_list': {
+      try {
+        const requests = store.listRequests(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ requests }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'activity_trace': {
+      try {
+        const trace = store.traceRequest(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(trace, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'requests_receive': {
+      try {
+        const payload = store.receiveRequest(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'requests_get': {
+      try {
+        const request = store.getRequest(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ request }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'requests_accept':
+    case 'requests_complete':
+    case 'requests_block':
+    case 'requests_cancel': {
+      try {
+        const method = {
+          requests_accept: 'acceptRequest',
+          requests_complete: 'completeRequest',
+          requests_block: 'blockRequest',
+          requests_cancel: 'cancelRequest',
+        }[name];
+        const request = store[method](args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ request }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    default: {
       return {
         content: [{ type: 'text', text: `Unknown tool '${name}'` }],
         isError: true,
       };
+    }
   }
 }

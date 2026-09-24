@@ -16,7 +16,7 @@ interface Vm {
 }
 
 /**
- * OKX X Layer deployment script (Chain ID 195 testnet / 196 mainnet).
+ * OKX X Layer deployment script (Chain ID 1952 testnet / 196 mainnet).
  *
  * Environment:
  *   PRIVATE_KEY     deployer key funded with testnet OKB (required for broadcast)

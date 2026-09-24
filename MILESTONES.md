@@ -17,7 +17,7 @@ The roadmap is structured into two sequential tracks:
 
 ## Progress Ledger (Summary of Current Reality)
 
-Status vocabulary strictly adheres to `BUILD_FOUNDRY.md`: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED · BLOCKED`.
+Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`. Blocker states follow the capability states in `BUILD_FOUNDRY.md`: `BLOCKED_EXTERNAL` / `BLOCKED_INTERNAL`. `IN PROGRESS` and `PLANNED` are scheduling labels this document introduces; they are not evidence states and carry no verification meaning.
 
 | Milestone | Scope / Claim | Status | Verification Evidence |
 | :--- | :--- | :---: | :--- |
@@ -27,15 +27,15 @@ Status vocabulary strictly adheres to `BUILD_FOUNDRY.md`: `UNTESTED · PARTIAL �
 | **M3** | **HTTP REST API & Server-Sent Events (SSE)** | `IN PROGRESS` | `packages/server` test suite (Pending build) |
 | **M4** | **Persistent Storage Engine (Disk/SQLite)** | `IN PROGRESS` | `packages/policy-engine/src/storage` (Pending build) |
 | **M5** | **Typed Client SDK & Curated Contract ABIs** | `IN PROGRESS` | `packages/client` test suite (Pending build) |
-| **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `BLOCKED` | Blocked on funded private key (`EXT-01` in `FAILURES.md`) |
+| **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `VERIFIED` | `make deploy-testnet` → 5/5 receipts `status true` on chain 1952, runtime bytecode matches compiled artifacts; all 5 sources `Pass - Verified` on OKLink |
 | **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | User handling full visual implementation |
 | **M8** | **3-Minute Demo Video & OKX Dev Day 2026 Submission** | `PLANNED` | Script ready in `forge/DEMO_SCRIPT.md` |
 | **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `PLANNED` | Phase 2 (Whitepaper Section 12) |
 | **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `PLANNED` | Phase 3 (Whitepaper Section 5.1) |
-| **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) |
-| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `PLANNED` | Phase 3 (Whitepaper Section 8 & 15) |
+| **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) — kept as internal adjudication capability per rebaseline §19; not a product centerpiece (§20) |
+| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `PLANNED` | Phase 3 (Whitepaper Section 8 & 15) — integration mechanisms answering product questions inside the Space, not product surfaces (§21) |
 | **M15** | **Multi-Tenant Enterprise Security & Fine-Grained Privacy** | `PLANNED` | Phase 4 (Whitepaper Section 20 & 21) |
 | **M16** | **Cross-Chain Settlement Rails (Circle CCTP / OKX Bridge)** | `PLANNED` | Phase 4 (Whitepaper Section 26) |
 

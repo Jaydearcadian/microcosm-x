@@ -14,8 +14,13 @@ export class SpaceStore {
     this.receipts = new Map();
     /** @type {Map<string, object>} Work Orders keyed by jobId */
     this.jobs = new Map();
+    /** @type {Map<string, object>} Space participants keyed by participantId */
+    this.participants = new Map();
+    /** @type {Map<string, object>} First-class Requests keyed by requestId */
+    this.requests = new Map();
     this._nextJobSeq = 1;
-
+    this._nextParticipantSeq = 1;
+    this._nextRequestSeq = 1;
     // Seed with canonical Procurement Space
     this.seedProcurementSpace();
   }
@@ -26,13 +31,13 @@ export class SpaceStore {
       name: 'Autonomous Procurement Space',
       description: 'Bounded operating context for purchasing compute, datasets, and API credits.',
       network: 'OKX X Layer Testnet',
-      chainId: 195,
+      chainId: 1952,
       balance: '5000.00',
       currency: 'USDC',
       totalSpentToday: '0.00',
       members: [
-        { id: 'admin-01', name: 'Treasury Admin', role: 'admin' },
-        { id: 'agent-procure-01', name: 'Autonomous Procurement Agent', role: 'agent' },
+        { id: 'admin-01', name: 'Treasury Admin', role: 'admin', address: '0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367' },
+        { id: 'agent-procure-01', name: 'Autonomous Procurement Agent', role: 'agent', address: '0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367' },
       ],
       rules: {
         maxPerTransaction: '500.00',
@@ -41,11 +46,28 @@ export class SpaceStore {
           '0x1111111111111111111111111111111111111111', // CloudCompute Corp
           '0x2222222222222222222222222222222222222222', // Dataset Provider
           'cloudcompute.eth',
+          '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE', // Live provider wallet
         ],
       },
     };
     this.spaces.set(defaultSpace.id, defaultSpace);
     this.activity.set(defaultSpace.id, []);
+    // Seed participants mirror the Space members so the registry and the
+    // legacy member list agree from the start.
+    for (const member of defaultSpace.members) {
+      const seed = {
+        participantId: `part-${String(this._nextParticipantSeq++).padStart(4, '0')}`,
+        spaceId: defaultSpace.id,
+        displayName: member.name,
+        kind: member.role === 'admin' ? 'Human' : member.role === 'agent' ? 'Agent' : 'Service',
+        role: member.role,
+        address: member.address || null,
+        externalRef: null,
+        status: 'Active',
+        joinedAt: new Date().toISOString(),
+      };
+      this.participants.set(seed.participantId, seed);
+    }
   }
 
   getSpace(spaceId) {
@@ -91,7 +113,7 @@ export class SpaceStore {
     };
   }
 
-  requestPayment({ spaceId, actorId, recipient, amount, memo }) {
+  async requestPayment({ spaceId, actorId, recipient, amount, memo }) {
     const space = this.spaces.get(spaceId);
     if (!space) {
       throw new Error(`Space '${spaceId}' not found`);
@@ -139,8 +161,38 @@ export class SpaceStore {
     space.balance = fromBaseUnits(balanceBefore - amountBase);
     space.totalSpentToday = fromBaseUnits(spentTodayBefore + amountBase);
 
-    // Mock onchain settlement receipt on X Layer
-    const mockTxHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+    // Live onchain settlement: USDC moves on chain 1952 via the deployed
+    // contracts (SettlementRouter / AgenticCommerce). The adapter announces
+    // itself; the txHash is the real transaction, not randomness.
+    let txHash;
+    let simulated = false;
+    try {
+      if (process.env.XLAYER_LIVE !== '1') {
+        throw new Error('live settlement not enabled (set XLAYER_LIVE=1)');
+      }
+      const { XLayerAdapter } = await import('./xlayer.js');
+      const adapter = new XLayerAdapter();
+      const { providerKey } = await import('./provider-key.js');
+      // actorId / recipient may be Space member ids; resolve to wallet
+      // addresses for the onchain evaluator binding (cast needs addresses).
+      const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
+      const result = adapter.settleJobOnchain({
+        jobIdLabel: actionId,
+        provider: recipient,
+        evaluator: memberAddr || actorId,
+        description: memo || `Payment ${actionId}`,
+        budget: amount,
+        deliverableHash: evaluation.approvedIntent.deliverableHash || evaluation.approvedIntent.authHash,
+        spaceId,
+        providerKey: providerKey(),
+      });
+      txHash = result.txHashes.complete;
+    } catch (err) {
+      // Live settlement unavailable (no key, no RPC). Fall back to an
+      // announced simulated receipt — never a claim of a real transfer.
+      txHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+      simulated = true;
+    }
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId,
@@ -151,7 +203,8 @@ export class SpaceStore {
       asset: space.currency,
       network: 'OKX X Layer Testnet',
       chainId: space.chainId,
-      txHash: mockTxHash,
+      txHash,
+      simulated,
       status: 'SETTLED',
       authHash: evaluation.approvedIntent.authHash,
       timestamp,
@@ -169,6 +222,199 @@ export class SpaceStore {
       receipt,
       spaceBalance: space.balance,
     };
+  }
+
+  /**
+   * Walk the full evidence chain for one Request (rebaseline §17 Slice 8):
+   * Request → Work → Result → Authorization → Payment → Receipt → Activity.
+   * One inspector, one chain.
+   */
+  traceRequest({ spaceId, requestId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const request = this._getRequestOrThrow(spaceId, requestId);
+    const all = this.activity.get(spaceId) || [];
+
+    const work = request.workId ? this.jobs.get(request.workId) : null;
+
+    // Events that belong to this Request or its Work. WORK_CREATED carries
+    // both ids, so select on the union and dedupe by object identity.
+    const seen = new Set();
+    const activity = all
+      .filter((a) => a.requestId === requestId || (work && a.jobId === work.jobId))
+      .filter((a) => (seen.has(a) ? false : seen.add(a)))
+      .sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+
+    const payment = work && work.settlement ? this.receipts.get(work.settlement.receiptId) : null;
+
+    // Authorization: the EIP-712 auth hash bound at escrow time.
+    const authorization = work ? { authHash: work.authHash, actionId: work.actionId } : null;
+
+    return {
+      requestId,
+      spaceId,
+      title: request.title,
+      status: request.status,
+      chain: {
+        request: { ...request },
+        work: work
+          ? {
+              jobId: work.jobId,
+              status: work.status,
+              budget: work.budget,
+              provider: work.provider,
+              evaluator: work.evaluator,
+              deliverableHash: work.deliverableHash,
+              evidenceUri: work.evidenceUri,
+              settlement: work.settlement,
+            }
+          : null,
+        result: request.result,
+        authorization,
+        payment: payment
+          ? {
+              receiptId: payment.receiptId,
+              amount: payment.amount,
+              txHash: payment.txHash,
+              simulated: payment.simulated,
+              network: payment.network,
+              chainId: payment.chainId,
+            }
+          : null,
+      },
+      activity,
+    };
+  }
+
+  /**
+   * What a participant receives when assigned a Request (rebaseline §17
+   * Slice 4): the Request itself, plus Context, Authority (the exact Space
+   * rules and the granted authority of this participant), and the relevant
+   * Space information. This is the receive-path payload.
+   */
+  receiveRequest({ spaceId, requestId, actorId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const request = this._getRequestOrThrow(spaceId, requestId);
+
+    const active = [...this.participants.values()].filter(
+      (p) => p.spaceId === spaceId && p.status === 'Active'
+    );
+    const me = active.find((p) => p.displayName === actorId || p.participantId === actorId);
+    if (!me) {
+      throw new Error(`'${actorId}' is not an active participant of Space '${spaceId}'`);
+    }
+
+    // Authority: what this participant can and cannot do inside the Space.
+    const rules = space.rules || {};
+    const authority = {
+      participantId: me.participantId,
+      kind: me.kind,
+      role: me.role,
+      address: me.address,
+      canCreateRequests: true,
+      canAssigneeComplete: request.assignee === me.participantId,
+      maxPerTransaction: rules.maxPerTransaction || null,
+      dailyBudget: rules.dailyBudget || null,
+      spentToday: space.totalSpentToday || '0.00',
+      dailyBudgetRemaining: (() => {
+        if (!rules.dailyBudget) return null;
+        try {
+          return fromBaseUnits(toBaseUnits(rules.dailyBudget) - toBaseUnits(space.totalSpentToday || '0'));
+        } catch {
+          return null;
+        }
+      })(),
+      approvedCounterparties: rules.allowedCounterparties || [],
+      network: space.network,
+      chainId: space.chainId,
+    };
+
+    // Relevant Space information: the participants involved and the current
+    // Work/Result linkage if it exists.
+    const involved = request.assignee
+      ? [active.find((p) => p.participantId === request.createdBy), me].filter(Boolean)
+      : [active.find((p) => p.participantId === request.createdBy), me].filter(Boolean);
+    const work = request.workId ? this.jobs.get(request.workId) : null;
+
+    return {
+      request: { ...request },
+      context: request.context,
+      authority,
+      space: {
+        spaceId: space.id,
+        spaceName: space.name,
+        network: space.network,
+        chainId: space.chainId,
+        treasuryBalance: space.balance,
+        currency: space.currency,
+      },
+      participants: involved.map((p) => ({
+        participantId: p.participantId,
+        displayName: p.displayName,
+        kind: p.kind,
+        role: p.role,
+        address: p.address,
+      })),
+      work: work
+        ? {
+            jobId: work.jobId,
+            status: work.status,
+            budget: work.budget,
+            deliverableHash: work.deliverableHash,
+            settlement: work.settlement,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Create a Space (rebaseline §17 Slice 1): the bounded operating context
+   * for a group's work. The founder becomes the first participant and admin.
+   */
+  createSpace({ name, description = '', network = 'OKX X Layer Testnet', chainId = 1952, actorId = 'founder-01' }) {
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      throw new Error("'name' must be a non-empty string");
+    }
+    const id = `space-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32)}-${crypto.randomUUID().slice(0, 4)}`;
+    const now = new Date().toISOString();
+    const space = {
+      id,
+      name: name.trim(),
+      description: description || '',
+      network,
+      chainId,
+      balance: '0.00',
+      currency: 'USDC',
+      totalSpentToday: '0.00',
+      members: [{ id: actorId, name: actorId, role: 'admin' }],
+      rules: {
+        maxPerTransaction: '500.00',
+        dailyBudget: '2000.00',
+        allowedCounterparties: [],
+      },
+      createdAt: now,
+    };
+    this.spaces.set(id, space);
+    this.activity.set(id, []);
+    const seed = {
+      participantId: `part-${String(this._nextParticipantSeq++).padStart(4, '0')}`,
+      spaceId: id,
+      displayName: actorId,
+      kind: 'Human',
+      role: 'admin',
+      address: null,
+      externalRef: null,
+      status: 'Active',
+      joinedAt: now,
+    };
+    this.participants.set(seed.participantId, seed);
+    this.activity.get(id).push({
+      type: 'SPACE_CREATED',
+      spaceId: id,
+      name: space.name,
+      createdBy: actorId,
+      timestamp: now,
+    });
+    return { ...space };
   }
 
   getActivity(spaceId) {
@@ -288,7 +534,7 @@ export class SpaceStore {
    * with a `rubricHash` to route contested deliverables to adjudication
    * instead of single-evaluator settlement, mirroring AgenticCommerce.sol.
    */
-  createJob({ spaceId, actorId, provider, evaluator, adjudicator, rubricHash, description, budget, deadline }) {
+  createJob({ spaceId, actorId, provider, evaluator, adjudicator, rubricHash, description, budget, deadline, requestId }) {
     const space = this._getSpaceOrThrow(spaceId);
     if (!provider) {
       throw new Error('Work Order requires a provider');
@@ -412,6 +658,18 @@ export class SpaceStore {
       actionId,
       authHash: evaluation.approvedIntent.authHash,
     };
+    // Bind the Work Order to its Request (rebaseline §17 Slice 5):
+    // Request → Work. The linkage lives on the store, not the demo.
+    let requestRef = null;
+    if (requestId !== undefined && requestId !== null && requestId !== '') {
+      const request = this._getRequestOrThrow(spaceId, requestId);
+      if (request.workId) {
+        throw new Error(`Request '${requestId}' already has Work '${request.workId}' attached`);
+      }
+      request.workId = jobId;
+      requestRef = { requestId, title: request.title, assignee: request.assignee };
+    }
+
     this.jobs.set(jobId, job);
     this.activity.get(spaceId).push({
       type: 'WORK_CREATED',
@@ -421,6 +679,7 @@ export class SpaceStore {
       provider,
       evaluator,
       adjudicator: courtAdjudicator,
+      requestId: requestRef ? requestRef.requestId : null,
       rubricHash: courtRubric,
       budget: job.budget,
       deadline: job.deadline,
@@ -433,6 +692,7 @@ export class SpaceStore {
     return {
       status: 'Funded',
       job: { ...job },
+      request: requestRef,
       spaceBalance: space.balance,
     };
   }
@@ -495,14 +755,45 @@ export class SpaceStore {
    * The daily budget was already consumed at escrow time; settlement must
    * not double-count it.
    */
-  _settleJob(space, job, fromStatus, decidedBy, feedback) {
+  async _settleJob(space, job, fromStatus, decidedBy, feedback) {
     const timestamp = new Date().toISOString();
     job.status = 'Completed';
     job.feedback = feedback || null;
     job.completedAt = timestamp;
     job.statusHistory.push({ status: 'Completed', timestamp });
 
-    const mockTxHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+    // Live onchain settlement for evaluator/court settlement. The adapter
+    // announces itself; the txHash is the real transaction when live, and an
+    // announced simulated hash only when the key/RPC is unavailable.
+    let txHash;
+    let simulated = false;
+    try {
+      if (process.env.XLAYER_LIVE !== '1') {
+        throw new Error('live settlement not enabled (set XLAYER_LIVE=1)');
+      }
+      const { XLayerAdapter } = await import('./xlayer.js');
+      const adapter = new XLayerAdapter();
+      const { providerKey } = await import('./provider-key.js');
+      // Resolve Space member ids to wallet addresses for the onchain
+      // evaluator binding (cast needs addresses, not display ids).
+      const evaluatorAddr = (space.members || []).find((mb) => mb.id === job.evaluator || mb.id === job.client)?.address
+        || (space.members || []).flatMap((mb) => mb.address || [])[0]
+        || job.evaluator;
+      const result = adapter.settleJobOnchain({
+        jobIdLabel: job.jobId,
+        provider: job.provider,
+        evaluator: evaluatorAddr,
+        description: job.description,
+        budget: job.budget,
+        deliverableHash: job.deliverableHash,
+        spaceId: space.id,
+        providerKey: providerKey(),
+      });
+      txHash = result.txHashes.complete;
+    } catch (err) {
+      txHash = `0x${crypto.randomBytes(32).toString('hex')}`;
+      simulated = true;
+    }
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId: job.actionId,
@@ -516,7 +807,8 @@ export class SpaceStore {
       asset: space.currency,
       network: 'OKX X Layer Testnet',
       chainId: space.chainId,
-      txHash: mockTxHash,
+      txHash,
+      simulated,
       status: 'SETTLED',
       deliverableHash: job.deliverableHash,
       evidenceUri: job.evidenceUri,
@@ -552,7 +844,7 @@ export class SpaceStore {
    * Court-bound work and Adjudicating work never settle here: payouts halt
    * until the Internet Court posts its verdict.
    */
-  evaluateJob({ spaceId, jobId, evaluatorId, approved, feedback }) {
+  async evaluateJob({ spaceId, jobId, evaluatorId, approved, feedback }) {
     const space = this._getSpaceOrThrow(spaceId);
     const job = this._getJobOrThrow(spaceId, jobId);
 
@@ -586,7 +878,7 @@ export class SpaceStore {
       if (!job.deliverableHash) {
         throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: money cannot move without proof`);
       }
-      return this._settleJob(space, job, 'Submitted', evaluatorId, feedback);
+      return await this._settleJob(space, job, "Submitted", evaluatorId, feedback);
     }
 
     if (approved === false) {
@@ -685,7 +977,7 @@ export class SpaceStore {
    * Approval settles to the provider on X Layer; rejection refunds 100%
    * to the Space (Gaia exception semantics).
    */
-  postVerdict({ spaceId, jobId, adjudicatorId, approved, reason }) {
+  async postVerdict({ spaceId, jobId, adjudicatorId, approved, reason }) {
     const space = this._getSpaceOrThrow(spaceId);
     const job = this._getJobOrThrow(spaceId, jobId);
 
@@ -713,7 +1005,7 @@ export class SpaceStore {
       if (!job.deliverableHash) {
         throw new Error(`Work Order '${jobId}' has no verifiable deliverable proof: money cannot move without proof`);
       }
-      const result = this._settleJob(space, job, 'Adjudicating', adjudicatorId, reason || null);
+      const result = await this._settleJob(space, job, "Adjudicating", adjudicatorId, reason || null);
       this.activity.get(spaceId).push({
         type: 'WORK_ADJUDICATION_RESOLVED',
         jobId,
@@ -751,5 +1043,274 @@ export class SpaceStore {
     const job = this._getJobOrThrow(spaceId, jobId);
     this._applyExpiry(space, job);
     return { ...job };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Requests: first-class product object (rebaseline §8, §17 Slice 3)
+  //
+
+  createRequest({ spaceId, createdBy, assignee = null, title, instructions = '', context = null }) {
+    const space = this.spaces.get(spaceId);
+    if (!space) throw new Error(`Space '${spaceId}' not found`);
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      throw new Error("'title' must be a non-empty string");
+    }
+    const active = [...this.participants.values()].filter(
+      (p) => p.spaceId === spaceId && p.status === 'Active'
+    );
+    const assigner = active.find((p) => p.displayName === createdBy || p.participantId === createdBy);
+    if (!assigner) throw new Error(`Request creator '${createdBy}' is not an active participant`);
+    if (assignee) {
+      const t = active.find((p) => p.displayName === assignee || p.participantId === assignee);
+      if (!t) throw new Error(`Assignee '${assignee}' is not an active participant`);
+      assignee = t.participantId;
+    }
+    const now = new Date().toISOString();
+    const request = {
+      requestId: `req-${String(this._nextRequestSeq++).padStart(4, '0')}`,
+      spaceId,
+      createdBy: assigner.participantId,
+      assignee,
+      title: title.trim(),
+      instructions: instructions || '',
+      context: context || null,
+      status: assignee ? 'Assigned' : 'Open',
+      workId: null,
+      result: null,
+      payment: null,
+      createdAt: now,
+      completedAt: null,
+    };
+    this.requests.set(request.requestId, request);
+    this.activity.get(spaceId).push({
+      type: 'REQUEST_CREATED',
+      requestId: request.requestId,
+      title: request.title,
+      createdBy: request.createdBy,
+      assignee: request.assignee,
+      status: request.status,
+      timestamp: now,
+    });
+    return request;
+  }
+
+  _getRequestOrThrow(spaceId, requestId) {
+    const r = this.requests.get(requestId);
+    if (!r || r.spaceId !== spaceId) {
+      throw new Error(`Request '${requestId}' not found in Space '${spaceId}'`);
+    }
+    return r;
+  }
+
+  _requestParticipant(requestId, name) {
+    const active = [...this.participants.values()].filter(
+      (p) => p.spaceId === this.requests.get(requestId).spaceId && p.status === 'Active'
+    );
+    const match = active.find((p) => p.displayName === name || p.participantId === name);
+    if (!match) throw new Error(`'${name}' is not an active participant`);
+    return match;
+  }
+
+  listRequests({ spaceId, status = null, assignee = null, createdBy = null }) {
+    let list = [...this.requests.values()].filter((r) => r.spaceId === spaceId);
+    if (status) list = list.filter((r) => r.status === status);
+    if (assignee) list = list.filter((r) => r.assignee === assignee);
+    if (createdBy) list = list.filter((r) => r.createdBy === createdBy);
+    return list;
+  }
+
+  getRequest({ spaceId, requestId }) {
+    return { ...this._getRequestOrThrow(spaceId, requestId) };
+  }
+
+  acceptRequest({ spaceId, requestId, actorId }) {
+    const request = this._getRequestOrThrow(spaceId, requestId);
+    if (request.status !== 'Open') {
+      throw new Error(`Request '${requestId}' is '${request.status}', only Open requests can be accepted`);
+    }
+    const p = this._requestParticipant(requestId, actorId);
+    request.assignee = p.participantId;
+    request.status = 'Assigned';
+    request.acceptedAt = new Date().toISOString();
+    this.activity.get(spaceId).push({
+      type: 'REQUEST_ACCEPTED',
+      requestId,
+      acceptedBy: p.participantId,
+      timestamp: request.acceptedAt,
+    });
+    return { ...request };
+  }
+
+  completeRequest({ spaceId, requestId, actorId, result }) {
+    const request = this._getRequestOrThrow(spaceId, requestId);
+    if (!['Assigned', 'InProgress'].includes(request.status)) {
+      throw new Error(`Request '${requestId}' is '${request.status}', cannot complete`);
+    }
+    const p = this._requestParticipant(requestId, actorId);
+    if (request.assignee && request.assignee !== p.participantId) {
+      throw new Error(`'${actorId}' is not the assignee of '${requestId}'`);
+    }
+    request.status = 'Completed';
+    request.result = result || null;
+    request.completedAt = new Date().toISOString();
+    this.activity.get(spaceId).push({
+      type: 'REQUEST_COMPLETED',
+      requestId,
+      completedBy: p.participantId,
+      hasResult: Boolean(result),
+      timestamp: request.completedAt,
+    });
+    return { ...request };
+  }
+
+  blockRequest({ spaceId, requestId, actorId, reason }) {
+    const request = this._getRequestOrThrow(spaceId, requestId);
+    if (!['Open', 'Assigned', 'InProgress'].includes(request.status)) {
+      throw new Error(`Request '${requestId}' is '${request.status}', cannot block`);
+    }
+    this._requestParticipant(requestId, actorId);
+    request.status = 'Blocked';
+    request.blockedReason = reason || null;
+    request.blockedAt = new Date().toISOString();
+    this.activity.get(spaceId).push({
+      type: 'REQUEST_BLOCKED',
+      requestId,
+      reason: request.blockedReason,
+      timestamp: request.blockedAt,
+    });
+    return { ...request };
+  }
+
+  cancelRequest({ spaceId, requestId, actorId, reason }) {
+    const request = this._getRequestOrThrow(spaceId, requestId);
+    if (request.status === 'Completed') {
+      throw new Error(`Request '${requestId}' is already Completed and cannot be cancelled`);
+    }
+    if (request.status === 'Cancelled') {
+      throw new Error(`Request '${requestId}' is already Cancelled`);
+    }
+    this._requestParticipant(requestId, actorId);
+    request.status = 'Cancelled';
+    request.cancelledReason = reason || null;
+    request.cancelledAt = new Date().toISOString();
+    this.activity.get(spaceId).push({
+      type: 'REQUEST_CANCELLED',
+      requestId,
+      reason: request.cancelledReason,
+      timestamp: request.cancelledAt,
+    });
+    return { ...request };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Participants: Space members as first-class participants (rebaseline §6)
+  //
+
+  addParticipant({ spaceId, kind, displayName, address = null, externalRef = null, actorId = null }) {
+    const space = this.spaces.get(spaceId);
+    if (!space) throw new Error(`Space '${spaceId}' not found`);
+    const KINDS = ['Human', 'Agent', 'Service', 'Organization', 'Counterparty'];
+    if (!KINDS.includes(kind)) {
+      throw new Error(`Invalid participant kind '${kind}'. Allowed: ${KINDS.join(', ')}`);
+    }
+    if (!displayName || typeof displayName !== 'string' || !displayName.trim()) {
+      throw new Error("'displayName' must be a non-empty string");
+    }
+    const active = [...this.participants.values()].filter(
+      (p) => p.spaceId === spaceId && p.status === 'Active'
+    );
+    const sameName = active.find(
+      (p) => p.displayName.trim().toLowerCase() === displayName.trim().toLowerCase()
+    );
+    if (sameName) throw new Error(`Participant '${displayName}' already active in Space '${spaceId}'`);
+
+    const now = new Date().toISOString();
+    const participant = {
+      participantId: `part-${String(this._nextParticipantSeq++).padStart(4, '0')}`,
+      spaceId,
+      displayName: displayName.trim(),
+      kind,
+      role: kind === 'Human' ? 'member' : kind === 'Agent' ? 'agent' : 'service',
+      address: address || null,
+      externalRef: externalRef || null,
+      status: 'Active',
+      addedBy: actorId || 'admin-01',
+      joinedAt: now,
+    };
+    this.participants.set(participant.participantId, participant);
+    (space.members || []).push({ id: participant.displayName, name: participant.displayName, role: participant.role });
+    this.activity.get(spaceId).push({
+      type: 'PARTICIPANT_ADDED',
+      participantId: participant.participantId,
+      displayName: participant.displayName,
+      kind,
+      addedBy: participant.addedBy,
+      timestamp: now,
+    });
+    return participant;
+  }
+
+  listParticipants({ spaceId, kind = null, status = null }) {
+    let list = [...this.participants.values()].filter((p) => p.spaceId === spaceId);
+    if (kind) list = list.filter((p) => p.kind === kind);
+    if (status) list = list.filter((p) => p.status === status);
+    return list;
+  }
+
+  getParticipant({ spaceId, participantId }) {
+    const p = this.participants.get(participantId);
+    if (!p || p.spaceId !== spaceId) {
+      throw new Error(`Participant '${participantId}' not found in Space '${spaceId}'`);
+    }
+    return p;
+  }
+
+  deactivateParticipant({ spaceId, participantId, actorId = null }) {
+    const p = this.participants.get(participantId);
+    if (!p || p.spaceId !== spaceId) {
+      throw new Error(`Participant '${participantId}' not found in Space '${spaceId}'`);
+    }
+    if (p.status === 'Inactive') throw new Error(`Participant '${participantId}' is already Inactive`);
+    p.status = 'Inactive';
+    p.deactivatedBy = actorId || 'admin-01';
+    p.deactivatedAt = new Date().toISOString();
+    this.activity.get(spaceId).push({
+      type: 'PARTICIPANT_REMOVED',
+      participantId,
+      displayName: p.displayName,
+      removedBy: p.deactivatedBy,
+      timestamp: p.deactivatedAt,
+    });
+    return p;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Funding: capitalize a Space treasury (admin-only)
+  //
+
+  fundSpace({ spaceId, amount, actorId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    let amountBase;
+    try {
+      amountBase = toBaseUnits(amount);
+    } catch {
+      throw new Error(`Invalid amount '${amount}': must be a USDC decimal string`);
+    }
+    if (amountBase <= 0n) throw new Error("Invalid amount: must be greater than zero");
+    const member = (space.members || []).find((m) => m.id === actorId || m.name === actorId);
+    if (!member || member.role !== 'admin') {
+      throw new Error(`'${actorId}' is not an admin of Space '${spaceId}'`);
+    }
+    const now = new Date().toISOString();
+    space.balance = fromBaseUnits(toBaseUnits(space.balance) + amountBase);
+    this.activity.get(spaceId).push({
+      type: 'SPACE_FUNDED',
+      spaceId,
+      amount: fromBaseUnits(amountBase),
+      fundedBy: actorId,
+      spaceBalance: space.balance,
+      timestamp: now,
+    });
+    return { ...space };
   }
 }

@@ -12,9 +12,16 @@
     "test:policy": "cd packages/policy-engine && npm test",
     "test:mcp": "cd mcp && npm test",
     "test:contracts": "make test-contracts",
-    "demo": "node scripts/demo-procurement-space.mjs"
+    "demo": "XLAYER_LIVE=1 node scripts/demo-procurement-space.mjs"
   },
-  "keywords": ["okx", "x-layer", "mcp", "agents", "payments", "microcosm"],
+  "keywords": [
+    "okx",
+    "x-layer",
+    "mcp",
+    "agents",
+    "payments",
+    "microcosm"
+  ],
   "author": "jaydearcadian",
   "license": "MIT"
 }

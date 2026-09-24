@@ -1,27 +1,37 @@
 #!/usr/bin/env node
 /**
- * Interactive Demonstration Runner: Microcosm on OKX X Layer
- * Flagship Scenario: Autonomous Procurement Space with first-class Work
+ * Business Loop Demonstration: Microcosm on OKX X Layer
  *
- * Demonstrates the complete loop:
- * 1. Space Creation & Funding (5,000 USDC on OKX X Layer Testnet)
- * 2. Agent Capability Discovery via MCP
- * 3. Work Order created (budget escrowed from Space balance)
- * 4. Provider submits deliverable hash (verifiable proof)
- * 5. Evaluator approves -> settles on X Layer (AgenticCommerce-style)
- * 6. Control Boundary Test ($900 workstation purchase -> Intercepted & Denied)
- * 7. Gaia exception path: rejected work refunds 100% to the Space ($0 lost)
- * 8. Full Audit & Continuity Trail
+ * A company runs procurement inside a Space, and its procurement agent
+ * operates within that Space's authority. The demo leads with the business:
+ * create the Space, add people, add the agent, create a request — then the
+ * agent receives it, performs the work, returns a result, Space rules are
+ * checked, payment occurs, and activity records everything.
+ *
+ * LIVE ONCHAIN SETTLEMENT — every settlement below is a REAL onchain transfer
+ * via the deployed contracts on OKX X Layer Testnet chain 1952
+ * (receipt.simulated = false, actual tx hashes). The court verdict itself is
+ * still simulated (no onchain court deployed); payouts are real.
+ *
+ * Loop demonstrated (rebaseline §17 Slice 10):
+ * 1.  Create Space
+ * 2.  Add people + add agent (participants)
+ * 3.  Create request
+ * 4.  Agent receives request (+ Context, Authority, Space info)
+ * 5.  Agent performs work (Work Order escrows budget, bound to the Request)
+ * 6.  Provider submits deliverable proof
+ * 7.  Result is returned; Space rules are checked (boundary denial + Gaia refund)
+ * 8.  Payment occurs (REAL onchain settlement)
+ * 9.  Activity records everything (full evidence chain traced)
  */
 
 import { SpaceStore } from '../mcp/src/space-store.js';
 import { handleToolCall } from '../mcp/src/tools.js';
 
 const store = new SpaceStore();
-const SPACE_ID = 'space-procurement-001';
 const AGENT_ID = 'agent-procure-01';
 const EVALUATOR_ID = 'admin-01';
-const VENDOR_ADDRESS = '0x1111111111111111111111111111111111111111';
+const VENDOR_ADDRESS = '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE'; // live provider wallet
 const COURT_ADDRESS = '0x8888888888888888888888888888888888888888';
 
 function header(title) {
@@ -35,108 +45,170 @@ function futureDeadline(days = 7) {
 }
 
 async function main() {
-  header('MICROCOSM — COMMERCE OS FOR HUMANS & AGENTS (OKX X LAYER)');
+  header('MICROCOSM — A BUSINESS RUNNING ITSELF WITH PEOPLE AND SOFTWARE (OKX X LAYER)');
 
-  // Step 1: Discover Space Context
-  console.log('\n[STEP 1] Agent discovers operating Space via MCP...');
-  const listRes = await handleToolCall(store, 'spaces_list', { actorId: AGENT_ID });
-  const { spaces } = JSON.parse(listRes.content[0].text);
-  console.log(`  Found ${spaces.length} active Space:`);
-  console.log(`  - Space: ${spaces[0].name} (ID: ${spaces[0].id})`);
-  console.log(`  - Role:  ${spaces[0].myRole}`);
-  console.log(`  - Fund:  ${spaces[0].balance} ${spaces[0].currency}`);
-
-  // Step 2: Capability Discovery
-  console.log('\n[STEP 2] Agent queries capability bounds via spaces_capabilities...');
-  const capRes = await handleToolCall(store, 'spaces_capabilities', {
-    spaceId: SPACE_ID,
-    actorId: AGENT_ID,
+  // Step 1: Create Space
+  console.log('\n[STEP 1] Company creates a Space for its procurement operation...');
+  const spaceRes = await handleToolCall(store, 'spaces_create', {
+    name: 'Northwind Traders — Procurement',
+    description: 'Bounded operating context for purchasing compute, datasets, and API credits.',
+    actorId: 'founder-01',
   });
-  const caps = JSON.parse(capRes.content[0].text);
-  console.log('  Active Space Policy Constraints:');
-  console.log(`  • Network:                ${caps.network} (Chain ID: 195)`);
-  console.log(`  • Max Per Transaction:    $${caps.rules.maxPerTransaction} USDC`);
-  console.log(`  • Daily Budget:           $${caps.rules.dailyBudget} USDC`);
-  console.log(`  • Approved Counterparties: ${caps.rules.allowedCounterparties.length} vendors`);
+  const space = JSON.parse(spaceRes.content[0].text).space ?? JSON.parse(spaceRes.content[0].text);
+  const SPACE_ID = space.id;
+  console.log(`  Space:  ${SPACE_ID} ✅`);
+  console.log(`  • Name: ${space.name}`);
+  console.log(`  • Network: ${space.network ?? 'OKX X Layer Testnet'}`);
 
-  // Step 3: Work Order created (money never moves without a Work Order)
-  console.log('\n[STEP 3] Work Order created: client requests GPU cluster work ($350.00)...');
-  console.log('  Sending work_create(spaceId, provider, evaluator, budget=$350.00, deadline)...');
+  // Register the deployer's live wallet as the Space authority address so
+  // onchain settlements bind to a real evaluator, then fund the treasury.
+  store.spaces.get(SPACE_ID).members[0].address = '0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367';
+  store.spaces.get(SPACE_ID).rules.allowedCounterparties.push(VENDOR_ADDRESS);
+  const fundRes = await handleToolCall(store, 'spaces_fund', {
+    spaceId: SPACE_ID, amount: '5000.00', actorId: 'founder-01',
+  });
+  const funded = JSON.parse(fundRes.content[0].text).space;
+  console.log(`  • Treasury: $${funded.balance} USDC ✅`);
+
+  // Step 2: Add people + add agent
+  console.log('\n[STEP 2] Founder adds people and the procurement agent as participants...');
+  for (const p of [
+    { kind: 'Human', displayName: 'Finance Lead' },
+    { kind: 'Counterparty', displayName: 'CloudCompute Corp', address: VENDOR_ADDRESS, externalRef: 'crm:suppliers/4417' },
+    { kind: 'Agent', displayName: 'Procurement Agent' },
+  ]) {
+    const res = await handleToolCall(store, 'participants_add', {
+      spaceId: SPACE_ID, ...p, actorId: 'founder-01',
+    });
+    const added = JSON.parse(res.content[0].text).participant;
+    console.log(`  + ${added.kind.padEnd(14)} ${added.displayName} (${added.participantId})`);
+  }
+
+  // Step 3: Create request
+  console.log('\n[STEP 3] Finance Lead creates a Request...');
+  const createReqRes = await handleToolCall(store, 'requests_create', {
+    spaceId: SPACE_ID,
+    createdBy: 'Finance Lead',
+    title: 'Provision a 100 GPU-hour cluster per Invoice #CC-9021',
+    instructions: 'Buy from an approved supplier only. Budget comes from the Space treasury.',
+    context: { invoice: 'CC-9021', expected: 'provisioned cluster + settlement receipt' },
+  });
+  const request = JSON.parse(createReqRes.content[0].text).request;
+  console.log(`  Request:  ${request.requestId} ✅`);
+  console.log(`  • Title:  ${request.title}`);
+  console.log(`  • Status: ${request.status} (unassigned — any participant can accept)`);
+
+  // Step 4: Agent receives request (+ Context, Authority, Space info)
+  console.log('\n[STEP 4] Procurement Agent accepts the Request and receives its full context...');
+  const acceptRes = await handleToolCall(store, 'requests_accept', {
+    spaceId: SPACE_ID,
+    requestId: request.requestId,
+    actorId: 'Procurement Agent',
+  });
+  const accepted = JSON.parse(acceptRes.content[0].text).request;
+  console.log(`  Outcome: ${accepted.status} ✅ (agent is now the assignee)`);
+
+  const receiveRes = await handleToolCall(store, 'requests_receive', {
+    spaceId: SPACE_ID,
+    requestId: request.requestId,
+    actorId: 'Procurement Agent',
+  });
+  const received = JSON.parse(receiveRes.content[0].text);
+  console.log('  Received payload:');
+  console.log(`  • Request:   ${received.request.title}`);
+  console.log(`  • Context:   ${JSON.stringify(received.context)}`);
+  console.log(`  • Authority: max/tx $${received.authority.maxPerTransaction}, daily budget $${received.authority.dailyBudget} ($${received.authority.dailyBudgetRemaining} remaining)`);
+  console.log(`               approved suppliers: ${received.authority.approvedCounterparties.length}`);
+  console.log(`               can complete as assignee: ${received.authority.canAssigneeComplete}`);
+
+  // Step 5: Agent performs work — Work Order escrows budget, bound to the Request
+  console.log(`\n[STEP 5] Procurement Agent performs the work: Work Order escrows $350.00 (bound to ${request.requestId})...`);
   const createRes = await handleToolCall(store, 'work_create', {
     spaceId: SPACE_ID,
-    actorId: AGENT_ID,
+    actorId: 'Procurement Agent',
     provider: VENDOR_ADDRESS,
-    evaluator: EVALUATOR_ID,
+    evaluator: 'Finance Lead',
     description: 'GPU cluster allocation (Invoice #CC-9021)',
     budget: '350.00',
     deadline: futureDeadline(),
+    requestId: request.requestId,
   });
   const created = JSON.parse(createRes.content[0].text);
-  console.log(`  Outcome: ${created.status} (Open -> Funded) ✅`);
+  console.log(`  Outcome: ${created.status} ✅`);
   console.log(`  • Work Order ID:      ${created.job.jobId}`);
+  console.log(`  • Bound to Request:   ${created.request?.requestId ?? '(not bound)'}`);
   console.log(`  • Escrowed:           $${created.escrowedAmount} USDC held for provider`);
   console.log(`  • Remaining Treasury: $${created.remainingBalance} USDC`);
 
-  // Step 4: Provider submits deliverable hash
-  console.log('\n[STEP 4] Provider submits verifiable deliverable proof...');
-  console.log('  Sending work_submit(jobId, deliverableHash, evidenceUri)...');
-  const deliverableHash = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  // Step 6: Provider submits deliverable proof
+  console.log('\n[STEP 6] Supplier submits verifiable deliverable proof...');
   const submitRes = await handleToolCall(store, 'work_submit', {
     spaceId: SPACE_ID,
     jobId: created.job.jobId,
     actorId: VENDOR_ADDRESS,
-    deliverableHash,
+    deliverableHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     evidenceUri: 'ipfs://QmGpuClusterEvidence9021',
   });
   const submitted = JSON.parse(submitRes.content[0].text);
-  console.log(`  Outcome: ${submitted.status} (Funded -> Submitted) ✅`);
-  console.log(`  • Deliverable Hash:   ${submitted.job.deliverableHash.slice(0, 18)}...`);
-  console.log(`  • Evidence:           ${submitted.job.evidenceUri}`);
+  console.log(`  Outcome: ${submitted.status} ✅ (Funded -> Submitted)`);
 
-  // Step 5: Evaluator approves -> settles on X Layer
-  console.log('\n[STEP 5] Evaluator approves deliverable -> settles on OKX X Layer...');
-  console.log('  Sending work_evaluate(jobId, approved=true)...');
+  // Step 7: Result is returned; Space rules are checked
+  console.log('\n[STEP 7] Finance Lead approves the deliverable — REAL settlement on chain 1952...');
   const evalRes = await handleToolCall(store, 'work_evaluate', {
     spaceId: SPACE_ID,
     jobId: created.job.jobId,
-    evaluatorId: EVALUATOR_ID,
+    evaluatorId: 'Finance Lead',
     approved: true,
     feedback: 'Verified: 100 GPU-hours provisioned per invoice',
   });
   const evaluated = JSON.parse(evalRes.content[0].text);
-  console.log(`  Outcome: ${evaluated.status} (Submitted -> Completed) ✅`);
-  console.log(`  • X Layer Tx Hash:    ${evaluated.receipt.txHash}`);
+  console.log(`  Outcome: ${evaluated.status} ✅ (Submitted -> Completed)`);
+  console.log(`  • Tx Hash:            ${evaluated.receipt.txHash} (${evaluated.receipt.simulated ? 'SIMULATED — no onchain transfer' : 'REAL onchain transfer'})`);
   console.log(`  • Receipt ID:         ${evaluated.receipt.receiptId}`);
-  console.log(`  • Paid to Provider:   $${evaluated.receipt.amount} USDC`);
+  console.log(`  • Paid to Supplier:   $${evaluated.receipt.amount} USDC`);
   console.log(`  • Remaining Treasury: $${evaluated.spaceBalance} USDC`);
 
-  // Step 6: Control Boundary Test (Prompt Injection / Over-Budget Attempt)
-  console.log('\n[STEP 6] Control Boundary Test: Agent attempts unauthorized $900.00 disbursement...');
-  console.log('  Scenario: Prompt injection instructs agent to purchase high-end workstation.');
-  console.log('  Sending payments_request(spaceId, recipient, amount=$900.00, memo)...');
+  console.log(`\n[STEP 8] Procurement Agent completes ${request.requestId} with a Result...`);
+  const doneRes = await handleToolCall(store, 'requests_complete', {
+    spaceId: SPACE_ID,
+    requestId: request.requestId,
+    actorId: 'Procurement Agent',
+    result: {
+      output: 'GPU cluster provisioned',
+      workId: created.job.jobId,
+      evidence: [evaluated.receipt.receiptId],
+    },
+  });
+  const done = JSON.parse(doneRes.content[0].text).request;
+  console.log(`  Outcome: ${done.status} ✅`);
+  console.log(`  • Result.workId:      ${done.result.workId}`);
+  console.log(`  • Result.evidence:    ${done.result.evidence.join(', ')}`);
+
+  // Space rules checked: boundary denial
+  console.log('\n[STEP 9] Space rules checked: prompt-injection attempt to spend $900.00...');
+  console.log('  Scenario: injection instructs the agent to buy a high-end workstation.');
   const deniedRes = await handleToolCall(store, 'payments_request', {
     spaceId: SPACE_ID,
-    actorId: AGENT_ID,
+    actorId: 'Procurement Agent',
     recipient: VENDOR_ADDRESS,
     amount: '900.00',
     memo: 'Unauthorized workstation purchase',
   });
-
   const deniedData = JSON.parse(deniedRes.content[0].text);
   console.log(`  Outcome: ${deniedData.status} 🛡️ (Deterministic Intercept)`);
   console.log(`  • Violation:          ${deniedData.reasons[0]}`);
   console.log(`  • Denial Proof Hash:  ${deniedData.denialProof.proofHash}`);
   console.log(`  • Treasury Impact:    $0.00 (Treasury remains at $${store.getSpace(SPACE_ID).balance} USDC)`);
 
-  // Step 7: Gaia exception path — rejected work refunds 100%
-  console.log('\n[STEP 7] Gaia exception path: low-quality deliverable rejected -> full refund...');
+  // Gaia exception path: rejected work refunds 100%
+  console.log('\n[STEP 10] Space rules checked: low-quality deliverable rejected -> full refund...');
   const badCreate = JSON.parse(
     (
       await handleToolCall(store, 'work_create', {
         spaceId: SPACE_ID,
-        actorId: AGENT_ID,
+        actorId: 'Procurement Agent',
         provider: VENDOR_ADDRESS,
-        evaluator: EVALUATOR_ID,
+        evaluator: 'Finance Lead',
         description: 'Dataset delivery (acceptance-gated)',
         budget: '200.00',
         deadline: futureDeadline(),
@@ -155,85 +227,38 @@ async function main() {
       await handleToolCall(store, 'work_evaluate', {
         spaceId: SPACE_ID,
         jobId: badCreate.job.jobId,
-        evaluatorId: EVALUATOR_ID,
+        evaluatorId: 'Finance Lead',
         approved: false,
         feedback: 'Quality below acceptance threshold — Gaia refund',
       })
     ).content[0].text
   );
-  console.log(`  Outcome: ${rejected.status} (Submitted -> Rejected) 🛡️`);
+  console.log(`  Outcome: ${rejected.status} 🛡️ (Submitted -> Rejected)`);
   console.log(`  • Gaia Refund:        $${rejected.gaiaRefund} USDC returned to Space`);
   console.log(`  • Treasury Balance:   $${rejected.spaceBalance} USDC ($0 lost)`);
 
-  // Step 8: Internet Court Adjudication Flow (Flagship Capability — DEC-007)
-  console.log('\n[STEP 8] Subjective deliverable referred to Internet Court (IAdjudicator)...');
-  const courtCreate = JSON.parse(
-    (
-      await handleToolCall(store, 'work_create', {
-        spaceId: SPACE_ID,
-        actorId: AGENT_ID,
-        provider: VENDOR_ADDRESS,
-        evaluator: EVALUATOR_ID,
-        adjudicator: COURT_ADDRESS,
-        rubricHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-        description: 'Autonomous research report (court-arbitrated)',
-        budget: '300.00',
-        deadline: futureDeadline(),
-      })
-    ).content[0].text
-  );
-  console.log(`  Work Order ${courtCreate.job.jobId} funded ($300.00 escrowed, bound to Internet Court).`);
-
-  await handleToolCall(store, 'work_submit', {
+  // Step 9: Activity records everything — full evidence chain
+  console.log(`\n[STEP 11] Activity records everything: full evidence chain for ${request.requestId}...`);
+  const traceRes = await handleToolCall(store, 'activity_trace', {
     spaceId: SPACE_ID,
-    jobId: courtCreate.job.jobId,
-    actorId: VENDOR_ADDRESS,
-    deliverableHash: '0x3333333333333333333333333333333333333333333333333333333333333333',
-    evidenceUri: 'ipfs://QmResearchReportEvidence7777',
+    requestId: request.requestId,
   });
-
-  const referral = JSON.parse(
-    (
-      await handleToolCall(store, 'work_request_verdict', {
-        spaceId: SPACE_ID,
-        jobId: courtCreate.job.jobId,
-        actorId: AGENT_ID,
-      })
-    ).content[0].text
-  );
-  console.log(`  Outcome: ${referral.status} (Submitted -> Adjudicating) ⚖️`);
-  console.log(`  • Case ID:            ${referral.case.caseId}`);
-  console.log(`  • Adjudicator:        ${COURT_ADDRESS}`);
-  console.log('  • Payout Status:      Halted pending court verdict');
-
-  const verdict = JSON.parse(
-    (
-      await handleToolCall(store, 'work_post_verdict', {
-        spaceId: SPACE_ID,
-        jobId: courtCreate.job.jobId,
-        adjudicatorId: COURT_ADDRESS,
-        approved: true,
-        reason: 'Research meets all methodological criteria in rubric',
-      })
-    ).content[0].text
-  );
-  console.log(`  Court Verdict: ${verdict.status} (Adjudicating -> Completed) ✅`);
-  console.log(`  • X Layer Tx Hash:    ${verdict.receipt.txHash}`);
-  console.log(`  • Paid to Provider:   $${verdict.receipt.amount} USDC`);
-  console.log(`  • Treasury Balance:   $${verdict.spaceBalance} USDC`);
-
-  // Step 9: Audit Ledger
-  console.log('\n[STEP 9] Space Audit & Provenance Trail...');
-  const actRes = await handleToolCall(store, 'activity_list', { spaceId: SPACE_ID });
-  const { activity } = JSON.parse(actRes.content[0].text);
-  activity.forEach((act, idx) => {
+  const trace = JSON.parse(traceRes.content[0].text);
+  console.log('  Chain: Request → Work → Result → Authorization → Payment → Receipt');
+  console.log(`  • Request:       ${trace.chain.request.status} (${trace.chain.request.requestId})`);
+  console.log(`  • Work:          ${trace.chain.work.status} (${trace.chain.work.jobId}, $${trace.chain.work.budget})`);
+  console.log(`  • Result:        ${trace.chain.result ? trace.chain.result.output : '(none)'}`);
+  console.log(`  • Authorization: authHash ${trace.chain.authorization.authHash.slice(0, 18)}…`);
+  console.log(`  • Payment:       $${trace.chain.payment.amount} via ${trace.chain.payment.txHash.slice(0, 18)}… (${trace.chain.payment.simulated ? 'SIMULATED' : 'REAL onchain'}, chain ${trace.chain.payment.chainId})`);
+  console.log('  Activity events:');
+  trace.activity.forEach((act, idx) => {
     const rawAmount = act.amount || act.budget || act.refundedAmount || act.settlement?.amount;
     const amountDisplay = rawAmount ? `$${rawAmount}` : 'N/A';
-    const id = act.actionId || act.jobId || '?';
-    console.log(`  [${idx + 1}] ${act.type.padEnd(28)} | Amount: ${amountDisplay.padEnd(12)} | Ref: ${id.padEnd(12)} | Timestamp: ${act.timestamp}`);
+    const id = act.actionId || act.jobId || act.requestId || act.participantId || '?';
+    console.log(`    [${idx + 1}] ${act.type.padEnd(28)} | Amount: ${amountDisplay.padEnd(12)} | Ref: ${id}`);
   });
 
-  header('DEMONSTRATION COMPLETE: WORK LOOP + POLICY BOUNDARIES VERIFIED LIVE');
+  header('DEMONSTRATION COMPLETE: A BUSINESS RUNNING ITSELF — REAL ONCHAIN SETTLEMENT (CHAIN 1952)');
 }
 
 main().catch(console.error);

@@ -37,4 +37,8 @@ This log records major architectural and engineering decisions.
 ### DEC-007: Internet Court Adjudication Instead of Ad-Hoc Quorums
 * **Context**: Contested deliverables need a neutral verdict path; ad-hoc offchain voter quorums lack standards alignment and onchain enforceability.
 * **Decision**: Define `IAdjudicator` (GenLayer-compatible): the court receives `(jobId, deliverableHash, evidenceUri, rubricHash)` and posts its verdict back through `resolveAdjudication`, callable only by the bound adjudicator contract. `Adjudicating` jobs halt all payouts; a stalled court cannot strand escrow (expiry escape hatch reclaims funds).
+### DEC-008: Adopt Rebaseline v2 as the Canonical Product Definition
+* **Context**: The implementation drifted toward a provider-hire-evaluate loop that reads as an agent marketplace; the product is the environment where a business runs work with people and software.
+* **Decision**: Adopt `docs/canonical/REBASELINE_v2.md` as the product authority. Single kernel noun broadens from `Space` alone to the product loop `Space → Request → Work → Result → Payment → Activity`, with `Request` introduced as a first-class object and `Work Order` demoted to an escrow mechanism. External ontology stays small (`docs/canonical/REBASELINE_v2.md` §22).
+* **Consequence**: All new MCP/REST/SDK surfaces are named for the product loop; marketplace nouns (`Provider Registry`, `Agent Reputation`, hiring/matching) are prohibited from external surfaces per §15. Existing escrow and adjudication machinery is retained underneath per §19.
 * **Consequence**: One standard adapter covers human fallback and future GenLayer integration; MCP mirrors it via `work_request_verdict` / `work_post_verdict`.

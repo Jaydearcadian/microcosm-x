@@ -18,7 +18,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **MCP-2** | MCP Agent | Agent payment request exceeding rule is rejected with `isError: true` and denial proof | `VERIFIED` | `npm run test:mcp` (`MCP-3` PASS) | 2026-09-19 |
 | **WORK-1** | Work Lifecycle | Work creation escrows budget from Space balance (`Open` → `Funded`) | `VERIFIED` | `npm run test:mcp` (`WORK-1` PASS) | 2026-09-19 |
 | **WORK-2** | Work Lifecycle | Provider submits deliverable hash (`Funded` → `Submitted`) with evidence URI | `VERIFIED` | `npm run test:mcp` (`WORK-2` PASS) | 2026-09-19 |
-| **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles on OKX X Layer (receipt + txHash) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-19 |
+| **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles (escrow accounting and receipt are real; the onchain transfer is simulated — `receipt.simulated === true`) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-21 |
 | **WORK-4** | Gaia Exception | Evaluator rejects → `Rejected`, Gaia refund returns 100% to Space ($0 lost); expiry → `Expired` with full refund; no payout without deliverable proof | `VERIFIED` | `npm run test:mcp` (`WORK-4`, `WORK-5`, `WORK-6` PASS) | 2026-09-19 |
 | **WORK-7** | Policy Boundary | Concurrent Work Order escrows count against the daily budget at creation (no collective daily-cap breach); Gaia refunds restore daily headroom | `VERIFIED` | `npm run test:mcp` (`WORK-7` PASS) | 2026-09-19 |
 | **ATTEST-1** | X Layer | Valid EIP-712 attestation (Microcosm domain, chain-bound) settles payment and releases job escrow | `VERIFIED` | `contracts/test/Attestation.t.sol` (`testValidAttestationSettlesPayment`, `testCommerceAttestedSettlementReleasesEscrow` PASS) | 2026-09-19 |
@@ -28,8 +28,8 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **WORK-8** | MCP Agent | Court-bound Work Order settles on X Layer after `work_request_verdict` → `work_post_verdict` (approve) | `VERIFIED` | `npm run test:mcp` (`WORK-8` PASS) | 2026-09-19 |
 | **WORK-9** | MCP Agent | Court rejection refunds 100% ($0 lost); impostor verdict and proof-less referral rejected | `VERIFIED` | `npm run test:mcp` (`WORK-9` PASS) | 2026-09-19 |
 | **DEPLOY-1** | Deployment | `DeployXLayer.s.sol` broadcasts all 5 contracts from `PRIVATE_KEY`/`USDC_ADDRESS` env; `make fork-test` / `deploy-testnet` / `verify-contracts` pipeline wired | `VERIFIED` | `forge script … --broadcast` on local EVM (5/5 receipts status 0x1, runtime bytecode present) | 2026-09-19 |
-| **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (All 5 steps pass live) | 2026-09-19 |
-| **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (All 9 steps pass live) | 2026-09-19 |
+| **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
+| **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (63 tests passed, 0 failed) | 2026-09-19 |
 
 ---
@@ -51,7 +51,9 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
       digest 0x6de0e9235ca74a6f96f11a80d14e386e6969fe4ad84d3a35b802c40b720f3999
     - policy-engine ATTEST-JS-2 asserts the identical constant → PASS (byte-for-byte match)
 
-  npm run demo: all 8 steps pass live (Work loop + $900 denial + Gaia refund)
+  npm run demo: all 9 steps pass (Work loop + $900 denial + Gaia refund).
+    UPDATE 2026-09-22: settlement receipts carry `simulated: false` — real onchain transfers via the deployed contracts; simulated fallback only when no key/RPC
+    and no onchain transfer occurs; this is `TESTED`, not `E2E_VERIFIED`.
 
   forge script broadcast (local EVM pre-flight of the X Layer pipeline):
     - ONCHAIN EXECUTION COMPLETE & SUCCESSFUL
@@ -129,3 +131,32 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
   Total: 23 passed, 0 failed, 0 skipped (67.64ms)
   ```
 * **Status**: `VERIFIED` on CHAIN-1, CHAIN-2, CHAIN-3.
+
+## DEPLOY-2 (re-broadcast 2026-09-22): 5/5 receipts status 0x1 on chain 1952, runtime bytecode matches compiled artifacts, 5/5 Sourcify exact_match
+
+* **VERIFIED — 2026-09-22.** New funded deployer `0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367` (0.2 OKB). Evidence:
+  * `cd contracts && forge script script/DeployXLayer.s.sol:DeployXLayer --rpc-url https://testrpc.xlayer.tech --broadcast --slow` → **5/5 receipts `status 0x1`**.
+  * Onchain runtime bytecode equals compiled artifacts: EnvelopeRegistry 4897, SettlementRouter 10718, ClaimEscrow 7824, MockERC20 3201, AgenticCommerce 21296 bytes (verified via `cast code` against the live RPC).
+  * Sourcify verification: **5/5 `exact_match`** (job IDs recorded in this session's transcript; addresses in `forge.json` → `deployment.deployments.testnet`).
+  * Fresh deployer addresses (supersede the 2026-09-21 set): EnvelopeRegistry `0xfcc29e1a…4B3764F6`, SettlementRouter `0xe772f79C…0Cb6a2E6`, ClaimEscrow `0x767C79c9…89bF863945`, MockERC20 `0x6176287b…eeE289e7`, AgenticCommerce `0xCdddCDC4…7Be92a81`.
+  * Chain-id defaults corrected to 1952 in `mcp/src/space-store.js` (seed Space) and test assertions; demo print updated.
+
+## RUNTIME-LIVE (2026-09-22): MCP runtime settles REAL USDC on chain 1952 via deployed contracts
+
+* **VERIFIED — 2026-09-22.** `mcp/src/xlayer.js` (`XLayerAdapter`) bridges the SpaceStore to the deployed `AgenticCommerce` kernel: `createJob → setBudget → fund (approve + transferFrom) → submit → complete` executed onchain via `cast send`. Evidence:
+  * `npm run demo` → Step 5 settlement receipt `simulated: false`, tx `0x343dc6f488921ede4734e1b5f0b53e919dfbc5ddf5bd68a18607c193d14a8ac8` (REAL transfer); court-verdict settlement tx `0x5fad6927872ba7952f54ab8e3a1e45f98b15a91b83d9dfbccdba9081d17f19ef` (REAL transfer).
+  * Onchain USDC balances after the run (`cast call balanceOf` against live RPC): provider `0xeE791E89…` holds 2310.000000 USDC, kernel escrow holds 4335.000000 USDC — real token movement, not in-memory arithmetic.
+  * Suites stay green: MCP 21/21, policy 13/13, contracts 36/36.
+  * Fallback: when no key/RPC is available, receipts carry `simulated: true` and a random hash — announced, never a claim of a real transfer (per AGENTS.md).
+  * Remaining simulation: the Internet Court verdict itself (no onchain court deployed); the settlement it triggers is real.
+
+## SLICES-3-10 (2026-09-22): rebaseline slices closed, tests deterministic, demo real
+
+* **VERIFIED — 2026-09-22.** Evidence:
+  * Slice 3/4 receive path: `requests_receive` returns Request + Context + Authority (rules, daily-budget remaining, approved counterparties, canAssigneeComplete) + Space info + involved participants. `REQ-5` PASS.
+  * Slice 5 binding: `work_create({requestId})` sets `request.workId` on the store and returns the binding. `REQ-6` PASS.
+  * Slice 8 inspector: `activity_trace` walks Request → Work → Result → Authorization → Payment → Receipt → Activity in one payload. `REQ-6` PASS.
+  * Slice 10 demo: `npm run demo` now leads Create Space → Add people + agent → Create request → Agent receives → Works → Result → Rules checked → Payment → Activity. Settlement tx `0xd22e6497…` **REAL onchain**.
+  * Slice 1: `spaces_create` / `spaces_fund` added (Space is created and capitalized through the surface, not seeded).
+  * Determinism: live settlement is gated behind `XLAYER_LIVE=1` (set by the demo script only). `npm run test:mcp` is offline and deterministic again — **23/23 in 0.8s**.
+  * Gate: contracts 36/36, policy 13/13, MCP 23/23, ledger check passes.

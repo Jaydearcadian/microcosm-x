@@ -48,7 +48,7 @@ contract SettlementRouter {
     // The router releases funds only for intents carrying a valid
     // EIP-712 signature from a registered Space Controller. Domain:
     //   name: "Microcosm", version: "1",
-    //   chainId: block.chainid (195 testnet / 196 mainnet),
+    //   chainId: block.chainid (1952 testnet / 196 mainnet),
     //   verifyingContract: address(this).
     // ------------------------------------------------------------------
 

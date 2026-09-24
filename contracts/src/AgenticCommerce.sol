@@ -78,7 +78,7 @@ contract AgenticCommerce {
 
     // ------------------------------------------------------------------
     // EIP-712 attestation layer (Sprint 1). Domain: name "Microcosm",
-    // version "1", chainId = block.chainid (195 testnet / 196 mainnet),
+    // version "1", chainId = block.chainid (1952 testnet / 196 mainnet),
     // verifyingContract = address(this).
     // ------------------------------------------------------------------
 

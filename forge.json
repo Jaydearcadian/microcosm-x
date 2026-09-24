@@ -4,9 +4,9 @@
   "network": "OKX X Layer",
   "networks": {
     "testnet": {
-      "chainId": 195,
+      "chainId": 1952,
       "name": "X Layer Testnet",
-      "rpc": "https://xlayertestrpc.okx.com",
+      "rpc": "https://testrpc.xlayer.tech",
       "explorer": "https://www.oklink.com/xlayer-test",
       "nativeCurrency": "OKB"
     },
@@ -41,12 +41,52 @@
   },
   "deployment": {
     "script": "contracts/script/DeployXLayer.s.sol:DeployXLayer",
-    "contracts": ["EnvelopeRegistry", "SettlementRouter", "ClaimEscrow", "MockERC20", "AgenticCommerce"],
-    "env": ["PRIVATE_KEY", "USDC_ADDRESS", "DEPLOYER_ADDRESS", "OKLINK_API_KEY"],
+    "contracts": [
+      "EnvelopeRegistry",
+      "SettlementRouter",
+      "ClaimEscrow",
+      "MockERC20",
+      "AgenticCommerce"
+    ],
+    "env": [
+      "PRIVATE_KEY",
+      "USDC_ADDRESS",
+      "DEPLOYER_ADDRESS",
+      "OKLINK_API_KEY"
+    ],
     "broadcastArtifact": "contracts/broadcast/DeployXLayer.s.sol/<chainId>/run-latest.json",
-    "explorerVerify": "forge verify-contract --verifier oklink"
+    "explorerVerify": "forge verify-contract --verifier oklink",
+    "deployments": {
+      "testnet": {
+        "chainId": 1952,
+        "deployedAt": "2026-09-22",
+        "broadcastArtifact": "contracts/broadcast/DeployXLayer.s.sol/1952/run-latest.json",
+        "oklinkVerifiedAll": true,
+        "contracts": {
+          "EnvelopeRegistry": "0xfcc29e1ac8860a3e0ae50bd8706189464b3764f6",
+          "SettlementRouter": "0xe772f79c10fac15e52909b376633a3e80cb6a2e6",
+          "ClaimEscrow": "0x767c79c97Aee5440f70074309a3efd89bF863945",
+          "MockERC20": "0x6176287b2E80374B41388029f0b87Eb6eeE289e7",
+          "AgenticCommerce": "0xCdddCDC435f9C6C4a38D1E421b89fdcD7Be92a81"
+        },
+        "receipts": {
+          "EnvelopeRegistry": "0xd0dda2376e383e3c09f8a782be26c9ada8b407e6a07b2d1358959820be467115",
+          "SettlementRouter": "0xf8d1028f3d7e79419fbc37f3e779fbf6bafb5841f38571692ea74d729fdda2a7",
+          "ClaimEscrow": "0x4768706c5b086a9feeb7e6a1322c9d28520cf5dc35215f1325f1b09c1d821c8e",
+          "MockERC20": "0x8deeb43b46ebf8c7e2b07b5933c0d03bca3acd2d77fdb26197a21c3feb1a7929",
+          "AgenticCommerce": "0xa03cfa01cd3cb3b5facb8cf63fcc72406691690bc73ffcca1bab88a79f3d399e"
+        },
+        "deployer": "0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367"
+      }
+    }
   },
-  "claimStatuses": ["UNTESTED", "PARTIAL", "FAILED", "VERIFIED", "REGRESSED"],
+  "claimStatuses": [
+    "UNTESTED",
+    "PARTIAL",
+    "FAILED",
+    "VERIFIED",
+    "REGRESSED"
+  ],
   "knownProofClaims": [
     {
       "id": "SPACE-1",

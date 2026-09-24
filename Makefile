@@ -1,6 +1,6 @@
 .PHONY: test test-contracts test-runtime test-mcp verify clean demo help fork-test deploy-testnet verify-contracts
 
-XLAYER_RPC_URL ?= https://xlayertestrpc.okx.com
+XLAYER_RPC_URL ?= https://testrpc.xlayer.tech
 OKLINK_VERIFY_URL ?= https://www.oklink.com/api/v5/explorer/contract/verify-source-code-plugin/XLAYER_TESTNET
 
 help:
@@ -52,7 +52,7 @@ deploy-testnet:
 		echo "❌ PRIVATE_KEY is not set. Copy .env.example to .env and fund the deployer with testnet OKB (https://www.okx.com/xlayer/faucet)."; \
 		exit 1; \
 	fi
-	@echo "Broadcasting to OKX X Layer Testnet (Chain ID 195)..."
+	@echo "Broadcasting to OKX X Layer Testnet (Chain ID 1952)..."
 	@cd contracts && forge script script/DeployXLayer.s.sol:DeployXLayer \
 		--rpc-url $(XLAYER_RPC_URL) \
 		--broadcast \
