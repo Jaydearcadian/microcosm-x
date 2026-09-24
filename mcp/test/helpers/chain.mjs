@@ -140,6 +140,9 @@ export async function ensureChain({ port = 8545 } = {}) {
   // accounts are parsed from anvil's own banner (never hardcoded).
   const rpc = `http://127.0.0.1:${port}`;
   const child = spawn('anvil', ['--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  // Drain stderr continuously: an undisposed pipe fills (~64KB) and then
+  // FREEZES the node process mid-suite. This was the LIVE-6 wedging bug.
+  child.stderr.resume();
   let banner = '';
   const bannerReady = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('chain harness: anvil banner timeout')), 30000);
@@ -165,6 +168,9 @@ export async function ensureChain({ port = 8545 } = {}) {
     await bannerReady;
     await waitForRpc(rpc);
     const { accounts, keys } = parseAnvilBanner(banner);
+    // Release the banner: the stdout listener stays attached (keeps the
+    // pipe drained) but must not accumulate megabytes of logs.
+    banner = '';
     if (!/^0x[0-9a-fA-F]{64}$/.test(keys[0]) || !/^0x[0-9a-fA-F]{64}$/.test(keys[1])) {
       throw new Error('chain harness: parsed anvil keys are malformed — refusing to continue');
     }
