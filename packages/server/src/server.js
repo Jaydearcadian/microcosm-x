@@ -191,11 +191,12 @@ export async function start({ port = 8787, seed = false, dataPath = process.env.
     }
   }
   const app = createApp({ store, dataPath });
+  const mode = restored ? 'restored' : (seed ? 'seeded' : 'fresh');
   const server = http.createServer((req, res) => dispatch(app, req, res));
   return new Promise((resolve) => {
     server.listen(port, () => {
       const actual = server.address().port;
-      console.log(`[server] Microcosm REST+SSE on http://localhost:${actual} (store: ${seed ? 'seeded' : 'fresh'})`);
+      console.log(`[server] Microcosm REST+SSE on http://localhost:${actual} (store: ${mode})`);
       resolve({ server, app, store, port: actual, url: `http://localhost:${actual}` });
     });
   });

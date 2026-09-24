@@ -30,9 +30,10 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **DEPLOY-1** | Deployment | `DeployXLayer.s.sol` broadcasts all 5 contracts from `PRIVATE_KEY`/`USDC_ADDRESS` env; `make fork-test` / `deploy-testnet` / `verify-contracts` pipeline wired | `VERIFIED` | `forge script … --broadcast` on local EVM (5/5 receipts status 0x1, runtime bytecode present) | 2026-09-19 |
 | **M3** | Interface / HTTP | REST + SSE over the SpaceStore model: spaces, bounds, participants, requests, work, payments, activity, live event stream — same terminal states as MCP | `VERIFIED` | `npm run test:server` (`M3-1…M3-6` PASS) | 2026-09-24 |
 | **HOST-1** | Deployment | M3 API hosted and publicly serving from EC2 (`i-07bd826a6cba642fa:8791`, systemd, seeded): health, spaces, bounds, 422 denial all verified over public HTTP | `VERIFIED` | `curl http://52.40.133.66:8791/api/…` (health ok, bounds escrow math exact, over-cap → 422) | 2026-09-24 |
+| **M4** | Persistence | Atomic snapshot driver: every mutation checkpoints to disk; SIGKILL + reboot restores spaces, jobs, requests, counters; corrupt snapshots refuse to boot | `VERIFIED` | `npm run test:server` (`M4-1`, `M4-2` PASS) + live box restart restores 2 spaces from snapshot | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (78 tests passed, 0 failed) | 2026-09-24 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (80 tests passed, 0 failed) | 2026-09-24 |
 
 ---
 
@@ -67,6 +68,17 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
   ```
 * **Status**: `VERIFIED` on HOST-1.
 * **Known limit**: server is in-memory until M4 — restarts reseed fresh IDs. Recorded in `docs/UI_AGENT_BRIEF.md` §6.
+
+### 2026-09-24: M4 atomic persistence, live-box restart survival (M4, SUITE-1)
+* **Command**: `make test` + EC2 restart drill (`systemctl restart` → journal shows restore → public curl confirms same IDs)
+* **Output**:
+  ```text
+  make test: 36 contract + 13 policy + 23 MCP + 8 server (M3-1…6 + M4-1/2) = 80 passed, 0 failed
+  live box: [persist] restored 2 space(s) from /var/lib/microcosm/microcosm-data.json
+            (8.4 KB snapshot; same space IDs + balances before/after restart)
+  ```
+* **Status**: `VERIFIED` on M4, SUITE-1.
+* **Design note**: atomic write-tmp-then-rename (crash-safe), corrupt snapshots refuse to boot, snapshot files git-ignored. Chose file snapshots over SQLite: zero native deps, KBs on disk, same State Continuity guarantee at this scale.
 
 ### 2026-09-19: Production Hardening — Attestation, Internet Court Adjudication, Deployment Pipeline (ATTEST-1/2, ADJUD-1/2, WORK-8/9, DEPLOY-1, SUITE-1)
 * **Command**: `make test` && `npm run demo` && `forge script script/DeployXLayer.s.sol:DeployXLayer --rpc-url http://127.0.0.1:8545 --broadcast` (local EVM)

@@ -93,9 +93,9 @@ command preview, wizard) → sections top-to-bottom → `SiteFooter`.
 - **Live server: `http://52.40.133.66:8791`** (systemd `microcosm-server` on
   `i-07bd826a6cba642fa`, seeded on boot, auto-restarts). Use this for
   demos and judge clicks; use local for development.
-- **Durability warning (until M4):** the server is in-memory — a restart
-  reseeds fresh IDs and wipes played state. Never hardcode a space/job ID
-  from the live box; discover via `GET /api/spaces` at session start.
+- **Durability (M4 landed):** the server snapshots every mutation to disk and
+  restores on boot — restarts are safe. Still discover IDs via
+  `GET /api/spaces` at session start rather than hardcoding them.
 - First live binding: hero Gauge + counters ← `GET /api/spaces/:id/bounds`.
   Until then, hardcode the seed's numbers. Everything else stays static until
   told otherwise.
