@@ -36,9 +36,8 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  ctx.server.closeAllConnections?.();
-  ctx.server.close();
-  await chain.cleanup();
+  try { ctx.server.closeAllConnections?.(); ctx.server.close(); } catch { /* never started */ }
+  if (chain) await chain.cleanup();
 });
 
 test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', async () => {

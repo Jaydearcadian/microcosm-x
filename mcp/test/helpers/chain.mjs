@@ -78,7 +78,10 @@ async function waitForRpc(rpc, timeoutMs = 30000) {
 }
 
 function deployKernel(rpc, deployerKey) {
-  run('forge', ['script', 'script/DeployXLayer.s.sol:DeployXLayer', '--rpc-url', rpc, '--broadcast'],
+  // foundry ≥1.8 rejects msg.sender reads inside broadcast scripts unless
+  // --sender is given: derive it so the script's deployer fallback resolves.
+  const sender = run('cast', ['wallet', 'address', '--private-key', deployerKey]).trim();
+  run('forge', ['script', 'script/DeployXLayer.s.sol:DeployXLayer', '--rpc-url', rpc, '--broadcast', '--sender', sender],
     { cwd: CONTRACTS_DIR, env: { PRIVATE_KEY: deployerKey }, timeout: 300_000 });
   const chainId = run('cast', ['chain-id', '--rpc-url', rpc]).trim();
   const artifact = path.join(CONTRACTS_DIR, 'broadcast', 'DeployXLayer.s.sol', String(Number(chainId)), 'run-latest.json');

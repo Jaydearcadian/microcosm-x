@@ -68,9 +68,10 @@ deploy-testnet:
 		exit 1; \
 	fi
 	@echo "Broadcasting to OKX X Layer Testnet (Chain ID 1952)..."
-	@cd contracts && forge script script/DeployXLayer.s.sol:DeployXLayer \
+	@cd contracts && SENDER=$$(cast wallet address --private-key $$PRIVATE_KEY) && forge script script/DeployXLayer.s.sol:DeployXLayer \
 		--rpc-url $(XLAYER_RPC_URL) \
 		--broadcast \
+		--sender $$SENDER \
 		-vvvv
 
 verify-contracts:

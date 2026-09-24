@@ -57,7 +57,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  await chain.cleanup();
+  if (chain) await chain.cleanup();
 });
 
 test('LIVE-1: compliant payment settles REAL USDC onchain (replaces MCP-2)', async () => {
