@@ -57,14 +57,20 @@ instrument owns the app**, bridged by these tokens.
 
 ## 4. Section map (keep BIX structure/choreography, swap narrative + media)
 
+Positioning rule (non-negotiable): **agents are never the subject of a
+headline.** Headlines are about the group, the work, the Space. Agents appear
+in body copy and diagrams as one participant kind among five. This is what
+keeps the page a coordination story instead of a limiter story.
+
 | # | Section | Eyebrow → H1 (green = highlighted) | Media slot |
 |---|---|---|---|
-| 1 | Hero | `COMMERCE OS · OKX X LAYER` → "One shared **Space** where people and software get work done." + sub "Requests, work, payments, and proof — coordinated under rules everyone can see, settled on OKX X Layer." + [Create a Space] [Watch a boundary hold] | Live Gauge (binds `GET /bounds` later; static numbers now) + latest-ledger ticker |
-| 2 | The loop | `THE LOOP` → "Request → Work → **Result** → Payment" + 4 node diagram | CountUp stats: 72 tests green · 5 contracts · $0 lost |
-| 3 | Boundary proof | `BOUNDARIES HOLD` → "The $900 purchase that **never happened**" | Denial cards (active/inactive rail): over-cap, rejected work, expired escrow |
-| 4 | Live work | `LIVE WORK` → "Every work order, **on the board**" | Sticky Kanban preview, columns swap per step |
-| 5 | Provenance | `PROVENANCE` → "Every cent **traceable**" | Audit ticker + OKLink verified badges + contract addresses |
-| 6 | CTA/footer | "Open a Space in **60 seconds**" + wizard CTA + docs | Glow field; pill buttons; staggered footer cascade |
+| 1 | Hero | `COMMERCE OS · OKX X LAYER` → "One shared **Space** where people and software get work done." + sub "Requests, work, payments, and proof — coordinated under rules everyone can see, settled on OKX X Layer." + [Create a Space] [See a Space run] | Live Gauge captioned "shared treasury" (binds `GET /bounds` later; static numbers now) + latest-ledger ticker |
+| 2 | The loop | `THE LOOP` → "Request → Work → **Result** → Payment" staged with a **person** creating the request and an **agent** receiving it — the group is the subject | CountUp stats: 78 tests green · 5 contracts · $0 lost |
+| 3 | Participants | `ONE SPACE, EVERYONE IN` → "People and **software**, side by side." Five kind cards — Human, Agent, Service, Organization, Counterparty — equal weight, no hierarchy | Kind cards, identical treatment |
+| 4 | Rules | `RULES EVERYONE CAN SEE` → "One agreement, **enforced equally**." The denial card appears here as proof the rules bind humans and agents alike — evidence, not the moral | Denial card + policy matrix excerpt |
+| 5 | Live work | `LIVE WORK` → "Every work order, **on the board**" | Sticky Kanban preview, columns swap per step |
+| 6 | Provenance | `PROVENANCE` → "Every cent **traceable**" | Audit ticker + OKLink verified badges + contract addresses |
+| 7 | CTA/footer | "Open a **Space** in 60 seconds" + wizard CTA + docs; the boundary demo survives only as a secondary text link ("See the rules hold") | Glow field; pill buttons; staggered footer cascade |
 
 Choreography per section: eyebrow → headline → copy → media → details. One
 focal point per viewport. Mobile: centered, single column, one object at a
@@ -100,6 +106,8 @@ command preview, wizard) → sections top-to-bottom → `SiteFooter`.
 ## 7. Acceptance
 
 - [ ] One focal point per viewport; ≤2 green words per heading.
+- [ ] No headline with an agent as its subject (group/work/Space lead).
+- [ ] Participants section presents all five kinds with equal weight.
 - [ ] Motion matches §3 numbers exactly (spot-check with devtools timing).
 - [ ] Mobile single-column, no horizontal scroll, ≥44px targets.
 - [ ] All hashes truncated with copy + expand; simulated labels present.
