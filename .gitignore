@@ -18,3 +18,7 @@ broadcast/
 *.swp
 *~
 .DS_Store
+
+# M4 snapshots (local + deployed state, never committed)
+microcosm-data.json
+microcosm-data.json.*.tmp

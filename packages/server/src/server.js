@@ -10,6 +10,7 @@ import http from 'node:http';
 import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { toBaseUnits, fromBaseUnits } from '../../policy-engine/src/index.js';
 import { buildDemoSpace } from './seed.js';
+import { save as saveSnapshot, load as loadSnapshot } from './persist.js';
 
 const TERMINAL_JOB = new Set(['Completed', 'Rejected', 'Expired']);
 const OPEN_JOB = new Set(['Funded', 'Submitted', 'Adjudicating']);
@@ -126,9 +127,13 @@ export function spaceBounds(store, spaceId) {
   };
 }
 
-export function createApp({ store = new SpaceStore(), corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000' } = {}) {
+export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000' } = {}) {
   /** spaceId -> Set<http.ServerResponse> */
   const subscribers = new Map();
+
+  function checkpoint() {
+    if (dataPath) saveSnapshot(store, dataPath);
+  }
 
   function publish(spaceId, entries, baseSeq) {
     const subs = subscribers.get(spaceId);
@@ -146,7 +151,7 @@ export function createApp({ store = new SpaceStore(), corsOrigin = process.env.C
     }
   }
 
-  /** Run a space mutation, then fan out any new activity records over SSE. */
+  /** Run a space mutation, fan out SSE, then checkpoint to disk (M4). */
   async function mutate(spaceId, fn) {
     const before = store.getActivity(spaceId).length;
     const result = await fn();
@@ -154,6 +159,7 @@ export function createApp({ store = new SpaceStore(), corsOrigin = process.env.C
     if (after.length > before) {
       publish(spaceId, after.slice(before), before);
     }
+    checkpoint();
     return result;
   }
 
@@ -165,16 +171,26 @@ export function createApp({ store = new SpaceStore(), corsOrigin = process.env.C
     };
   }
 
-  return { store, subscribers, publish, mutate, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
+  return { store, subscribers, publish, mutate, checkpoint, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
 }
 
-export async function start({ port = 8787, seed = false, store = new SpaceStore() } = {}) {
-  if (seed) {
+export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore() } = {}) {
+  let restored = false;
+  if (dataPath) {
+    restored = loadSnapshot(store, dataPath);
+  }
+  if (restored) {
+    console.log(`[persist] restored ${store.spaces.size} space(s) from ${dataPath}`);
+  } else if (seed) {
     const summary = await buildDemoSpace(store);
     console.log(`[seed] space ${summary.spaceId} (${summary.spaceName})`);
     console.log(`[seed] treasury ${summary.treasury} USDC · request ${summary.requestId} (${summary.requestStatus}) · job ${summary.jobId} (${summary.jobStatus})`);
+    if (dataPath) {
+      saveSnapshot(store, dataPath);
+      console.log(`[persist] snapshot written to ${dataPath}`);
+    }
   }
-  const app = createApp({ store });
+  const app = createApp({ store, dataPath });
   const server = http.createServer((req, res) => dispatch(app, req, res));
   return new Promise((resolve) => {
     server.listen(port, () => {
@@ -268,6 +284,7 @@ async function dispatch(app, req, res) {
       const space = store.createSpace({ name: body.name, description: body.description || '', actorId: body.actorId || 'founder-01' });
       const created = store.getActivity(space.id);
       app.publish(space.id, created, 0);
+      app.checkpoint();
       return ok(201, { space });
     }
     m = path.match(/^\/api\/spaces\/([^/]+)$/);
@@ -528,7 +545,16 @@ async function dispatch(app, req, res) {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('server.js')) {
-  const port = Number(process.env.PORT || 8787);
-  const seed = process.argv.includes('--seed');
-  start({ port, seed });
+  const argv = process.argv.slice(2);
+  const flagValue = (name) => {
+    const eq = argv.find((a) => a.startsWith(`${name}=`));
+    if (eq) return eq.slice(name.length + 1);
+    const i = argv.indexOf(name);
+    if (i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--')) return argv[i + 1];
+    return null;
+  };
+  const port = Number(flagValue('--port') || process.env.PORT || 8787);
+  const dataPath = flagValue('--data') || process.env.DATA_PATH || null;
+  const seed = argv.includes('--seed');
+  start({ port, seed, dataPath });
 }
