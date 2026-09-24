@@ -82,8 +82,14 @@ command preview, wizard) → sections top-to-bottom → `SiteFooter`.
 
 ## 6. Backend binding (when ready, not before)
 
-- Dev server: `npm run dev --workspace=@microcosm/server` → `:8787`, CORS open
-  for `localhost:3000`, pre-seeded living Space (IDs printed on boot).
+- Dev server (local): `npm run dev --workspace=@microcosm/server` → `:8787`,
+  CORS open for `localhost:3000`, pre-seeded living Space (IDs printed on boot).
+- **Live server: `http://52.40.133.66:8791`** (systemd `microcosm-server` on
+  `i-07bd826a6cba642fa`, seeded on boot, auto-restarts). Use this for
+  demos and judge clicks; use local for development.
+- **Durability warning (until M4):** the server is in-memory — a restart
+  reseeds fresh IDs and wipes played state. Never hardcode a space/job ID
+  from the live box; discover via `GET /api/spaces` at session start.
 - First live binding: hero Gauge + counters ← `GET /api/spaces/:id/bounds`.
   Until then, hardcode the seed's numbers. Everything else stays static until
   told otherwise.

@@ -29,6 +29,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **WORK-9** | MCP Agent | Court rejection refunds 100% ($0 lost); impostor verdict and proof-less referral rejected | `VERIFIED` | `npm run test:mcp` (`WORK-9` PASS) | 2026-09-19 |
 | **DEPLOY-1** | Deployment | `DeployXLayer.s.sol` broadcasts all 5 contracts from `PRIVATE_KEY`/`USDC_ADDRESS` env; `make fork-test` / `deploy-testnet` / `verify-contracts` pipeline wired | `VERIFIED` | `forge script … --broadcast` on local EVM (5/5 receipts status 0x1, runtime bytecode present) | 2026-09-19 |
 | **M3** | Interface / HTTP | REST + SSE over the SpaceStore model: spaces, bounds, participants, requests, work, payments, activity, live event stream — same terminal states as MCP | `VERIFIED` | `npm run test:server` (`M3-1…M3-6` PASS) | 2026-09-24 |
+| **HOST-1** | Deployment | M3 API hosted and publicly serving from EC2 (`i-07bd826a6cba642fa:8791`, systemd, seeded): health, spaces, bounds, 422 denial all verified over public HTTP | `VERIFIED` | `curl http://52.40.133.66:8791/api/…` (health ok, bounds escrow math exact, over-cap → 422) | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (78 tests passed, 0 failed) | 2026-09-24 |
@@ -53,6 +54,19 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 * **Status**: `VERIFIED` on M3, SUITE-1.
 * **Shipped alongside**: `docs/API_CONTRACT.md` v1 (frozen endpoint + SSE + type contract for the UI agent), `docs/UI_AGENT_BRIEF.md` (tokens, section map, motion formula, copy deck, acceptance), `packages/server` (`--seed` boots a living demo Space), `GET /bounds` hero-dial binding.
 * **Negative controls executed**: 404 unknown space, 400 bad participant kind / malformed body, 409 double-accept, 422 over-cap payment with proof hash, SSE resume via `?since=`.
+
+### 2026-09-24: M3 API hosted on EC2 (HOST-1)
+* **Command**: `aws ssm send-command` (deploy `76ce290` → systemd `microcosm-server --seed` on `i-07bd826a6cba642fa`) + public `curl http://52.40.133.66:8791/api/…`
+* **Output**:
+  ```text
+  - SG: opened 8791/tcp (revoked the unused 8787 rule after finding a port clash with a local workload; API moved to 8791)
+  - /api/health → { ok: true, network: OKX X Layer Testnet, chainId: 1952 }
+  - /api/spaces → seeded Acme space (4530.000000 USDC) + procurement space
+  - /api/spaces/<seed>/bounds → escrowed 350.000000, remaining 1180.000000 (= 2000 − 470 − 350 exact), denials 1
+  - POST payments $900 → HTTP 422 with denialProof
+  ```
+* **Status**: `VERIFIED` on HOST-1.
+* **Known limit**: server is in-memory until M4 — restarts reseed fresh IDs. Recorded in `docs/UI_AGENT_BRIEF.md` §6.
 
 ### 2026-09-19: Production Hardening — Attestation, Internet Court Adjudication, Deployment Pipeline (ATTEST-1/2, ADJUD-1/2, WORK-8/9, DEPLOY-1, SUITE-1)
 * **Command**: `make test` && `npm run demo` && `forge script script/DeployXLayer.s.sol:DeployXLayer --rpc-url http://127.0.0.1:8545 --broadcast` (local EVM)
