@@ -1,0 +1,13 @@
+{
+  "name": "@microcosm/server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "HTTP REST + SSE interface over the SpaceStore model (M3). Same semantics as MCP.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js --seed",
+    "seed": "node src/seed.js",
+    "test": "node --test test/*.test.js"
+  }
+}

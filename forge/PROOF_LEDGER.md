@@ -28,13 +28,31 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **WORK-8** | MCP Agent | Court-bound Work Order settles on X Layer after `work_request_verdict` → `work_post_verdict` (approve) | `VERIFIED` | `npm run test:mcp` (`WORK-8` PASS) | 2026-09-19 |
 | **WORK-9** | MCP Agent | Court rejection refunds 100% ($0 lost); impostor verdict and proof-less referral rejected | `VERIFIED` | `npm run test:mcp` (`WORK-9` PASS) | 2026-09-19 |
 | **DEPLOY-1** | Deployment | `DeployXLayer.s.sol` broadcasts all 5 contracts from `PRIVATE_KEY`/`USDC_ADDRESS` env; `make fork-test` / `deploy-testnet` / `verify-contracts` pipeline wired | `VERIFIED` | `forge script … --broadcast` on local EVM (5/5 receipts status 0x1, runtime bytecode present) | 2026-09-19 |
+| **M3** | Interface / HTTP | REST + SSE over the SpaceStore model: spaces, bounds, participants, requests, work, payments, activity, live event stream — same terminal states as MCP | `VERIFIED` | `npm run test:server` (`M3-1…M3-6` PASS) | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (63 tests passed, 0 failed) | 2026-09-19 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (78 tests passed, 0 failed) | 2026-09-24 |
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-24: M3 REST + SSE server, frozen API contract, UI agent brief (M3, SUITE-1)
+* **Command**: `make test` (incl. new `make test-server`)
+* **Output**:
+  ```text
+  make test:
+    - 36 Solidity contract tests PASS (4 + 5 + 8 + 11 + 8 across 5 suites)
+    - 13 Space policy engine tests PASS
+    - 23 MCP server tests PASS
+    - 6 HTTP/SSE conformance tests PASS (M3-1 health/space/bounds, M3-2
+      participants/requests/receive/trace, M3-3 work escrow→settle, M3-4
+      422 denial with denialProof, M3-5 seq pagination, M3-6 live SSE settle)
+    Total: 78 passed, 0 failed
+  ```
+* **Status**: `VERIFIED` on M3, SUITE-1.
+* **Shipped alongside**: `docs/API_CONTRACT.md` v1 (frozen endpoint + SSE + type contract for the UI agent), `docs/UI_AGENT_BRIEF.md` (tokens, section map, motion formula, copy deck, acceptance), `packages/server` (`--seed` boots a living demo Space), `GET /bounds` hero-dial binding.
+* **Negative controls executed**: 404 unknown space, 400 bad participant kind / malformed body, 409 double-accept, 422 over-cap payment with proof hash, SSE resume via `?since=`.
 
 ### 2026-09-19: Production Hardening — Attestation, Internet Court Adjudication, Deployment Pipeline (ATTEST-1/2, ADJUD-1/2, WORK-8/9, DEPLOY-1, SUITE-1)
 * **Command**: `make test` && `npm run demo` && `forge script script/DeployXLayer.s.sol:DeployXLayer --rpc-url http://127.0.0.1:8545 --broadcast` (local EVM)

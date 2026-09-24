@@ -1,4 +1,4 @@
-.PHONY: test test-contracts test-runtime test-mcp verify clean demo help fork-test deploy-testnet verify-contracts
+.PHONY: test test-contracts test-runtime test-mcp test-server verify clean demo help fork-test deploy-testnet verify-contracts
 
 XLAYER_RPC_URL ?= https://testrpc.xlayer.tech
 OKLINK_VERIFY_URL ?= https://www.oklink.com/api/v5/explorer/contract/verify-source-code-plugin/XLAYER_TESTNET
@@ -9,13 +9,14 @@ help:
 	@echo "  make test-contracts  - Run Foundry tests for X Layer smart contracts"
 	@echo "  make test-runtime    - Run Space runtime and policy engine test suites"
 	@echo "  make test-mcp        - Run MCP server tool execution and boundary tests"
+	@echo "  make test-server     - Run HTTP REST + SSE conformance tests"
 	@echo "  make fork-test       - Run contract suite against a live X Layer testnet fork (pre-flight, no gas)"
 	@echo "  make deploy-testnet  - Broadcast contracts to OKX X Layer Testnet (needs PRIVATE_KEY)"
 	@echo "  make verify-contracts- Verify deployed sources on OKLink (needs ROUTER_ADDR, COMMERCE_ADDR, OKLINK_API_KEY)"
 	@echo "  make verify          - Run full verification gate (types, lint, suites)"
 	@echo "  make clean           - Remove build artifacts and caches"
 
-test: test-contracts test-runtime test-mcp
+test: test-contracts test-runtime test-mcp test-server
 
 test-contracts:
 	@if [ -d "contracts" ] && [ -f "contracts/foundry.toml" ]; then \
@@ -36,6 +37,13 @@ test-mcp:
 		cd mcp && npm test; \
 	else \
 		echo "ℹ️  MCP package not yet initialized. Skipping."; \
+	fi
+
+test-server:
+	@if [ -d "packages/server" ] && [ -f "packages/server/package.json" ]; then \
+		cd packages/server && npm test; \
+	else \
+		echo "ℹ️  Server package not yet initialized. Skipping."; \
 	fi
 
 verify:

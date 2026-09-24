@@ -8,9 +8,10 @@
     "mcp"
   ],
   "scripts": {
-    "test": "npm run test:policy && npm run test:mcp",
+    "test": "npm run test:policy && npm run test:mcp && npm run test:server",
     "test:policy": "cd packages/policy-engine && npm test",
     "test:mcp": "cd mcp && npm test",
+    "test:server": "cd packages/server && npm test",
     "test:contracts": "make test-contracts",
     "demo": "XLAYER_LIVE=1 node scripts/demo-procurement-space.mjs"
   },

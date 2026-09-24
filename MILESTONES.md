@@ -23,8 +23,8 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | :--- | :--- | :---: | :--- |
 | **M0** | **Onchain Financial Kernel & Invariants** | `VERIFIED` | `make test-contracts` (36 Solidity tests pass) |
 | **M1** | **Space Policy Kernel & EIP-712 Attestation** | `VERIFIED` | `npm run test:policy` (13 tests pass, byte-for-byte fixture) |
-| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (14 tests pass, 10 tools verified) |
-| **M3** | **HTTP REST API & Server-Sent Events (SSE)** | `IN PROGRESS` | `packages/server` test suite (Pending build) |
+| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (23 tests pass, 24 tools verified) |
+| **M3** | **HTTP REST API & Server-Sent Events (SSE)** | `VERIFIED` | `npm run test:server` (M3-1…M3-6 pass: lifecycle, bounds, 422 denials, pagination, live SSE); contract frozen in `docs/API_CONTRACT.md` |
 | **M4** | **Persistent Storage Engine (Disk/SQLite)** | `IN PROGRESS` | `packages/policy-engine/src/storage` (Pending build) |
 | **M5** | **Typed Client SDK & Curated Contract ABIs** | `IN PROGRESS` | `packages/client` test suite (Pending build) |
 | **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `VERIFIED` | `make deploy-testnet` → 5/5 receipts `status true` on chain 1952, runtime bytecode matches compiled artifacts; all 5 sources `Pass - Verified` on OKLink |
