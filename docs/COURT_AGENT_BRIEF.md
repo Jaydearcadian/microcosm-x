@@ -1,5 +1,9 @@
 # Court-Track Brief — GenLayer Onchain Adjudication (M13 slice)
 
+> STATUS: PARKED — do not start. Integration scheduled for a later phase.
+> This brief is complete and frozen for that point; until then, no agent
+> should work this track or modify its listed directories.
+
 You own the Internet Court endgame: replace the last non-onchain step
 (the verdict) with a GenLayer Intelligent Contract + relay. Backend
 (settlement, ledger) and UI (landing) are owned separately — your seams
