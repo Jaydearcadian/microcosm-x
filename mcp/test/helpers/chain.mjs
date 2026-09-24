@@ -16,7 +16,7 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -77,11 +77,45 @@ async function waitForRpc(rpc, timeoutMs = 30000) {
   }
 }
 
+/** Single spoken RPC probe: proves the node answers, not just the port. */
+function probeRpc(rpc) {
+  run('cast', ['chain-id', '--rpc-url', rpc], { timeout: 15000 });
+}
+
+function lockPath(port) {
+  return `/tmp/microcosm-anvil-${port}.json`;
+}
+
+function readLock(port) {
+  try {
+    const raw = readFileSync(lockPath(port), 'utf8');
+    const lock = JSON.parse(raw);
+    if (!lock || !lock.rpc || !lock.contracts?.AgenticCommerce) return null;
+    probeRpc(lock.rpc);
+    return lock;
+  } catch {
+    return null;
+  }
+}
+
+function writeLock(port, data) {
+  writeFileSync(lockPath(port), JSON.stringify(data));
+}
+
+function clearLock(port) {
+  try {
+    unlinkSync(lockPath(port));
+  } catch { /* already gone */ }
+}
+
 function deployKernel(rpc, deployerKey) {
   // foundry ≥1.8 rejects msg.sender reads inside broadcast scripts unless
   // --sender is given: derive it so the script's deployer fallback resolves.
+  // --slow paces broadcast traffic: bursting parallel RPCs wedges anvil's
+  // listener (deaf-but-alive, 45s timeouts) — the same flag human operators
+  // use for testnet deploys.
   const sender = run('cast', ['wallet', 'address', '--private-key', deployerKey]).trim();
-  run('forge', ['script', 'script/DeployXLayer.s.sol:DeployXLayer', '--rpc-url', rpc, '--broadcast', '--sender', sender],
+  run('forge', ['script', 'script/DeployXLayer.s.sol:DeployXLayer', '--rpc-url', rpc, '--broadcast', '--slow', '--sender', sender],
     { cwd: CONTRACTS_DIR, env: { PRIVATE_KEY: deployerKey }, timeout: 300_000 });
   const chainId = run('cast', ['chain-id', '--rpc-url', rpc]).trim();
   const artifact = path.join(CONTRACTS_DIR, 'broadcast', 'DeployXLayer.s.sol', String(Number(chainId)), 'run-latest.json');
@@ -138,7 +172,56 @@ export async function ensureChain({ port = 8545 } = {}) {
 
   // Local mode: private anvil + fresh kernel + funded accounts. Keys and
   // accounts are parsed from anvil's own banner (never hardcoded).
+  // A lockfile lets sequential suites share one chain (one deploy burst,
+  // not one per file) — and a post-deploy probe with one self-heal reboot
+  // guards against a deaf node.
   const rpc = `http://127.0.0.1:${port}`;
+  const reuse = readLock(port);
+  if (reuse) {
+    applyChainEnv(reuse);
+    const { resetAddressCache } = await import('../../src/xlayer.js');
+    resetAddressCache();
+    return { ...reuse, live: 'anvil', cleanup: async () => {} };
+  }
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const booted = await bootLocalChain(port, rpc);
+    try {
+      probeRpc(rpc);
+      writeLock(port, {
+        rpc, chainId: booted.chainId, contracts: booted.contracts,
+        keys: booted.keys, addrs: booted.addrs,
+      });
+      applyChainEnv(booted);
+      const { resetAddressCache } = await import('../../src/xlayer.js');
+      resetAddressCache();
+      const owned = booted.child;
+      return {
+        rpc, chainId: booted.chainId, contracts: booted.contracts,
+        keys: booted.keys, addrs: booted.addrs, live: 'anvil',
+        cleanup: async () => {
+          owned.kill('SIGKILL');
+          clearLock(port);
+        },
+      };
+    } catch (err) {
+      booted.child.kill('SIGKILL');
+      clearLock(port);
+      if (attempt === 2) throw new Error(`chain harness: fresh anvil unresponsive after reboot: ${err.message}`);
+    }
+  }
+  throw new Error('chain harness: unreachable');
+}
+
+function applyChainEnv(booted) {
+  process.env.XLAYER_RPC_URL = booted.rpc;
+  process.env.XLAYER_CHAIN_ID = String(booted.chainId);
+  process.env.XLAYER_COMMERCE_ADDRESS = booted.contracts.AgenticCommerce;
+  process.env.XLAYER_USDC_ADDRESS = booted.contracts.MockERC20;
+  process.env.PRIVATE_KEY = booted.keys.deployer;
+  process.env.PROVIDER_KEY = booted.keys.provider;
+}
+
+async function bootLocalChain(port, rpc) {
   const child = spawn('anvil', ['--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
   // Drain stderr continuously: an undisposed pipe fills (~64KB) and then
   // FREEZES the node process mid-suite. This was the LIVE-6 wedging bug.
@@ -178,29 +261,17 @@ export async function ensureChain({ port = 8545 } = {}) {
     const providerKey = keys[1];
     const deployer = accounts[0];
     const provider = accounts[1];
-    // Pin the throwaway keys into the environment so the adapter can never
-    // pick up a real .env/testnet key during local runs (and vice versa).
-    process.env.PRIVATE_KEY = deployerKey;
-    process.env.PROVIDER_KEY = providerKey;
     const deployed = deployKernel(rpc, deployerKey);
     // Fund the triangle: deployer (client/evaluator/treasury) + provider.
     mintUsdc(rpc, deployed.MockERC20, deployerKey, deployer, 10_000_000_000000n);
     mintUsdc(rpc, deployed.MockERC20, deployerKey, provider, 1_000_000_000000n);
-    process.env.XLAYER_RPC_URL = rpc;
-    process.env.XLAYER_CHAIN_ID = String(deployed.chainId);
-    process.env.XLAYER_COMMERCE_ADDRESS = deployed.AgenticCommerce;
-    process.env.XLAYER_USDC_ADDRESS = deployed.MockERC20;
-    const { resetAddressCache } = await import('../../src/xlayer.js');
-    resetAddressCache();
     return {
-      rpc, chainId: deployed.chainId,
+      child,
+      rpc,
+      chainId: deployed.chainId,
       contracts: { AgenticCommerce: deployed.AgenticCommerce, MockERC20: deployed.MockERC20 },
       keys: { deployer: deployerKey, provider: providerKey },
       addrs: { deployer, provider },
-      live: 'anvil',
-      cleanup: async () => {
-        child.kill('SIGKILL');
-      },
     };
   } catch (err) {
     child.kill('SIGKILL');
