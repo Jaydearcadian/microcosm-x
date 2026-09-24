@@ -8,12 +8,13 @@
     "mcp"
   ],
   "scripts": {
-    "test": "npm run test:policy && npm run test:mcp && npm run test:server",
+    "test": "npm run test:policy && npm run test:mcp && npm run test:server && npm run test:sdk",
     "test:policy": "cd packages/policy-engine && npm test",
     "test:mcp": "cd mcp && npm test",
     "test:server": "cd packages/server && npm test",
+    "test:sdk": "cd packages/sdk && npm test",
     "test:contracts": "make test-contracts",
-    "demo": "XLAYER_LIVE=1 node scripts/demo-procurement-space.mjs"
+    "demo": "node scripts/demo-procurement-space.mjs"
   },
   "keywords": [
     "okx",

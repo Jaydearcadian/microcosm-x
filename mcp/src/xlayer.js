@@ -57,6 +57,25 @@ export function resetAddressCache() {
   CACHED = null;
 }
 
+/**
+ * Totally side-effect-free readiness probe: is there a key AND a reachable
+ * chain? Used by scaffolding (seed) to decide whether the live top-up can
+ * run. Never fabricates anything — returns {ok, reason}.
+ */
+export async function liveReady() {
+  try {
+    privKey();
+  } catch (err) {
+    return { ok: false, reason: `no signing key: ${err.message}` };
+  }
+  try {
+    const id = cast(['chain-id', '--rpc-url', rpcUrl()]);
+    return { ok: true, chainId: Number(id), rpc: rpcUrl() };
+  } catch (err) {
+    return { ok: false, reason: `RPC unreachable: ${err.message.slice(0, 200)}` };
+  }
+}
+
 function readEnvKey(name) {
   if (process.env[name]) return process.env[name].trim();
   if (name === 'PRIVATE_KEY') {

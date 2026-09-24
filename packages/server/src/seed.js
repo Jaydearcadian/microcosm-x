@@ -2,7 +2,11 @@
  * Demo seed (M3): boots a populated Space so the UI agent always opens a
  * living app, never an empty state. Slice-10 loop, frozen mid-flight:
  * founder + agent + counterparty, funded treasury, one request accepted,
- * one job Submitted, one settled payment, one denial.
+ * one escrowed job with submitted proof, one denial.
+ *
+ * Deliberately NO settled payment: settlement is always a real onchain
+ * transfer, and seed fabricates nothing. Run scripts/demo-procurement-space.mjs
+ * (live, needs a key) for the full loop through real settlement.
  */
 
 import { SpaceStore } from '../../../mcp/src/space-store.js';
@@ -58,13 +62,8 @@ export async function buildDemoSpace(store = new SpaceStore()) {
     evidenceUri: 'ipfs://QmGpuClusterEvidence9021',
   });
 
-  const settled = await store.requestPayment({
-    spaceId,
-    actorId: agent,
-    recipient: VENDOR,
-    amount: '120.00',
-    memo: 'Seeded API credits top-up',
-  });
+  // No settled payment here — settlement is always real onchain value and
+  // seed fabricates no receipts. The over-cap denial below is chain-free.
   const denied = await store.requestPayment({
     spaceId,
     actorId: agent,
@@ -84,7 +83,8 @@ export async function buildDemoSpace(store = new SpaceStore()) {
     requestStatus: store.getRequest({ spaceId, requestId: request.requestId }).status,
     jobId,
     jobStatus: store.getJob({ spaceId, jobId }).status,
-    settledReceipt: settled.status === 'SETTLED' ? settled.receipt.receiptId : null,
+    settledReceipt: null,
+    liveTopUp: false,
     denialRecorded: denied.status === 'REJECTED',
   };
 }

@@ -1,0 +1,10 @@
+{
+  "name": "@microcosm/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Typed client for the Microcosm REST API + curated contract ABIs (M5)",
+  "main": "src/client.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

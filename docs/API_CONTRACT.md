@@ -96,7 +96,7 @@ interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT
 ## 4. Seed & dev server
 
 - `npm run dev --workspace=@microcosm/server` boots on `:8787` with CORS open for `http://localhost:3000`.
-- `npm run seed --workspace=@microcosm/server` (or `--seed` flag) boots a populated demo Space: founder + agent + counterparty, funded treasury, one request accepted, one job `Submitted`, one settled payment, one denial. IDs are printed on boot; reboot re-seeds fresh.
+- `npm run seed --workspace=@microcosm/server` (or `--seed` flag) boots a populated demo Space: founder + agent + counterparty, funded treasury, one request accepted, one escrowed job with submitted proof, one denial. No settled receipt is ever seeded (settlement is always real value) — run the live demo for the full loop. IDs are printed on boot; reboot re-seeds fresh.
 - Persistence (M4): `--data=<path>` (or `DATA_PATH`) enables atomic snapshots on every mutation; an existing snapshot restores on boot (seed is skipped). Live box: `/var/lib/microcosm/microcosm-data.json`.
 - UI agent runs against the live dev server. No fixture bundles.
 

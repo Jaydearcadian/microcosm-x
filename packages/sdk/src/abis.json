@@ -1,0 +1,38 @@
+{
+  "_note": "Curated minimal ABIs, parameter names intentionally omitted so selectors are comparable by string equality (drift test enforces it). Human-readable form, parseable by ethers/viem/cast.",
+  "AgenticCommerce": [
+    "function createJob(address,address,uint256,string)",
+    "function setBudget(uint256,uint256)",
+    "function fund(uint256,uint256)",
+    "function submit(uint256,bytes32)",
+    "function complete(uint256,bytes32)",
+    "function claimRefund(uint256)",
+    "function requestAdjudication(uint256)",
+    "function resolveAdjudication(uint256,bool,bytes32)",
+    "function settleJobWithAttestation(uint256,(bytes32,address,uint256,uint256,uint256,bytes32),bytes)",
+    "function getJob(uint256)",
+    "event JobCreated(uint256 indexed,address indexed,address indexed,address,string,uint256)",
+    "event JobFunded(uint256 indexed,uint256)",
+    "event JobSubmitted(uint256 indexed,bytes32)",
+    "event JobCompleted(uint256 indexed,bytes32)",
+    "event JobRejected(uint256 indexed,address,bytes32)",
+    "event JobExpired(uint256 indexed)",
+    "event AdjudicationRequested(uint256 indexed,address indexed,bytes32)",
+    "event AdjudicationResolved(uint256 indexed,address indexed,bool,bytes32)",
+    "event AttestedJobSettlement(uint256 indexed,address indexed,uint256,uint256)"
+  ],
+  "SettlementRouter": [
+    "function settleWithAttestation((bytes32,address,uint256,uint256,uint256,bytes32),bytes)",
+    "function settleDirect(bytes32,address,address,uint256)",
+    "function setController(address,bool)",
+    "function registerSpaceToken(bytes32,address)",
+    "event DirectSettlementRecorded(bytes32 indexed,address indexed,address indexed,address,uint256)",
+    "event AttestedSettlement(bytes32 indexed,address indexed,uint256,bytes32,uint256)"
+  ],
+  "ClaimEscrow": [
+    "function createEscrow(bytes32,address,uint256,string)",
+    "function claim(bytes32,address)",
+    "event EscrowCreated(bytes32 indexed,address indexed,address indexed,uint256,string)",
+    "event EscrowClaimed(bytes32 indexed,address indexed,uint256)"
+  ]
+}

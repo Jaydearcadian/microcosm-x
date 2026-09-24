@@ -282,7 +282,12 @@ async function dispatch(app, req, res) {
     }
     if (req.method === 'POST' && path === '/api/spaces') {
       requireFields(body, ['name']);
-      const space = store.createSpace({ name: body.name, description: body.description || '', actorId: body.actorId || 'founder-01' });
+      if (body.chainId !== undefined && !Number.isInteger(Number(body.chainId))) {
+        throw Object.assign(new Error("'chainId' must be an integer"), { httpStatus: 400, httpCode: 'VALIDATION' });
+      }
+      // chainId/network are settable because settlement is chain-bound:
+      // a Space must live on the chain it settles on (loud mismatch otherwise).
+      const space = store.createSpace({ name: body.name, description: body.description || '', actorId: body.actorId || 'founder-01', chainId: body.chainId !== undefined ? Number(body.chainId) : undefined, network: body.network });
       const created = store.getActivity(space.id);
       app.publish(space.id, created, 0);
       app.checkpoint();

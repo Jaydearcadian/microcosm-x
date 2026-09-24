@@ -9,9 +9,11 @@
  * checked, payment occurs, and activity records everything.
  *
  * LIVE ONCHAIN SETTLEMENT — every settlement below is a REAL onchain transfer
- * via the deployed contracts on OKX X Layer Testnet chain 1952
- * (receipt.simulated = false, actual tx hashes). The court verdict itself is
- * still simulated (no onchain court deployed); payouts are real.
+ * via the deployed contracts (actual tx hashes, verifiable on OKLink).
+ * There is no simulated fallback anywhere: without a key and RPC the demo
+ * fails loudly instead of printing a fake receipt. Verdicts are Space-level
+ * authorizations recorded in the audit trail; every payout they trigger is
+ * a real onchain transfer. (No onchain GenLayer court deployed yet — see M13.)
  *
  * Loop demonstrated (rebaseline §17 Slice 10):
  * 1.  Create Space
@@ -163,7 +165,7 @@ async function main() {
   });
   const evaluated = JSON.parse(evalRes.content[0].text);
   console.log(`  Outcome: ${evaluated.status} ✅ (Submitted -> Completed)`);
-  console.log(`  • Tx Hash:            ${evaluated.receipt.txHash} (${evaluated.receipt.simulated ? 'SIMULATED — no onchain transfer' : 'REAL onchain transfer'})`);
+  console.log(`  • Tx Hash:            ${evaluated.receipt.txHash} (REAL onchain transfer)`);
   console.log(`  • Receipt ID:         ${evaluated.receipt.receiptId}`);
   console.log(`  • Paid to Supplier:   $${evaluated.receipt.amount} USDC`);
   console.log(`  • Remaining Treasury: $${evaluated.spaceBalance} USDC`);
@@ -249,7 +251,7 @@ async function main() {
   console.log(`  • Work:          ${trace.chain.work.status} (${trace.chain.work.jobId}, $${trace.chain.work.budget})`);
   console.log(`  • Result:        ${trace.chain.result ? trace.chain.result.output : '(none)'}`);
   console.log(`  • Authorization: authHash ${trace.chain.authorization.authHash.slice(0, 18)}…`);
-  console.log(`  • Payment:       $${trace.chain.payment.amount} via ${trace.chain.payment.txHash.slice(0, 18)}… (${trace.chain.payment.simulated ? 'SIMULATED' : 'REAL onchain'}, chain ${trace.chain.payment.chainId})`);
+  console.log(`  • Payment:       $${trace.chain.payment.amount} via ${trace.chain.payment.txHash.slice(0, 18)}… (REAL onchain, chain ${trace.chain.payment.chainId})`);
   console.log('  Activity events:');
   trace.activity.forEach((act, idx) => {
     const rawAmount = act.amount || act.budget || act.refundedAmount || act.settlement?.amount;

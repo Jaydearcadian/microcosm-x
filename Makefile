@@ -16,7 +16,7 @@ help:
 	@echo "  make verify          - Run full verification gate (types, lint, suites)"
 	@echo "  make clean           - Remove build artifacts and caches"
 
-test: test-contracts test-runtime test-mcp test-server
+test: test-contracts test-runtime test-mcp test-server test-sdk
 
 test-contracts:
 	@if [ -d "contracts" ] && [ -f "contracts/foundry.toml" ]; then \
@@ -44,6 +44,13 @@ test-server:
 		cd packages/server && npm test; \
 	else \
 		echo "ℹ️  Server package not yet initialized. Skipping."; \
+	fi
+
+test-sdk:
+	@if [ -d "packages/sdk" ] && [ -f "packages/sdk/package.json" ]; then \
+		cd packages/sdk && npm test; \
+	else \
+		echo "ℹ️  SDK package not yet initialized. Skipping."; \
 	fi
 
 verify:

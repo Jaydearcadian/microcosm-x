@@ -9,13 +9,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { start } from '../src/server.js';
+import { ensureChain } from '../../../mcp/test/helpers/chain.mjs';
+import { XLayerAdapter } from '../../../mcp/src/xlayer.js';
 
-const VENDOR = '0x1111111111111111111111111111111111111111';
 const FOUNDER = 'Ada Founder';
-const AGENT = 'ConformanceBot';
+// Onchain-backed operator identities (member records carry real addresses;
+// settlement resolves display ids to these for the chain calls).
+let OP;
+let VENDOR;
 
 let base;
 let ctx;
+let chain;
+let adapter;
 
 async function api(method, path, body) {
   const res = await fetch(`${base}${path}`, {
@@ -28,6 +34,10 @@ async function api(method, path, body) {
 }
 
 test.before(async () => {
+  chain = await ensureChain({ port: 18546 });
+  adapter = new XLayerAdapter();
+  OP = chain.addrs.deployer;
+  VENDOR = chain.addrs.provider;
   ctx = await start({ port: 0, store: new SpaceStore() });
   base = ctx.url;
 });
@@ -35,6 +45,7 @@ test.before(async () => {
 test.after(async () => {
   ctx.server.closeAllConnections?.();
   ctx.server.close();
+  await chain.cleanup();
 });
 
 test('M3-1: health + space lifecycle (create → fund → bounds)', async () => {
@@ -42,11 +53,17 @@ test('M3-1: health + space lifecycle (create → fund → bounds)', async () => 
   assert.equal(health.status, 200);
   assert.equal(health.json.ok, true);
 
-  const created = await api('POST', '/api/spaces', { name: 'Conformance Space', actorId: FOUNDER });
+  const created = await api('POST', '/api/spaces', { name: 'Conformance Space', actorId: FOUNDER, chainId: chain.chainId });
   assert.equal(created.status, 201);
   const spaceId = created.json.space.id;
   assert.ok(spaceId.startsWith('space-'));
   ctx.spaceId = spaceId;
+
+  // Onchain-backed operator roster (live settlement resolves these).
+  const op = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Agent', displayName: 'TreasuryOp', address: OP });
+  assert.equal(op.status, 201);
+  const vendor = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Counterparty', displayName: 'VendorBot', address: VENDOR });
+  assert.equal(vendor.status, 201);
 
   const funded = await api('POST', `/api/spaces/${spaceId}/fund`, { amount: '5000.00', actorId: FOUNDER });
   assert.equal(funded.status, 200);
@@ -65,7 +82,7 @@ test('M3-1: health + space lifecycle (create → fund → bounds)', async () => 
 
 test('M3-2: participants + request lifecycle (create → accept → receive → trace)', async () => {
   const { spaceId } = ctx;
-  const agent = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Agent', displayName: AGENT, address: '0x2222222222222222222222222222222222222222' });
+  const agent = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Agent', displayName: 'ConformanceBot' });
   assert.equal(agent.status, 201);
 
   const badKind = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Ghost', displayName: 'X' });
@@ -98,9 +115,9 @@ test('M3-2: participants + request lifecycle (create → accept → receive → 
 test('M3-3: work lifecycle over HTTP (escrow → submit → approve → settle)', async () => {
   const { spaceId, requestId } = ctx;
   const created = await api('POST', `/api/spaces/${spaceId}/work`, {
-    actorId: AGENT,
+    actorId: OP,
     provider: VENDOR,
-    evaluator: FOUNDER,
+    evaluator: OP,
     description: 'Conformance GPUs',
     budget: '350.00',
     deadline: new Date(Date.now() + 86400000).toISOString(),
@@ -113,6 +130,7 @@ test('M3-3: work lifecycle over HTTP (escrow → submit → approve → settle)'
   const bounds = await api('GET', `/api/spaces/${spaceId}/bounds`);
   assert.equal(bounds.json.escrowed, '350.000000');
 
+  const before = await adapter.balanceOf(VENDOR);
   const submitted = await api('POST', `/api/spaces/${spaceId}/work/${ctx.jobId}/submit`, {
     actorId: VENDOR,
     deliverableHash: `0x${'a'.repeat(64)}`,
@@ -122,21 +140,23 @@ test('M3-3: work lifecycle over HTTP (escrow → submit → approve → settle)'
   assert.equal(submitted.json.status, 'Submitted');
 
   const evaluated = await api('POST', `/api/spaces/${spaceId}/work/${ctx.jobId}/evaluate`, {
-    evaluatorId: FOUNDER,
+    evaluatorId: OP,
     approved: true,
     feedback: 'Verified via REST.',
   });
   assert.equal(evaluated.status, 200);
   assert.equal(evaluated.json.status, 'Completed');
   assert.equal(evaluated.json.receipt.status, 'SETTLED');
-  assert.ok(evaluated.json.receipt.txHash.startsWith('0x'));
-  assert.equal(typeof evaluated.json.receipt.simulated, 'boolean');
+  assert.ok(/^0x[0-9a-fA-F]{64}$/.test(evaluated.json.receipt.txHash), 'real onchain tx hash');
+  assert.ok(!('simulated' in evaluated.json.receipt), 'no simulated field exists anymore');
+  const after = await adapter.balanceOf(VENDOR);
+  assert.equal(after - before, 350_000_000n, 'provider gained exactly 350 USDC onchain');
 });
 
 test('M3-4: policy denial over HTTP is 422 with denialProof (Sandbox contract)', async () => {
   const { spaceId } = ctx;
   const denied = await api('POST', `/api/spaces/${spaceId}/payments`, {
-    actorId: AGENT,
+    actorId: OP,
     recipient: VENDOR,
     amount: '900.00',
     memo: 'Over-cap attempt',
@@ -189,12 +209,13 @@ test('M3-6: SSE stream delivers live payment settlement', async () => {
     }
   })();
   const payment = await api('POST', `/api/spaces/${spaceId}/payments`, {
-    actorId: AGENT,
+    actorId: OP,
     recipient: VENDOR,
     amount: '50.00',
     memo: 'SSE probe',
   });
   assert.equal(payment.status, 200);
+  assert.ok(/^0x[0-9a-fA-F]{64}$/.test(payment.json.receipt.txHash));
 
   const envelope = await Promise.race([
     firstData,
