@@ -113,6 +113,33 @@ export class SpaceStore {
     };
   }
 
+  /**
+   * REAL onchain settlement via XLayerAdapter. Throws loudly on any failure
+   * (no key, no RPC, address mismatch, chain mismatch, revert) — callers
+   * must only mutate Space state after this resolves. There is no
+   * simulated fallback anywhere in this file.
+   */
+  async _liveSettle({ space, jobIdLabel, provider, evaluatorId, evaluatorAddr, description, budget, deliverableHash }) {
+    const { XLayerAdapter } = await import('./xlayer.js');
+    const adapter = new XLayerAdapter();
+    if (adapter.chainId !== space.chainId) {
+      throw new Error(`Chain mismatch: Space '${space.id}' expects chain ${space.chainId}, adapter targets ${adapter.chainId} (${adapter.rpc})`);
+    }
+    const { providerKey } = await import('./provider-key.js');
+    const evaluator = evaluatorAddr || evaluatorId;
+    const result = adapter.settleJobOnchain({
+      jobIdLabel,
+      provider,
+      evaluator,
+      description,
+      budget,
+      deliverableHash,
+      spaceId: space.id,
+      providerKey: providerKey(),
+    });
+    return { txHash: result.txHashes.complete, txHashes: result.txHashes, onchainJobId: result.jobId };
+  }
+
   async requestPayment({ spaceId, actorId, recipient, amount, memo }) {
     const space = this.spaces.get(spaceId);
     if (!space) {
@@ -153,7 +180,25 @@ export class SpaceStore {
       };
     }
 
-    // Compliant payment: update Space balance and ledger
+    // Compliant payment: settle REAL value onchain first. If this throws,
+    // Space books are untouched — there is no simulated fallback.
+    const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
+    let live;
+    try {
+      live = await this._liveSettle({
+        space,
+        jobIdLabel: actionId,
+        provider: recipient,
+        evaluatorId: actorId,
+        evaluatorAddr: memberAddr,
+        description: memo || `Payment ${actionId}`,
+        budget: amount,
+        deliverableHash: evaluation.approvedIntent.deliverableHash || evaluation.approvedIntent.authHash,
+      });
+    } catch (err) {
+      throw new Error(`Onchain settlement failed; Space books untouched: ${err.message}`, { cause: err });
+    }
+
     const balanceBefore = toBaseUnits(space.balance);
     const amountBase = toBaseUnits(amount);
     const spentTodayBefore = toBaseUnits(space.totalSpentToday);
@@ -161,38 +206,6 @@ export class SpaceStore {
     space.balance = fromBaseUnits(balanceBefore - amountBase);
     space.totalSpentToday = fromBaseUnits(spentTodayBefore + amountBase);
 
-    // Live onchain settlement: USDC moves on chain 1952 via the deployed
-    // contracts (SettlementRouter / AgenticCommerce). The adapter announces
-    // itself; the txHash is the real transaction, not randomness.
-    let txHash;
-    let simulated = false;
-    try {
-      if (process.env.XLAYER_LIVE !== '1') {
-        throw new Error('live settlement not enabled (set XLAYER_LIVE=1)');
-      }
-      const { XLayerAdapter } = await import('./xlayer.js');
-      const adapter = new XLayerAdapter();
-      const { providerKey } = await import('./provider-key.js');
-      // actorId / recipient may be Space member ids; resolve to wallet
-      // addresses for the onchain evaluator binding (cast needs addresses).
-      const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
-      const result = adapter.settleJobOnchain({
-        jobIdLabel: actionId,
-        provider: recipient,
-        evaluator: memberAddr || actorId,
-        description: memo || `Payment ${actionId}`,
-        budget: amount,
-        deliverableHash: evaluation.approvedIntent.deliverableHash || evaluation.approvedIntent.authHash,
-        spaceId,
-        providerKey: providerKey(),
-      });
-      txHash = result.txHashes.complete;
-    } catch (err) {
-      // Live settlement unavailable (no key, no RPC). Fall back to an
-      // announced simulated receipt — never a claim of a real transfer.
-      txHash = `0x${crypto.randomBytes(32).toString('hex')}`;
-      simulated = true;
-    }
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId,
@@ -203,8 +216,9 @@ export class SpaceStore {
       asset: space.currency,
       network: 'OKX X Layer Testnet',
       chainId: space.chainId,
-      txHash,
-      simulated,
+      txHash: live.txHash,
+      txHashes: live.txHashes,
+      onchainJobId: live.onchainJobId,
       status: 'SETTLED',
       authHash: evaluation.approvedIntent.authHash,
       timestamp,
@@ -275,7 +289,8 @@ export class SpaceStore {
               receiptId: payment.receiptId,
               amount: payment.amount,
               txHash: payment.txHash,
-              simulated: payment.simulated,
+              txHashes: payment.txHashes,
+              onchainJobId: payment.onchainJobId,
               network: payment.network,
               chainId: payment.chainId,
             }
@@ -750,50 +765,41 @@ export class SpaceStore {
   }
 
   /**
-   * Settle escrowed funds to the provider on OKX X Layer (mock receipt).
+   * Settle escrowed funds to the provider on OKX X Layer (REAL transaction).
    * Shared by evaluator approval and Internet Court verdict settlement.
+   * Settlement happens FIRST: if it throws, the job is untouched (still
+   * Submitted/Adjudicating) and no receipt exists. No simulated fallback.
    * The daily budget was already consumed at escrow time; settlement must
    * not double-count it.
    */
   async _settleJob(space, job, fromStatus, decidedBy, feedback) {
+    // Resolve Space member ids to wallet addresses for the onchain
+    // evaluator binding (the chain needs addresses, not display ids).
+    const evaluatorAddr = (space.members || []).find((mb) => mb.id === job.evaluator || mb.id === job.client)?.address
+      || (space.members || []).flatMap((mb) => mb.address || [])[0]
+      || job.evaluator;
+    let live;
+    try {
+      live = await this._liveSettle({
+        space,
+        jobIdLabel: job.jobId,
+        provider: job.provider,
+        evaluatorId: job.evaluator,
+        evaluatorAddr,
+        description: job.description,
+        budget: job.budget,
+        deliverableHash: job.deliverableHash,
+      });
+    } catch (err) {
+      throw new Error(`Onchain settlement failed for Work Order '${job.jobId}'; job left '${job.status}', no receipt created: ${err.message}`, { cause: err });
+    }
+
     const timestamp = new Date().toISOString();
     job.status = 'Completed';
     job.feedback = feedback || null;
     job.completedAt = timestamp;
     job.statusHistory.push({ status: 'Completed', timestamp });
 
-    // Live onchain settlement for evaluator/court settlement. The adapter
-    // announces itself; the txHash is the real transaction when live, and an
-    // announced simulated hash only when the key/RPC is unavailable.
-    let txHash;
-    let simulated = false;
-    try {
-      if (process.env.XLAYER_LIVE !== '1') {
-        throw new Error('live settlement not enabled (set XLAYER_LIVE=1)');
-      }
-      const { XLayerAdapter } = await import('./xlayer.js');
-      const adapter = new XLayerAdapter();
-      const { providerKey } = await import('./provider-key.js');
-      // Resolve Space member ids to wallet addresses for the onchain
-      // evaluator binding (cast needs addresses, not display ids).
-      const evaluatorAddr = (space.members || []).find((mb) => mb.id === job.evaluator || mb.id === job.client)?.address
-        || (space.members || []).flatMap((mb) => mb.address || [])[0]
-        || job.evaluator;
-      const result = adapter.settleJobOnchain({
-        jobIdLabel: job.jobId,
-        provider: job.provider,
-        evaluator: evaluatorAddr,
-        description: job.description,
-        budget: job.budget,
-        deliverableHash: job.deliverableHash,
-        spaceId: space.id,
-        providerKey: providerKey(),
-      });
-      txHash = result.txHashes.complete;
-    } catch (err) {
-      txHash = `0x${crypto.randomBytes(32).toString('hex')}`;
-      simulated = true;
-    }
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId: job.actionId,
@@ -807,8 +813,9 @@ export class SpaceStore {
       asset: space.currency,
       network: 'OKX X Layer Testnet',
       chainId: space.chainId,
-      txHash,
-      simulated,
+      txHash: live.txHash,
+      txHashes: live.txHashes,
+      onchainJobId: live.onchainJobId,
       status: 'SETTLED',
       deliverableHash: job.deliverableHash,
       evidenceUri: job.evidenceUri,

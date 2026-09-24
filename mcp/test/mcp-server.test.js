@@ -35,27 +35,6 @@ test('MCP-1: Agent can discover Space capabilities and policy rules', async () =
   assert.ok(data.rules.allowedCounterparties.includes('0x1111111111111111111111111111111111111111'));
 });
 
-test('MCP-2: Agent requests compliant payment ($350) -> Policy PASS -> Settled on X Layer', async () => {
-  const store = new SpaceStore();
-  const res = await handleToolCall(store, 'payments_request', {
-    spaceId: 'space-procurement-001',
-    actorId: 'agent-procure-01',
-    recipient: '0x1111111111111111111111111111111111111111',
-    amount: '350.00',
-    memo: 'Cloud compute allocation',
-  });
-
-  assert.equal(res.isError, undefined);
-  const data = JSON.parse(res.content[0].text);
-  assert.equal(data.status, 'SETTLED');
-  assert.ok(data.receipt);
-  assert.equal(data.receipt.amount, '350.00');
-  assert.equal(data.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(data.receipt.chainId, 1952);
-  assert.ok(data.receipt.txHash.startsWith('0x'));
-  assert.equal(data.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
-});
-
 test('MCP-3: Agent requests non-compliant payment ($900 > $500) -> isError true with DenialProof', async () => {
   const store = new SpaceStore();
   const res = await handleToolCall(store, 'payments_request', {
@@ -79,41 +58,10 @@ test('MCP-3: Agent requests non-compliant payment ($900 > $500) -> isError true 
   assert.equal(space.balance, '5000.00');
 });
 
-test('MCP-4: Activity log maintains full continuity of settled payments and denials', async () => {
-  const store = new SpaceStore();
-
-  // 1. Successful payment
-  await handleToolCall(store, 'payments_request', {
-    spaceId: 'space-procurement-001',
-    actorId: 'agent-procure-01',
-    recipient: '0x1111111111111111111111111111111111111111',
-    amount: '350.00',
-    memo: 'Job 1',
-  });
-
-  // 2. Denied payment
-  await handleToolCall(store, 'payments_request', {
-    spaceId: 'space-procurement-001',
-    actorId: 'agent-procure-01',
-    recipient: '0x1111111111111111111111111111111111111111',
-    amount: '900.00',
-    memo: 'Job 2 (excessive)',
-  });
-
-  // 3. Query activity
-  const res = await handleToolCall(store, 'activity_list', {
-    spaceId: 'space-procurement-001',
-  });
-  assert.equal(res.isError, undefined);
-  const { activity } = JSON.parse(res.content[0].text);
-
-  assert.equal(activity.length, 2);
-  assert.equal(activity[0].type, 'PAYMENT_SETTLED');
-  assert.equal(activity[0].amount, '350.00');
-  assert.equal(activity[1].type, 'PAYMENT_DENIED');
-  assert.equal(activity[1].amount, '900.00');
-  assert.ok(activity[1].denialProof);
-});
+// NOTE: settled-payment success legs live in live-settlement.test.js
+// (LIVE-1…LIVE-6) — every success path moves REAL value on a REAL EVM.
+// This file keeps the offline-provable paths: denials, validation, escrow,
+// expiry, proof-gating, rejections, and state machine negatives.
 
 // --- First-class Work lifecycle & Gaia exception handling -------------------
 
@@ -183,62 +131,6 @@ test('WORK-2: provider submits deliverable hash (Funded -> Submitted)', async ()
     data.job.deliverableHash,
     '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef'
   );
-});
-
-test('WORK-3: evaluator approves -> Completed, payment settles on OKX X Layer', async () => {
-  const store = new SpaceStore();
-  const created = JSON.parse(
-    (
-      await handleToolCall(store, 'work_create', {
-        spaceId: WORK_SPACE,
-        actorId: WORK_CLIENT,
-        provider: WORK_VENDOR,
-        evaluator: WORK_EVALUATOR,
-        description: 'GPU cluster allocation',
-        budget: '350.00',
-        deadline: futureDeadline(),
-      })
-    ).content[0].text
-  );
-  await handleToolCall(store, 'work_submit', {
-    spaceId: WORK_SPACE,
-    jobId: created.job.jobId,
-    actorId: WORK_VENDOR,
-    deliverableHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    evidenceUri: 'ipfs://QmApprovalEvidence',
-  });
-
-  const res = await handleToolCall(store, 'work_evaluate', {
-    spaceId: WORK_SPACE,
-    jobId: created.job.jobId,
-    evaluatorId: WORK_EVALUATOR,
-    approved: true,
-    feedback: 'Deliverable verified: 100 GPU-hours provisioned',
-  });
-
-  assert.equal(res.isError, undefined);
-  const data = JSON.parse(res.content[0].text);
-  assert.equal(data.status, 'Completed');
-  assert.equal(data.job.status, 'Completed');
-  // Settlement receipt proves X Layer settlement with deliverable proof bound
-  assert.ok(data.receipt);
-  assert.equal(data.receipt.status, 'SETTLED');
-  assert.equal(data.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(data.receipt.chainId, 1952);
-  assert.ok(data.receipt.txHash.startsWith('0x'));
-  assert.equal(data.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
-  assert.equal(
-    data.receipt.deliverableHash,
-    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  );
-  // Escrowed funds left the Space: balance stays at $4,650 (not refunded)
-  assert.equal(data.spaceBalance, '4650.000000');
-
-  const fetched = JSON.parse(
-    (await handleToolCall(store, 'work_get', { spaceId: WORK_SPACE, jobId: created.job.jobId }))
-      .content[0].text
-  );
-  assert.equal(fetched.job.status, 'Completed');
 });
 
 test('WORK-4 (negative): evaluator rejects -> Rejected, Gaia exception refunds Space treasury ($0 lost)', async () => {
@@ -428,94 +320,6 @@ test('WORK-7 (regression): concurrent escrows cannot breach the daily budget; re
   assert.equal(retry.isError, undefined);
   const retryData = JSON.parse(retry.content[0].text);
   assert.equal(retryData.status, 'Funded');
-});
-
-test('WORK-8: Internet Court approval settles escrow on X Layer', async () => {
-  const store = new SpaceStore();
-  const COURT = 'court-genlayer-01';
-  const rubricHash = '0x' + '1'.repeat(64);
-
-  const created = JSON.parse(
-    (
-      await handleToolCall(store, 'work_create', {
-        spaceId: WORK_SPACE,
-        actorId: WORK_CLIENT,
-        provider: WORK_VENDOR,
-        evaluator: WORK_EVALUATOR,
-        adjudicator: COURT,
-        rubricHash,
-        description: 'Court-gated GPU delivery',
-        budget: '300.00',
-        deadline: futureDeadline(),
-      })
-    ).content[0].text
-  );
-  assert.equal(created.status, 'Funded');
-  assert.equal(created.job.adjudicator, COURT);
-
-  const deliverableHash = '0x' + '2'.repeat(64);
-  await handleToolCall(store, 'work_submit', {
-    spaceId: WORK_SPACE,
-    jobId: created.job.jobId,
-    actorId: WORK_VENDOR,
-    deliverableHash,
-    evidenceUri: 'ipfs://QmCourtEvidence001',
-  });
-
-  // Court-bound work skips single-evaluator settlement.
-  const bypass = await handleToolCall(store, 'work_evaluate', {
-    spaceId: WORK_SPACE,
-    jobId: created.job.jobId,
-    evaluatorId: WORK_EVALUATOR,
-    approved: true,
-  });
-  assert.equal(bypass.isError, true);
-
-  // Refer to the court: the resolver receives the full case tuple.
-  const referred = JSON.parse(
-    (
-      await handleToolCall(store, 'work_request_verdict', {
-        spaceId: WORK_SPACE,
-        jobId: created.job.jobId,
-        actorId: WORK_CLIENT,
-      })
-    ).content[0].text
-  );
-  assert.equal(referred.status, 'Adjudicating');
-  assert.equal(referred.case.deliverableHash, deliverableHash);
-  assert.equal(referred.case.evidenceUri, 'ipfs://QmCourtEvidence001');
-  assert.equal(referred.case.rubricHash, rubricHash);
-  assert.ok(referred.case.caseId.startsWith('case-'));
-
-  // Payouts halt while adjudicating.
-  const during = await handleToolCall(store, 'work_evaluate', {
-    spaceId: WORK_SPACE,
-    jobId: created.job.jobId,
-    evaluatorId: WORK_EVALUATOR,
-    approved: true,
-  });
-  assert.equal(during.isError, true);
-
-  // The court posts its verdict back: escrow settles on X Layer.
-  const verdict = JSON.parse(
-    (
-      await handleToolCall(store, 'work_post_verdict', {
-        spaceId: WORK_SPACE,
-        jobId: created.job.jobId,
-        adjudicatorId: COURT,
-        approved: true,
-        reason: 'Deliverable meets rubric: 100 GPU-hours verified',
-      })
-    ).content[0].text
-  );
-  assert.equal(verdict.status, 'Completed');
-  assert.equal(verdict.job.status, 'Completed');
-  assert.ok(verdict.receipt);
-  assert.equal(verdict.receipt.network, 'OKX X Layer Testnet');
-  assert.equal(verdict.receipt.chainId, 1952);
-  assert.equal(verdict.receipt.simulated, true, 'receipt must announce it is simulated per AGENTS.md');
-  assert.equal(verdict.receipt.deliverableHash, deliverableHash);
-  assert.equal(verdict.spaceBalance, '4700.000000');
 });
 
 test('WORK-9 (negative): court rejection refunds in full; impostor verdicts fail', async () => {
@@ -913,90 +717,12 @@ test('REQ-5 (Slice 4): participant receives Request + Context + Authority + Spac
   assert.match(stranger.content[0].text, /not an active participant/);
 });
 
-test('REQ-6 (Slice 8): activity_trace walks the full evidence chain', async () => {
+// NOTE: REQ-6's settled-payment trace leg now lives in live-settlement.test.js
+// (LIVE-6) with a REAL onchain payment. The unknown-request negative stays
+// offline-provable:
+
+test('REQ-6b (negative): trace of an unknown request errors', async () => {
   const store = new SpaceStore();
-  // Full loop: request → work → settlement → complete
-  const created = JSON.parse(
-    (
-      await handleToolCall(store, 'requests_create', {
-        spaceId: PARTICIPANT_SPACE, createdBy: 'Treasury Admin', title: 'Buy 100 units of X',
-      })
-    ).content[0].text
-  ).request;
-
-  const accepted = JSON.parse(
-    (
-      await handleToolCall(store, 'requests_accept', {
-        spaceId: PARTICIPANT_SPACE, requestId: created.requestId, actorId: 'Autonomous Procurement Agent',
-      })
-    ).content[0].text
-  ).request;
-
-  // create Work bound to the request (auto-binding via requestId)
-  const workRes = JSON.parse(
-    (
-      await handleToolCall(store, 'work_create', {
-        spaceId: PARTICIPANT_SPACE,
-        actorId: 'Autonomous Procurement Agent',
-        provider: '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE',
-        evaluator: 'admin-01',
-        description: 'Buy 100 units of X',
-        budget: '100.00',
-        deadline: futureDeadline(),
-        requestId: created.requestId,
-      })
-    ).content[0].text
-  );
-  assert.ok(workRes.request, 'createJob must return the Request binding');
-  assert.equal(workRes.request.requestId, created.requestId);
-
-  // Submit + approve (simulated fallback fires without a key/RPC; the chain
-  // inspector must still walk it end to end).
-  await handleToolCall(store, 'work_submit', {
-    spaceId: PARTICIPANT_SPACE, jobId: workRes.job.jobId,
-    actorId: '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE',
-    deliverableHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  });
-  await handleToolCall(store, 'work_evaluate', {
-    spaceId: PARTICIPANT_SPACE, jobId: workRes.job.jobId, evaluatorId: 'admin-01', approved: true,
-  });
-  await handleToolCall(store, 'requests_complete', {
-    spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
-    actorId: 'Autonomous Procurement Agent', result: { output: '100 units delivered' },
-  });
-
-  const trace = JSON.parse(
-    (
-      await handleToolCall(store, 'activity_trace', {
-        spaceId: PARTICIPANT_SPACE, requestId: created.requestId,
-      })
-    ).content[0].text
-  );
-  // Full chain present
-  assert.equal(trace.chain.request.requestId, created.requestId);
-  assert.ok(trace.chain.work, 'work stage present');
-  assert.equal(trace.chain.work.jobId, workRes.job.jobId);
-  assert.ok(trace.chain.result, 'result stage present');
-  assert.equal(trace.chain.result.output, '100 units delivered');
-  assert.ok(trace.chain.authorization, 'authorization stage present');
-  assert.ok(trace.chain.authorization.authHash.startsWith('0x'));
-  assert.ok(trace.chain.payment, 'payment stage present');
-  assert.equal(trace.chain.payment.amount, '100.000000');
-  assert.ok(trace.chain.payment.txHash.startsWith('0x'));
-  assert.ok(
-    typeof trace.chain.payment.simulated === 'boolean',
-    'receipt must announce its mode (simulated: false when live, true in fallback)'
-  );
-  // Activity events for both request and work, ordered by timestamp
-  assert.ok(trace.activity.length >= 5, 'REQUEST_CREATED + REQUEST_ACCEPTED + WORK_CREATED + WORK_SUBMITTED + WORK_COMPLETED + REQUEST_COMPLETED');
-  const types = trace.activity.map((a) => a.type);
-  assert.ok(types.includes('REQUEST_CREATED'));
-  assert.ok(types.includes('REQUEST_ACCEPTED'));
-  assert.ok(types.includes('WORK_CREATED'));
-  assert.ok(types.includes('WORK_COMPLETED'));
-  assert.ok(types.includes('REQUEST_COMPLETED'));
-
-  // Unknown request errors
   const bad = await handleToolCall(store, 'activity_trace', {
     spaceId: PARTICIPANT_SPACE, requestId: 'req-none',
   });
