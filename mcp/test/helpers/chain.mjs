@@ -82,6 +82,16 @@ function probeRpc(rpc) {
   run('cast', ['chain-id', '--rpc-url', rpc], { timeout: 15000 });
 }
 
+/** True when nothing answers on the port (safe to bind). */
+function portQuiet(port) {
+  try {
+    run('cast', ['chain-id', '--rpc-url', `http://127.0.0.1:${port}`], { timeout: 8000 });
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 function lockPath(port) {
   return `/tmp/microcosm-anvil-${port}.json`;
 }
@@ -92,6 +102,12 @@ function readLock(port) {
     const lock = JSON.parse(raw);
     if (!lock || !lock.rpc || !lock.contracts?.AgenticCommerce) return null;
     probeRpc(lock.rpc);
+    // Prove the chain behind the port is OURS: our kernel bytecode must be
+    // deployed at the recorded address. A foreign/stale anvil (e.g. from an
+    // orphaned run fighting over the port) answers chain-id fine but has no
+    // code — reusing it would run tests against the wrong chain.
+    const code = run('cast', ['code', lock.contracts.AgenticCommerce, '--rpc-url', lock.rpc], { timeout: 15000 });
+    if (!code || code === '0x') return null;
     return lock;
   } catch {
     return null;
@@ -184,6 +200,11 @@ export async function ensureChain({ port = 8545 } = {}) {
     return { ...reuse, live: 'anvil', cleanup: async () => {} };
   }
   for (let attempt = 1; attempt <= 2; attempt++) {
+    // Never spawn into a fight: if the port already answers but holds no
+    // lock of ours, something foreign owns it — fail loud, don't duel.
+    if (!portQuiet(port) && !readLock(port)) {
+      throw new Error(`chain harness: port ${port} is occupied by a foreign process — refusing to spawn into a fight (kill it or pick another port)`);
+    }
     const booted = await bootLocalChain(port, rpc);
     try {
       probeRpc(rpc);
