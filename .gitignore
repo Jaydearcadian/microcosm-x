@@ -62,3 +62,5 @@ videos/*/dist/
 
 # Demo Foundry local toolchain venv and render workspace
 .demo-foundry/
+apps/*/test-results/
+apps/*/tsconfig.tsbuildinfo
