@@ -1779,3 +1779,49 @@ test("M9-9: snapshots without blockHash retain cursor semantics", async () => {
   assert.equal(indexer.getCursor().blockHash, undefined);
   assert.deepEqual(indexer.getReconciliationState(), { status: "RECONCILED", error: null });
 });
+
+test("M9-10: a checksummed provider address in a later log is not a conflict", async () => {
+  // Live X Layer logs carry EIP-55 checksum casing on some events and lowercase
+  // on others. Comparing case-sensitively aborted the whole sync with
+  // "provider conflicts with indexed job provider" on the real chain.
+  const store = new SpaceStore();
+  const checksummed = "0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE";
+  const created = createdLog({ logIndex: 0, provider: checksummed });
+  const funded = fundedLog({ logIndex: 1 });
+  const submitted = submittedLog({ logIndex: 2 });
+  const attested = attestedSettlementLog({ logIndex: 3, provider: checksummed.toLowerCase() });
+  const completed = completedLog({ logIndex: 4 });
+  store._settleJob = async () => { throw new Error("local settlement must not run"); };
+  const client = {
+    getBlockNumber: async () => 10n,
+    getLogs: async () => [created, funded, submitted, attested, completed],
+  };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const job = [...store.jobs.values()][0];
+
+  assert.equal(result.processed, 5);
+  assert.equal(job.status, "Completed");
+  // the creating log's casing is preserved verbatim; the settlement must match it
+  assert.equal(job.provider, checksummed);
+  assert.equal(job.attestedSettlement.provider, checksummed.toLowerCase());
+
+  // case-insensitivity must not weaken conflict detection: a genuinely
+  // different provider is still rejected
+  assert.throws(
+    () => store.recordIndexedAttestedSettlement({
+      spaceId,
+      chainId: 1952,
+      contractAddress: indexedContract,
+      onchainJobId: created.args.jobId,
+      provider: "0x2222222222222222222222222222222222222222",
+      amount: 1_000000n,
+      nonce: 9n,
+      blockNumber: 11,
+      txHash: `0x${"9".repeat(64)}`,
+      logIndex: 0,
+    }),
+    /conflicts with indexed job provider/,
+  );
+});

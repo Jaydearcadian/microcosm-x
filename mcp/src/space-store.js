@@ -5,6 +5,17 @@ import { validateX402PaymentIntent as validateX402PaymentIntentPure, normalizeX4
 /**
  * In-memory Space store providing state continuity across MCP and API calls.
  */
+/**
+ * EVM addresses are case-insensitive; checksum casing is a display convention.
+ * Conflict detection compared a lowercased incoming address against a stored
+ * checksummed value and aborted the whole sync, which only live chain logs
+ * revealed because fixtures were already lowercase.
+ */
+function sameAddress(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return a === b;
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 export class SpaceStore {
   constructor({ settlement = null, x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null, seed = true } = {}) {
     this.settlement = settlement;
@@ -1351,11 +1362,11 @@ export class SpaceStore {
     const normalizedProvider = provider.toLowerCase();
     if (normalizedProvider === '0x0000000000000000000000000000000000000000') throw new Error('ProviderSet requires a non-zero provider address');
     const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
-    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.provider === normalizedProvider) {
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && sameAddress(job.provider, normalizedProvider)) {
       return { job: { ...job }, providerSet: false };
     }
     if (job.status !== 'Open') throw new Error(`ProviderSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
-    if (job.provider && job.provider !== '0x0000000000000000000000000000000000000000') throw new Error(`ProviderSet conflicts with indexed job provider '${job.provider}'`);
+    if (job.provider && !sameAddress(job.provider, '0x0000000000000000000000000000000000000000')) throw new Error(`ProviderSet conflicts with indexed job provider '${job.provider}'`);
 
     const timestamp = new Date().toISOString();
     job.provider = normalizedProvider;
@@ -1424,7 +1435,7 @@ export class SpaceStore {
       return { job: { ...job }, adjudicatorSet: false };
     }
     if (job.status !== 'Open') throw new Error(`AdjudicatorSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
-    if (job.adjudicator && job.adjudicator !== normalizedAdjudicator) throw new Error(`AdjudicatorSet conflicts with indexed job adjudicator '${job.adjudicator}'`);
+    if (job.adjudicator && !sameAddress(job.adjudicator, normalizedAdjudicator)) throw new Error(`AdjudicatorSet conflicts with indexed job adjudicator '${job.adjudicator}'`);
 
     const timestamp = new Date().toISOString();
     job.adjudicator = normalizedAdjudicator;
@@ -1856,9 +1867,7 @@ export class SpaceStore {
     if (typeof client !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(client)) throw new Error('Refunded requires a valid client address');
     if (typeof amount !== 'bigint' || amount <= 0n) throw new Error('Refunded requires a positive uint256 amount');
     const normalizedClient = client.toLowerCase();
-    if (job.client && String(job.client).toLowerCase() !== normalizedClient) {
-      throw new Error(`Refunded client '${normalizedClient}' conflicts with indexed job client '${job.client}'`);
-    }
+    if (job.client && !sameAddress(job.client, normalizedClient)) throw new Error(`Refunded client '${normalizedClient}' conflicts with indexed job client '${job.client}'`);
     const refundedAmount = fromBaseUnits(amount);
     const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
     if (job.refunded && this._sameIndexedSourceLog(job.refundSourceLog, sourceLog) && job.refundedAmount === refundedAmount && job.refundClient === normalizedClient) {
@@ -1982,7 +1991,7 @@ export class SpaceStore {
     if (typeof nonce !== 'bigint' || nonce < 0n) throw new Error('AttestedJobSettlement requires a uint256 nonce');
     const normalizedProvider = provider.toLowerCase();
     const settledAmount = fromBaseUnits(amount);
-    if (job.provider !== normalizedProvider) throw new Error(`AttestedJobSettlement provider '${normalizedProvider}' conflicts with indexed job provider '${job.provider}'`);
+    if (!sameAddress(job.provider, normalizedProvider)) throw new Error(`AttestedJobSettlement provider '${normalizedProvider}' conflicts with indexed job provider '${job.provider}'`);
     if (job.budget !== settledAmount) throw new Error(`AttestedJobSettlement amount '${settledAmount}' conflicts with indexed job budget '${job.budget}'`);
     const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
     const existing = job.attestedSettlement;

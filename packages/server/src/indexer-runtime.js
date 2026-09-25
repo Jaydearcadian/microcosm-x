@@ -81,6 +81,9 @@ export async function startIndexer({
   // backfill, so the server starts with this off and reports RECONCILING
   // while the catch-up runs in the background.
   awaitFirstSync = true,
+  // Blocks per committed catch-up pass. 0 disables windowed catch-up and lets
+  // the run loop do a single unbounded sync instead.
+  catchUpWindow = 20000,
 } = {}) {
   if (!rpcUrl && !client) throw new Error("startIndexer requires an rpcUrl or an injected client");
   const activeClient = client || createIndexerClient({ chainId, rpcUrl, maxBlockRange });
@@ -126,6 +129,7 @@ export async function startIndexer({
         cursor,
         reconciliation,
         reorgDepth: indexer.reorgDepth,
+        catchUp: { ...catchUp },
         projectionCount: jobs.length,
         projectedJobs: jobs.map((job) => ({
           jobId: job.jobId,
@@ -136,12 +140,46 @@ export async function startIndexer({
       };
   }
 
+  // A single unbounded sync only checkpoints when the whole pass finishes, so a
+  // 270k-block backfill would never persist progress and any interruption would
+  // restart from zero. Catch up in bounded, committed windows instead.
+  const catchUp = { active: false, fromBlock: Number(fromBlock), targetBlock: null, windowBlocks: Number(catchUpWindow), windowsDone: 0, complete: false };
+
+  async function commit() {
+    if (persist) await persist(store);
+  }
+
+  async function catchUpLoop() {
+    if (catchUpWindow <= 0) return;
+    catchUp.active = true;
+    try {
+      for (;;) {
+        const head = Number(await indexer.client.getBlockNumber());
+        catchUp.targetBlock = head;
+        const cursorBlock = indexer.getCursor()?.blockNumber ?? Number(fromBlock);
+        if (cursorBlock >= head) { catchUp.complete = true; break; }
+        const to = Math.min(cursorBlock + catchUp.windowBlocks, head);
+        await indexer.sync({ fromBlock: cursorBlock + 1, toBlock: to });
+        await commit();
+        catchUp.windowsDone += 1;
+      }
+    } catch (reason) {
+      if (onError) onError(reason);
+    } finally {
+      catchUp.active = false;
+    }
+  }
+
   let initialState = null;
   if (awaitFirstSync) {
+    await catchUpLoop();
     await loop.sync();
     initialState = handleState();
   } else {
-    loop.sync().then(() => { initialState = handleState(); }).catch(() => { initialState = handleState(); });
+    catchUpLoop()
+      .then(() => loop.sync())
+      .catch(() => {})
+      .then(() => { initialState = handleState(); });
   }
   loop.start();
 
