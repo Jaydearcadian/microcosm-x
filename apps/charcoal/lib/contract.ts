@@ -180,3 +180,25 @@ export async function signX402Intent(spaceId: string, intentId: string, signatur
 export async function settleX402Intent(spaceId: string, intentId: string): Promise<X402Intent> {
   return (await post<{ intent: X402Intent }>(`/api/spaces/${q(spaceId)}/payments/x402/intents/${q(intentId)}/settle`, {})).intent;
 }
+
+// ---- M9 chain indexer status (read-only, honest when unconfigured) ----
+export interface IndexerStatus {
+  enabled: boolean;
+  reason?: string;
+  status?: string;
+  error?: string;
+  spaceId?: string;
+  chainId?: number;
+  contractAddress?: string;
+  transport?: string;
+  cursorKey?: string;
+  fromBlock?: number;
+  reorgDepth?: number;
+  projectionCount?: number;
+  cursor?: { blockNumber: number; txHash: string; logIndex: number } | null;
+  reconciliation?: { status: string; error: string | null };
+  projectedJobs?: Array<{ jobId: string; status: string; onchainJobId: string | null }>;
+}
+export async function fetchIndexerStatus(spaceId: string, signal?: AbortSignal): Promise<IndexerStatus> {
+  return (await request<{ indexer: IndexerStatus }>(`/api/spaces/${q(spaceId)}/indexer`, { signal })).indexer;
+}

@@ -131,10 +131,20 @@ export function spaceBounds(store, spaceId) {
   };
 }
 
-export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000' } = {}) {
+export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000', indexerHandle = null } = {}) {
   const auth = createAuthStore();
   /** spaceId -> Set<http.ServerResponse> */
   const subscribers = new Map();
+
+  /** Honest indexer reporting: absent until a live chain is actually wired. */
+  function indexerState() {
+    if (!indexerHandle) return { enabled: false, reason: 'no chain indexer is configured for this deployment' };
+    try {
+      return indexerHandle.state();
+    } catch (reason) {
+      return { enabled: true, status: 'UNAVAILABLE', error: reason instanceof Error ? reason.message : String(reason) };
+    }
+  }
 
   function checkpoint() {
     if (dataPath) saveSnapshot(store, dataPath);
@@ -177,10 +187,10 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
     };
   }
 
-  return { store, auth, subscribers, publish, mutate, checkpoint, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
+  return { store, auth, subscribers, publish, mutate, checkpoint, corsHeaders, indexerState, spaceBounds: (id) => spaceBounds(store, id) };
 }
 
-export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore(), x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null } = {}) {
+export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore(), x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null, indexer = null } = {}) {
   let restored = false;
   if (x402Settlement !== null) store.x402Settlement = x402Settlement;
   if (x402SettlementAdapter !== null) store.x402SettlementAdapter = x402SettlementAdapter;
@@ -199,14 +209,47 @@ export async function start({ port = 8787, seed = false, dataPath = process.env.
       console.log(`[persist] snapshot written to ${dataPath}`);
     }
   }
-  const app = createApp({ store, dataPath });
+  // M9: the verified indexer had no production consumer. Start it against the
+  // configured chain so cursors, reconciliation, and projections are real.
+  let indexerHandle = null;
+  if (indexer && indexer.enabled !== false) {
+    const { startIndexer } = await import('./indexer-runtime.js');
+    const config = typeof indexer === 'function' ? indexer({ store, dataPath }) : indexer;
+    if (config && config.enabled !== false) {
+      indexerHandle = await startIndexer({
+        store,
+        dataPath,
+        persist: dataPath ? () => saveSnapshot(store, dataPath) : null,
+        onError: (reason) => console.warn(`[indexer] sync failed: ${reason instanceof Error ? reason.message : String(reason)}`),
+        ...config,
+        // never block the listener on a historical backfill
+        awaitFirstSync: false,
+      });
+      const initial = indexerHandle.state();
+      console.log(`[indexer] ${initial.transport} transport on chain ${initial.chainId} · from block ${initial.fromBlock} · reconciliation ${initial.reconciliation.status}`);
+      setTimeout(() => {
+        const settled = indexerHandle.state();
+        console.log(`[indexer] first pass done · cursor ${settled.cursor ? settled.cursor.blockNumber : initial.fromBlock} · ${settled.projectionCount} projection(s) · ${settled.reconciliation.status}`);
+      }, 30000).unref();
+    }
+  }
+
+  const app = createApp({ store, dataPath, indexerHandle });
   const mode = restored ? 'restored' : (seed ? 'seeded' : 'fresh');
   const server = http.createServer((req, res) => dispatch(app, req, res));
   return new Promise((resolve) => {
     server.listen(port, () => {
       const actual = server.address().port;
       console.log(`[server] Microcosm REST+SSE on http://localhost:${actual} (store: ${mode})`);
-      resolve({ server, app, store, port: actual, url: `http://localhost:${actual}` });
+      resolve({
+        server,
+        app,
+        store,
+        port: actual,
+        url: `http://localhost:${actual}`,
+        indexer: indexerHandle,
+        stopIndexer: indexerHandle ? () => indexerHandle.stop() : async () => {},
+      });
     });
   });
 }
@@ -356,6 +399,14 @@ async function dispatch(app, req, res) {
         throwMapped(err);
       }
     }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/indexer$/);
+    if (m && req.method === 'GET') {
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      const state = app.indexerState();
+      return ok(200, { indexer: { ...state, requestedSpaceId: spaceId } });
+    }
+
     m = path.match(/^\/api\/spaces\/([^/]+)\/capability-manifest$/);
     if (req.method === 'GET' && m) {
       const spaceId = decodeURIComponent(m[1]);
@@ -804,5 +855,32 @@ if (process.argv[1] && process.argv[1].endsWith('server.js')) {
   const port = Number(flagValue('--port') || process.env.PORT || 8787);
   const dataPath = flagValue('--data') || process.env.DATA_PATH || null;
   const seed = argv.includes('--seed');
-  start({ port, seed, dataPath });
+
+  // Indexer configuration. Disabled unless a chain, an RPC endpoint, and the
+  // kernel address are all present, so a local dev boot never dials a chain.
+  const chainId = flagValue('--chain-id') || process.env.XLAYER_CHAIN_ID || null;
+  const rpcUrl = flagValue('--rpc') || process.env.XLAYER_RPC_URL || null;
+  const contractAddress = flagValue('--kernel') || process.env.AGENTIC_COMMERCE_ADDRESS || null;
+  const indexer = chainId && rpcUrl && contractAddress
+    ? {
+      chainId: Number(chainId),
+      rpcUrl,
+      contractAddress,
+      spaceId: flagValue('--indexer-space') || process.env.INDEXER_SPACE_ID || 'space-procurement-001',
+      fromBlock: Number(flagValue('--from-block') || process.env.INDEXER_FROM_BLOCK || 0),
+      reorgDepth: Number(flagValue('--reorg-depth') || process.env.INDEXER_REORG_DEPTH || 8),
+      intervalMs: Number(flagValue('--index-interval') || process.env.INDEXER_INTERVAL_MS || 15000),
+      maxBlockRange: Number(flagValue('--max-block-range') || process.env.INDEXER_MAX_BLOCK_RANGE || 100),
+    }
+    : null;
+
+  const handle = await start({ port, seed, dataPath, indexer });
+  if (!indexer) console.log('[indexer] disabled (set XLAYER_CHAIN_ID, XLAYER_RPC_URL, and AGENTIC_COMMERCE_ADDRESS to enable)');
+  const shutdown = async () => {
+    await handle.stopIndexer();
+    handle.server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 2000).unref();
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }

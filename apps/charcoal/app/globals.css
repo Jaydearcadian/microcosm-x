@@ -761,3 +761,15 @@ button {
 .agent-verdict.is-blocked strong { color: var(--danger); }
 .agent-verdict span { color: var(--muted); font-size: 13px; }
 .agent-verdict__reasons { color: var(--text) !important; }
+
+/* ---------- M9 chain indexer panel ---------- */
+.indexer-panel { margin-bottom: 20px; }
+.indexer-readout { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 18px; }
+.indexer-readout strong { display: block; font-size: 24px; letter-spacing: -.02em; }
+.indexer-readout span { color: var(--muted); font-size: 12px; }
+.indexer-error { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(229, 72, 77, .45); border-radius: 10px; background: rgba(229, 72, 77, .07); color: var(--danger); font-size: 13px; }
+.indexer-cursor { margin-top: 16px; }
+.indexer-jobs { display: grid; gap: 8px; margin-top: 16px; }
+.indexer-jobs li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid var(--hairline); border-radius: 9px; font-size: 13px; }
+.indexer-jobs em { font-style: normal; font-family: var(--font-ui); font-size: 11px; letter-spacing: .12em; color: var(--accent); }
+@media (max-width: 1100px) { .indexer-readout { grid-template-columns: minmax(0, 1fr); } }

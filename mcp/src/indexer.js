@@ -197,7 +197,7 @@ function eventArgs(log, name) {
 }
 
 export class JobCreatedIndexer {
-  constructor({ store, chainId, contractAddress, rpcUrl, webSocketUrl = null, transport = null, client, spaceId = "space-procurement-001", fromBlock = 0, reorgDepth = 8, dataPath = null, persist = null }) {
+  constructor({ store, chainId, contractAddress, rpcUrl, webSocketUrl = null, transport = null, client, transportType = null, spaceId = "space-procurement-001", fromBlock = 0, reorgDepth = 8, dataPath = null, persist = null }) {
     if (!store) throw new Error("JobCreatedIndexer requires a SpaceStore");
     if (!Number.isInteger(Number(chainId))) throw new Error("JobCreatedIndexer requires an integer chainId");
     if (!/^0x[0-9a-fA-F]{40}$/.test(String(contractAddress || ""))) throw new Error("JobCreatedIndexer requires a contract address");
@@ -214,7 +214,9 @@ export class JobCreatedIndexer {
     const selectedTransport = transport === null || transport === undefined
       ? normalizeTransport(/^wss?:/i.test(String(rpcUrl || "")) ? "websocket" : "http")
       : normalizeTransport(transport);
-    this.transportType = client ? "injected" : selectedTransport;
+    // an explicit transportType lets a production caller inject a wrapped client
+    // (for example an HTTP client that chunks getLogs) without mislabelling it
+    this.transportType = transportType || (client ? "injected" : selectedTransport);
     this.client = client || this.createClient({ rpcUrl, webSocketUrl, transport: selectedTransport });
     const savedState = this.store.indexerReconciliations?.get(this.cursorKey);
     this.reconciliation = savedState ? cloneValue(savedState) : { status: "RECONCILED", error: null };
