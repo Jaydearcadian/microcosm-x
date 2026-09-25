@@ -178,9 +178,18 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
     return result;
   }
 
-  function corsHeaders() {
+  // CORS_ORIGIN accepts a comma-separated allowlist so one deployment can serve
+  // the local app, a tunnel, and a Vercel domain without redeploying.
+  const allowedOrigins = String(corsOrigin)
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  function corsHeaders(requestOrigin = null) {
+    const origin = requestOrigin && allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0];
     return {
-      'Access-Control-Allow-Origin': corsOrigin,
+      'Access-Control-Allow-Origin': origin,
+      'Vary': 'Origin',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Last-Event-ID',
       'Access-Control-Allow-Credentials': 'true',
@@ -256,7 +265,7 @@ export async function start({ port = 8787, seed = false, dataPath = process.env.
 
 async function dispatch(app, req, res) {
   const { store } = app;
-  const headers = app.corsHeaders();
+  const headers = app.corsHeaders(req.headers.origin);
   if (req.method === 'OPTIONS') {
     res.writeHead(204, headers);
     res.end();
