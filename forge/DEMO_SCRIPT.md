@@ -1,6 +1,8 @@
 # DEMO SCRIPT — Microcosm on OKX X Layer
 **OKX Dev Day 2026 Walkthrough (Target Duration: 3 Minutes)**
 
+**Current verified system:** OKX X Layer Testnet chain `1952` · `153` repository tests · `37` proof claims · M9 reconciliation verified.
+
 ---
 
 ## Part 1: The Problem — The Dangerous "Raw Private Key" Agent (0:00 – 0:45)
@@ -35,7 +37,7 @@
 * **Audio / Voiceover**:
   > *"Let's run our live end-to-end procurement demo:*
   >
-  > * **Step 1 & 2**: The agent connects via MCP and calls `spaces_capabilities`. It immediately discovers its constraints: Chain ID 195 (OKX X Layer Testnet), a strict $500 per-transaction cap, a $2,000 daily budget, and 3 pre-approved vendors.
+  > * **Step 1 & 2**: The agent connects via MCP and calls `spaces_capabilities`. It immediately discovers its constraints: Chain ID 1952 (OKX X Layer Testnet), a strict $500 per-transaction cap, a $2,000 daily budget, and 3 pre-approved vendors.
   >
   > * **Step 3**: The client creates a Work Order for GPU cluster resources ($350 USDC). Money does not move to the provider immediately — it is escrowed into `Funded` state.
   >
@@ -63,10 +65,10 @@
 
 ## Part 5: Conclusion & OKX Ecosystem Value (3:00 – 3:30)
 
-* **Visual**: Terminal running `make verify` (all 63 tests and 23 claims passing green) and showing smart contract deployment architecture.
+* **Visual**: Terminal running `make verify` (153 tests, 37 claims, 7 gates passing green) and showing smart contract deployment architecture, the M9 reconciliation cursor, and the Charcoal wallet-session UI.
 * **Audio / Voiceover**:
   > *"Microcosm does not compete with AI agent marketplaces — it is the missing **corporate governance, bounded authority, and settlement layer** that enables businesses to safely hire and fund autonomous agents on OKX X Layer.
   >
-  > Featuring EIP-712 cryptographic attestation, native Internet Court adjudication, and full OpenRails exception handling — backed by 63 passing tests and 23 verified claims — Microcosm provides the economic infrastructure the agent economy needs to scale safely on OKX X Layer.
+  > Featuring EIP-712 cryptographic attestation, native Internet Court adjudication, M9 onchain reconciliation, transferable bearer Space sessions, and full OpenRails exception handling — backed by 153 passing tests and 37 verified claims — Microcosm provides the economic infrastructure the agent economy needs to scale safely on OKX X Layer.
   >
   > Thank you!"*
