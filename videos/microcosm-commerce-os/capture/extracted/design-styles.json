@@ -1,0 +1,189 @@
+{
+  "typography": [
+    {
+      "role": "display",
+      "fontFamily": "Delight",
+      "fontSize": "76px",
+      "fontWeight": "600",
+      "lineHeight": "79.8px",
+      "letterSpacing": "-1.52px",
+      "color": "#FFFFFF",
+      "sampleText": "One shared Space where people and software get work done."
+    },
+    {
+      "role": "heading",
+      "fontFamily": "Delight",
+      "fontSize": "64px",
+      "fontWeight": "600",
+      "lineHeight": "67.2px",
+      "letterSpacing": "-1.28px",
+      "color": "#FFFFFF",
+      "sampleText": "Request → Work → Result → Payment"
+    },
+    {
+      "role": "heading-3",
+      "fontFamily": "Delight",
+      "fontSize": "22px",
+      "fontWeight": "600",
+      "lineHeight": "23.1px",
+      "letterSpacing": "-0.44px",
+      "color": "#FFFFFF",
+      "sampleText": "Human"
+    },
+    {
+      "role": "heading-3",
+      "fontFamily": "Delight",
+      "fontSize": "20px",
+      "fontWeight": "600",
+      "lineHeight": "21px",
+      "letterSpacing": "-0.4px",
+      "color": "#FFFFFF",
+      "sampleText": "Request"
+    },
+    {
+      "role": "body",
+      "fontFamily": "Aeonik Pro",
+      "fontSize": "16px",
+      "fontWeight": "400",
+      "lineHeight": "normal",
+      "letterSpacing": "normal",
+      "color": "#FFFFFF",
+      "sampleText": "Requests, work, payments, and proof — coordinated under rule"
+    },
+    {
+      "role": "link",
+      "fontFamily": "Aeonik Pro",
+      "fontSize": "14px",
+      "fontWeight": "500",
+      "lineHeight": "normal",
+      "letterSpacing": "-0.28px",
+      "color": "#FFFFFF",
+      "sampleText": "The loop"
+    },
+    {
+      "role": "label",
+      "fontFamily": "Geist",
+      "fontSize": "9px",
+      "fontWeight": "400",
+      "lineHeight": "normal",
+      "letterSpacing": "1.08px",
+      "color": "#FFFFFF",
+      "sampleText": "SPENTESCROWEDAVAILABLE"
+    }
+  ],
+  "spacing": {
+    "observed": [
+      4,
+      6,
+      8,
+      10,
+      12,
+      14,
+      16,
+      20,
+      24,
+      32,
+      48,
+      56,
+      64,
+      140
+    ],
+    "baseUnit": 4
+  },
+  "radius": [
+    "999px"
+  ],
+  "shadows": [],
+  "buttons": [
+    {
+      "label": "0xaaaa…aaaaa",
+      "background": "transparent",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#FFFFFF",
+      "padding": "0px",
+      "borderRadius": "0px",
+      "border": "0px none rgb(255, 255, 255)",
+      "boxShadow": "none",
+      "fontSize": "13px",
+      "fontWeight": "400",
+      "height": "32px"
+    },
+    {
+      "label": "▼",
+      "background": "transparent",
+      "backgroundImage": "",
+      "backdropFilter": "",
+      "color": "#FFFFFF",
+      "padding": "0px",
+      "borderRadius": "0px",
+      "border": "0px none rgba(255, 255, 255, 0.6)",
+      "boxShadow": "none",
+      "fontSize": "11px",
+      "fontWeight": "400",
+      "height": "32px"
+    }
+  ],
+  "cards": [],
+  "nav": {
+    "label": "navigation",
+    "background": "transparent",
+    "backgroundImage": "",
+    "backdropFilter": "",
+    "color": "#FFFFFF",
+    "padding": "24px",
+    "borderRadius": "0px",
+    "border": "0px none rgb(255, 255, 255)",
+    "boxShadow": "none",
+    "fontSize": "16px",
+    "fontWeight": "400",
+    "height": "92px"
+  },
+  "chips": [
+    {
+      "label": "Open on Microcosm↗",
+      "background": "#FFFFFF",
+      "color": "#000000",
+      "padding": "0px 16px",
+      "borderRadius": "999px",
+      "border": "1px solid rgba(255, 255, 255, 0.08)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "500",
+      "height": "44px"
+    },
+    {
+      "label": "Create a Space",
+      "background": "#CAFE5C",
+      "color": "#020202",
+      "padding": "0px 24px",
+      "borderRadius": "999px",
+      "border": "0px none rgb(2, 2, 2)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "44px"
+    },
+    {
+      "label": "See a Space run",
+      "background": "transparent",
+      "color": "#FFFFFF",
+      "padding": "0px 24px",
+      "borderRadius": "999px",
+      "border": "1px solid rgba(255, 255, 255, 0.08)",
+      "boxShadow": "none",
+      "fontSize": "14px",
+      "fontWeight": "400",
+      "height": "44px"
+    }
+  ],
+  "statCells": [],
+  "tabs": [],
+  "backgrounds": [
+    {
+      "value": "radial-gradient(closest-side, rgba(202, 254, 92, 0.14), rgba(202, 254, 92, 0.05) 45%, rgba(0, 0, 0, 0) 72%)",
+      "area": 1270057
+    }
+  ],
+  "glass": []
+}

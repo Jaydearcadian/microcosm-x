@@ -55,3 +55,7 @@ Thumbs.db
 microcosm-data.json
 microcosm-data.json.*
 /tmp/microcosm-*
+
+# HyperFrames working snapshots (regenerate with: npx hyperframes snapshot)
+videos/*/snapshots*/
+videos/*/dist/

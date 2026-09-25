@@ -1,0 +1,951 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Inter Tight";
+        src: url("assets/fonts/inter-tight-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Inter Tight";
+        src: url("assets/fonts/inter-tight-latin-500-normal.woff2") format("woff2");
+        font-weight: 500;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Inter Tight";
+        src: url("assets/fonts/inter-tight-latin-600-normal.woff2") format("woff2");
+        font-weight: 600;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("assets/fonts/jetbrains-mono-latin-400-normal.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("assets/fonts/jetbrains-mono-latin-500-normal.woff2") format("woff2");
+        font-weight: 500;
+        font-display: block;
+      }
+
+      :root {
+        --bg: #020202;
+        --surface: #0e0e0e;
+        --surface-2: #141414;
+        --accent: #cafe5c;
+        --accent-soft: #e8ffb8;
+        --danger: #e5484d;
+        --text: #ffffff;
+        --muted: rgba(255, 255, 255, 0.7);
+        --faint: rgba(255, 255, 255, 0.56);
+        --hairline: rgba(255, 255, 255, 0.09);
+        --display: "Inter Tight", system-ui, sans-serif;
+        --body: "Inter Tight", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--body);
+        -webkit-font-smoothing: antialiased;
+      }
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      .clip {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+      }
+
+      /* ---------- persistent ground ---------- */
+      .ground {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(1200px 620px at 78% 18%, rgba(202, 254, 92, 0.05), transparent 62%),
+          var(--bg);
+      }
+      .horizon {
+        position: absolute;
+        inset: auto;
+        left: 120px;
+        right: 120px;
+        top: 878px;
+        width: auto;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--hairline) 12%, var(--hairline) 88%, transparent);
+      }
+      .mark {
+        position: absolute;
+        inset: auto;
+        left: 120px;
+        top: 58px;
+        width: auto;
+        height: auto;
+        font-family: var(--mono);
+        font-size: 15px;
+        letter-spacing: 0.26em;
+        color: var(--accent);
+        text-transform: uppercase;
+      }
+      .chain {
+        position: absolute;
+        inset: auto;
+        right: 120px;
+        top: 58px;
+        width: auto;
+        height: auto;
+        font-family: var(--mono);
+        font-size: 14px;
+        letter-spacing: 0.14em;
+        color: var(--faint);
+      }
+
+      /* ---------- the authorized channel (persistent spatial logic) ---------- */
+      .channel-layer {
+        position: absolute;
+        inset: auto;
+        left: 120px;
+        right: 120px;
+        top: 820px;
+        width: auto;
+        height: 130px;
+      }
+      .channel-rail {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 58px;
+        height: 2px;
+        background: rgba(255, 255, 255, 0.2);
+      }
+      .channel-fill {
+        position: absolute;
+        left: 0;
+        top: 58px;
+        height: 2px;
+        width: 0;
+        background: var(--accent);
+      }
+      .gate {
+        position: absolute;
+        top: 22px;
+        left: 560px;
+        width: 2px;
+        height: 74px;
+        background: rgba(255, 255, 255, 0.42);
+      }
+      .gate-cap {
+        position: absolute;
+        top: -2px;
+        left: 548px;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.12em;
+        color: var(--faint);
+        white-space: nowrap;
+      }
+      .escrow {
+        position: absolute;
+        top: 30px;
+        left: 640px;
+        width: 460px;
+        height: 58px;
+        border: 1px solid rgba(202, 254, 92, 0.32);
+        border-radius: 14px;
+        background: rgba(202, 254, 92, 0.05);
+        opacity: 0;
+      }
+      .escrow-label {
+        position: absolute;
+        top: -20px;
+        left: 656px;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        color: var(--accent);
+        opacity: 0;
+        white-space: nowrap;
+      }
+      .fund {
+        position: absolute;
+        top: 34px;
+        left: 0;
+        height: 50px;
+        min-width: 168px;
+        padding: 0 22px;
+        border-radius: 12px;
+        background: var(--accent);
+        color: #0b0b0b;
+        font-family: var(--mono);
+        font-size: 19px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        will-change: transform, opacity;
+      }
+      .terminus {
+        position: absolute;
+        top: 44px;
+        right: 0;
+        width: 178px;
+        height: 38px;
+        border: 1px solid var(--hairline);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        color: var(--faint);
+        opacity: 0;
+      }
+
+      /* ---------- scene layout ---------- */
+      .scene-copy {
+        position: absolute;
+        left: 120px;
+        top: 214px;
+        width: 780px;
+      }
+      .kicker {
+        font-family: var(--mono);
+        font-size: 15px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 26px;
+      }
+      .headline {
+        font-family: var(--display);
+        font-weight: 600;
+        font-size: 76px;
+        line-height: 1.04;
+        letter-spacing: -0.028em;
+      }
+      .headline .w {
+        display: inline-block;
+      }
+      .headline em {
+        font-style: normal;
+        color: var(--accent);
+      }
+      .sub {
+        margin-top: 28px;
+        font-size: 23px;
+        line-height: 1.5;
+        color: var(--muted);
+        max-width: 690px;
+      }
+      .pill {
+        margin-top: 34px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 15px 28px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #0b0b0b;
+        font-family: var(--mono);
+        font-size: 16px;
+        letter-spacing: 0.08em;
+      }
+
+      .surface {
+        position: absolute;
+        right: 120px;
+        top: 196px;
+        width: 800px;
+        height: 450px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--hairline);
+        background: var(--surface);
+      }
+      .surface .crop {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      .surface img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        transform-origin: 0 0;
+        display: block;
+      }
+      /* each surface frames the region that carries its claim */
+      .crop-app-shell img {
+        transform: translate(-217px, -137px) scale(0.5714);
+      }
+      .crop-onboarding img {
+        transform: translate(-219px, -173px) scale(0.5776);
+      }
+      .crop-audit img {
+        transform: translate(-216px, -153px) scale(0.5674);
+      }
+      .crop-audit-tight img {
+        transform: translate(-271px, -189px) scale(0.7143);
+      }
+      .crop-work img {
+        transform: translate(-874px, -247px) scale(0.9302);
+      }
+      .surface-tag {
+        position: absolute;
+        right: 120px;
+        top: 664px;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        color: var(--faint);
+      }
+
+      /* ---------- generated cards bound to live data ---------- */
+      .card {
+        position: absolute;
+        right: 120px;
+        top: 196px;
+        width: 800px;
+        border-radius: 18px;
+        border: 1px solid var(--hairline);
+        background: var(--surface);
+        padding: 34px 38px 38px;
+      }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.18em;
+        color: var(--faint);
+        text-transform: uppercase;
+      }
+      .badge {
+        padding: 7px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+      }
+      .badge.bad {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .rows {
+        margin-top: 28px;
+      }
+      .row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 17px 0;
+        border-top: 1px solid var(--hairline);
+        font-size: 20px;
+      }
+      .row:first-child {
+        border-top: 0;
+      }
+      .row span:first-child {
+        color: var(--muted);
+      }
+      .row .val {
+        font-family: var(--mono);
+        font-size: 19px;
+      }
+      .row .val.good {
+        color: var(--accent);
+      }
+      .row .val.bad {
+        color: var(--danger);
+      }
+      .bar {
+        height: 4px;
+        margin-top: 12px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block;
+        height: 100%;
+        width: 0;
+        background: var(--accent);
+      }
+      .denial {
+        margin-top: 26px;
+        padding: 22px 24px;
+        border-radius: 12px;
+        border: 1px solid rgba(229, 72, 77, 0.4);
+        background: rgba(229, 72, 77, 0.07);
+      }
+      .denial h4 {
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.2em;
+        color: var(--danger);
+        text-transform: uppercase;
+      }
+      .denial p {
+        margin-top: 10px;
+        font-size: 19px;
+        color: var(--text);
+      }
+      .hash {
+        margin-top: 14px;
+        font-family: var(--mono);
+        font-size: 17px;
+        line-height: 1.5;
+        color: var(--muted);
+        word-break: break-all;
+      }
+      .stats {
+        position: absolute;
+        left: 120px;
+        top: 604px;
+        width: 780px;
+        display: flex;
+        gap: 54px;
+      }
+      .stat b {
+        display: block;
+        font-family: var(--display);
+        font-weight: 600;
+        font-size: 54px;
+        letter-spacing: -0.03em;
+      }
+      .stat small {
+        display: block;
+        margin-top: 8px;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.16em;
+        color: var(--faint);
+        text-transform: uppercase;
+      }
+      .stat.good b {
+        color: var(--accent);
+      }
+      .rule {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        bottom: 128px;
+        height: 1px;
+        background: var(--hairline);
+      }
+      .footer {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        bottom: 56px;
+        display: flex;
+        gap: 44px;
+        font-family: var(--mono);
+        font-size: 14px;
+        letter-spacing: 0.16em;
+        color: var(--faint);
+      }
+      .rail {
+        position: absolute;
+        right: 120px;
+        top: 196px;
+        width: 800px;
+        display: flex;
+        gap: 14px;
+      }
+      .rail .step {
+        flex: 1;
+        border-top: 2px solid rgba(255, 255, 255, 0.12);
+        padding-top: 14px;
+        font-family: var(--mono);
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        color: var(--faint);
+      }
+      .rail .step.on {
+        border-top-color: var(--accent);
+        color: var(--accent);
+      }
+      /* resting state: hidden until its tween runs (stable baseline for seeking) */
+      .kicker,
+      .headline .w,
+      .sub,
+      .pill,
+      .card,
+      .surface,
+      .surface-tag,
+      .gostamp,
+      .stats,
+      .footer span {
+        opacity: 0;
+      }
+      #fund {
+        opacity: 0;
+      }
+      .gostamp {
+        position: absolute;
+        left: 356px;
+        top: 706px;
+        font-family: var(--mono);
+        font-size: 15px;
+        letter-spacing: 0.26em;
+        color: var(--faint);
+        opacity: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="120" data-width="1920" data-height="1080">
+      <div id="ground" class="clip ground" data-start="0" data-duration="120" data-track-index="0"></div>
+      <div class="mark clip" data-start="0" data-duration="120" data-track-index="0">Microcosm</div>
+      <div class="chain clip" data-start="0" data-duration="120" data-track-index="0">OKX X LAYER TESTNET &middot; 1952</div>
+      <div class="horizon clip" data-start="0" data-duration="120" data-track-index="0"></div>
+
+      <!-- persistent authorized channel -->
+      <div class="channel-layer clip" data-start="8" data-duration="112" data-track-index="1">
+        <div class="channel-rail"></div>
+        <div class="channel-fill" id="channelFill"></div>
+        <div class="gate" id="gate"></div>
+        <div class="gate-cap" id="gateCap">
+          <span id="cap500">CAP / TRANSACTION $500</span>
+          <span id="cap200" style="opacity: 0">DELEGATED CAP $200</span>
+        </div>
+        <div class="escrow" id="escrow"></div>
+        <div class="escrow-label" id="escrowLabel">ESCROW LOCKED &middot; OPEN &rarr; FUNDED</div>
+        <div class="fund" id="fund">$1,530</div>
+        <div class="terminus" id="terminus">SETTLED</div>
+      </div>
+
+      <audio id="bed" src="assets/audio/bed.wav" data-start="0" data-duration="120" data-track-index="8" data-volume="0.8" data-fade-in="4" data-fade-out="6"></audio>
+      <audio id="vo-b1" src="assets/vo/B1.wav" data-start="0.4" data-duration="6.46" data-track-index="9" data-volume="1.75"></audio>
+      <audio id="vo-b2" src="assets/vo/B2.wav" data-start="8.4" data-duration="7.38" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b3" src="assets/vo/B3.wav" data-start="18.5" data-duration="4.31" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b4" src="assets/vo/B4.wav" data-start="27.3" data-duration="10.43" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b5" src="assets/vo/B5.wav" data-start="38.4" data-duration="6.04" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b6" src="assets/vo/B6.wav" data-start="47.4" data-duration="8.81" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b7" src="assets/vo/B7.wav" data-start="58.4" data-duration="12.33" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b8" src="assets/vo/B8.wav" data-start="71.4" data-duration="7.02" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b9" src="assets/vo/B9.wav" data-start="82.4" data-duration="9.71" data-track-index="9" data-volume="1"></audio>
+      <audio id="vo-b10" src="assets/vo/B10.wav" data-start="94.4" data-duration="12.2" data-track-index="9" data-volume="1.75"></audio>
+      <audio id="vo-b11" src="assets/vo/B11.wav" data-start="108.4" data-duration="10.96" data-track-index="9" data-volume="1.75"></audio>
+      <!-- B1 -->
+      <section class="clip" data-start="0" data-duration="8" data-track-index="2" id="B1">
+        <div class="scene-copy">
+          <div class="kicker" data-split>Commerce OS &middot; OKX X Layer</div>
+          <h1 class="headline" data-words>Commerce between people and agents has no rulebook.</h1>
+          <p class="sub" data-fade>Authority is informal. Evidence is scattered. Settlement is either fully trusted or fully blocked.</p>
+          <div class="pill" data-pill>No channel. No movement.</div>
+        </div>
+        <div class="card" id="B1card">
+          <div class="card-head"><span>Incoming request</span><span class="badge bad">No space</span></div>
+          <div class="rows">
+            <div class="row"><span>Requester</span><span class="val">agent://procurement-bot</span></div>
+            <div class="row"><span>Amount</span><span class="val">$900.00</span></div>
+            <div class="row"><span>Authority</span><span class="val bad">unknown</span></div>
+            <div class="row"><span>Rules</span><span class="val bad">none</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- B2 -->
+      <section class="clip" data-start="8" data-duration="10" data-track-index="2" id="B2">
+        <div class="scene-copy">
+          <div class="kicker">The Space</div>
+          <h1 class="headline" data-words>One shared Space where people and software work under the same rules.</h1>
+          <p class="sub">Requests, work, payments, and proof live in one ledger that every participant can read.</p>
+        </div>
+        <div class="surface" id="B2surface">
+          <div class="crop crop-app-shell" data-layout-allow-overflow="true"><img src="assets/app/app-shell.png" alt="Microcosm Command Center" /></div>
+        </div>
+        <div class="surface-tag">REAL APP &middot; COMMAND CENTER</div>
+      </section>
+
+      <!-- B3 -->
+      <section class="clip" data-start="18" data-duration="9" data-track-index="2" id="B3">
+        <div class="scene-copy">
+          <div class="kicker">Participants</div>
+          <h1 class="headline" data-words>An agent sits beside a human, with the same standing.</h1>
+          <p class="sub">Founders, autonomous agents, services, organizations, and counterparties share one roster and one rulebook.</p>
+        </div>
+        <div class="surface" id="B3surface">
+          <div class="crop crop-onboarding" data-layout-allow-overflow="true"><img src="assets/app/onboarding.png" alt="Microcosm onboarding with participants" /></div>
+        </div>
+        <div class="surface-tag">REAL APP &middot; ONBOARDING</div>
+      </section>
+
+      <!-- B4 -->
+      <section class="clip" data-start="27" data-duration="11" data-track-index="2" id="B4">
+        <div class="scene-copy">
+          <div class="kicker">Policy</div>
+          <h1 class="headline" data-words>The Space writes its own rules before any money is in play.</h1>
+          <p class="sub">A per-transaction cap, a daily budget, and an approved-counterparty list. Evaluated first, every time.</p>
+        </div>
+        <div class="card" id="B4card">
+          <div class="card-head"><span>Policy matrix</span><span class="badge">Space-wide</span></div>
+          <div class="rows">
+            <div class="row"><span>Per-transaction cap</span><span class="val good">$500</span></div>
+            <div class="bar"><i id="capBar"></i></div>
+            <div class="row"><span>Daily budget</span><span class="val">$470 / $2,000</span></div>
+            <div class="bar"><i id="budgetBar"></i></div>
+            <div class="row"><span>Approved counterparties</span><span class="val">3</span></div>
+            <div class="row"><span>Denials held</span><span class="val good">$0 moved</span></div>
+          </div>
+        </div>
+        <div class="surface-tag">LIVE POLICY ENDPOINT</div>
+      </section>
+
+      <!-- B5 -->
+      <section class="clip" data-start="38" data-duration="9" data-track-index="2" id="B5">
+        <div class="scene-copy">
+          <div class="kicker">Request</div>
+          <h1 class="headline" data-words>A human or an agent asks for work, inside the Space.</h1>
+          <p class="sub">Intent is explicit before any money moves. The request is assigned, accepted, and traced.</p>
+        </div>
+        <div class="surface" id="B5surface">
+          <div class="crop crop-audit" data-layout-allow-overflow="true"><img src="assets/app/audit.png" alt="Microcosm audit trail" /></div>
+        </div>
+        <div class="surface-tag">REAL APP &middot; AUDIT TRAIL</div>
+      </section>
+
+      <!-- B6 -->
+      <section class="clip" data-start="47" data-duration="11" data-track-index="2" id="B6">
+        <div class="scene-copy">
+          <div class="kicker">Work</div>
+          <h1 class="headline" data-words>The Space escrows the budget before the work starts.</h1>
+          <p class="sub">Committed, not spent. The provider cannot touch it until a verifiable deliverable exists.</p>
+        </div>
+        <div class="card" id="B6card">
+          <div class="card-head"><span>Work order job-0001</span><span class="badge">Funded</span></div>
+          <div class="rows">
+            <div class="row"><span>Provider</span><span class="val">agent://gpu-cluster</span></div>
+            <div class="row"><span>Escrowed</span><span class="val good">$350.00</span></div>
+            <div class="row"><span>State</span><span class="val">Open &rarr; Funded</span></div>
+            <div class="row"><span>Released by</span><span class="val">deliverable proof</span></div>
+          </div>
+        </div>
+        <div class="surface-tag">LIVE WORK ORDER</div>
+      </section>
+
+      <!-- B7 -->
+      <section class="clip" data-start="58" data-duration="13" data-track-index="2" id="B7">
+        <div class="scene-copy">
+          <div class="kicker">Denial</div>
+          <h1 class="headline" data-words>A request over the cap is denied, and nothing moves.</h1>
+          <p class="sub">A signed DenialProof, a zero balance impact, and the escrow stays exactly where it was.</p>
+        </div>
+        <div class="card" id="B7card">
+          <div class="card-head"><span>Policy decision</span><span class="badge bad">Denied</span></div>
+          <div class="rows">
+            <div class="row"><span>Requested</span><span class="val">$900.00</span></div>
+            <div class="row"><span>Cap</span><span class="val">$500.00</span></div>
+            <div class="row"><span>Escrow changed</span><span class="val good">$0</span></div>
+          </div>
+          <div class="denial">
+            <h4>DenialProof</h4>
+            <p>exceeds per-transaction cap of $500.00 by $400.00</p>
+            <div class="hash">0x9a4c&hellip;7e21 &middot; signed &middot; replayable &middot; auditable</div>
+          </div>
+        </div>
+        <div class="gostamp" id="denyStamp">HELD AT POLICY</div>
+      </section>
+
+      <!-- B8 -->
+      <section class="clip" data-start="71" data-duration="11" data-track-index="2" id="B8">
+        <div class="scene-copy">
+          <div class="kicker">Proof</div>
+          <h1 class="headline" data-words>Proof, not promise, is what opens the escrow.</h1>
+          <p class="sub">The provider submits a deliverable hash. An evaluator approves. Only then does the lock release.</p>
+        </div>
+        <div class="surface" id="B8surface">
+          <div class="crop crop-work" data-layout-allow-overflow="true"><img src="assets/app/work.png" alt="Microcosm work orders" /></div>
+        </div>
+        <div class="surface-tag">REAL APP &middot; PROOF BEFORE PAYOUT</div>
+      </section>
+
+      <!-- B9 -->
+      <section class="clip" data-start="82" data-duration="12" data-track-index="2" id="B9">
+        <div class="scene-copy">
+          <div class="kicker">Authority</div>
+          <h1 class="headline" data-words>Authority can be narrowed by signature, never widened.</h1>
+          <p class="sub">Two of three approvals change the rules. A delegation envelope can only reduce cap, budget, or counterparties.</p>
+        </div>
+        <div class="card" id="B9card">
+          <div class="card-head"><span>Governance &amp; delegation</span><span class="badge">2 of 3</span></div>
+          <div class="rows">
+            <div class="row"><span>Rule change</span><span class="val good">approved</span></div>
+            <div class="row"><span>Delegated cap</span><span class="val">$500 &rarr; $200</span></div>
+            <div class="row"><span>Delegated budget</span><span class="val">$2,000 &rarr; $600</span></div>
+            <div class="row"><span>Escalation attempt</span><span class="val bad">rejected</span></div>
+          </div>
+        </div>
+        <div class="surface-tag">EIP-712 GOVERNANCE &middot; DELEGATION</div>
+      </section>
+
+      <!-- B10 -->
+      <section class="clip" data-start="94" data-duration="14" data-track-index="2" id="B10">
+        <div class="scene-copy">
+          <div class="kicker">Settlement</div>
+          <h1 class="headline" data-words>Settled on OKX X Layer, with a receipt anyone can check.</h1>
+          <p class="sub">A complete agent-driven run, fourteen tool calls, one real testnet transaction.</p>
+        </div>
+        <div class="card" id="B10card">
+          <div class="card-head"><span>Settlement receipt</span><span class="badge">Verified</span></div>
+          <div class="rows">
+            <div class="row"><span>Space</span><span class="val">space-agentic-testnet</span></div>
+            <div class="row"><span>Request &rarr; Work</span><span class="val">req-0001 &rarr; job-0001</span></div>
+            <div class="row"><span>MCP tool calls</span><span class="val">14</span></div>
+            <div class="row"><span>Receipt status</span><span class="val good">1 &middot; block 41894186</span></div>
+          </div>
+          <div class="hash" style="margin-top: 24px; padding: 18px 20px; border: 1px solid var(--hairline); border-radius: 12px; color: var(--accent); word-break: break-all">0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556</div>
+        </div>
+        <div class="surface-tag">OKX X LAYER TESTNET &middot; CHAIN 1952</div>
+      </section>
+
+      <!-- B11 -->
+      <section class="clip" data-start="108" data-duration="12" data-track-index="2" id="B11">
+        <div class="scene-copy" style="top: 176px; width: 700px">
+          <div class="kicker">Microcosm</div>
+          <h1 class="headline" data-words>The Commerce OS for humans and agents.</h1>
+          <p class="sub">Give agents budgets, not bank accounts.</p>
+        </div>
+        <div class="surface" id="B11surface">
+          <div class="crop crop-audit-tight"><img src="assets/app/audit.png" alt="Microcosm audit trail" /></div>
+        </div>
+        <div class="stats" id="B11stats">
+          <div class="stat good"><b id="s1">0</b><small>Tests green</small></div>
+          <div class="stat"><b id="s2">0</b><small>Proof claims</small></div>
+          <div class="stat"><b id="s3">0</b><small>Gates passed</small></div>
+          <div class="stat"><b id="s4">$0</b><small>Lost to failed work</small></div>
+        </div>
+        <div class="rule"></div>
+        <div class="footer" id="B11footer">
+          <span>OKX X LAYER</span><span>177 TESTS</span><span>REAL TESTNET SETTLEMENT</span><span>$0 LOST</span>
+        </div>
+      </section>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      const EASE = "power2.out";
+
+      // ---------- helpers ----------
+      function words(el) {
+        return el.querySelectorAll(".w");
+      }
+      function splitWords(el) {
+        const text = el.textContent.trim();
+        el.innerHTML = text
+          .split(" ")
+          .map((w) => `<span class="w">${w}</span>`)
+          .join(" ");
+      }
+      function wordReveal(sel, at) {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        splitWords(el);
+        tl.set(words(el), { y: 32 }, 0);
+        tl.to(words(el), { opacity: 1, y: 0, duration: 1.2, stagger: 0.05, ease: EASE }, at);
+      }
+      function fadeUp(sel, at, dur = 1.3, y = 18) {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        tl.set(el, { y }, 0);
+        tl.to(el, { opacity: 1, y: 0, duration: dur, ease: EASE }, at);
+      }
+      function sceneIn(id, at) {
+        const s = document.getElementById(id);
+        if (!s) return;
+        const kicker = s.querySelector(".kicker");
+        const head = s.querySelector(".headline");
+        const sub = s.querySelector(".sub");
+        tl.set(kicker, { y: 14 }, 0);
+        tl.to(kicker, { opacity: 1, y: 0, duration: 0.8, ease: EASE }, at);
+        wordReveal(`#${id} .headline`, at + 0.25);
+        if (sub) fadeUp(`#${id} .sub`, at + 1.5, 1.3);
+        const pill = s.querySelector(".pill");
+        if (pill) {
+          tl.set(pill, { scale: 0.96 }, 0);
+          tl.to(pill, { opacity: 1, scale: 1, duration: 0.8, ease: EASE }, at + 2.3);
+        }
+        const card = s.querySelector(".card");
+        if (card) {
+          tl.set(card, { y: 26 }, 0);
+          tl.to(card, { opacity: 1, y: 0, duration: 2.0, ease: EASE }, at + 0.6);
+        }
+        const surface = s.querySelector(".surface");
+        if (surface) {
+          tl.set(surface, { y: 24 }, 0);
+          tl.to(surface, { opacity: 1, y: 0, duration: 2.0, ease: EASE }, at + 0.6);
+        }
+        const tag = s.querySelector(".surface-tag");
+        if (tag) fadeUp(`#${id} .surface-tag`, at + 2.4, 1.0, 10);
+      }
+      function countUp(sel, to, at, dur = 1.8, prefix = "", suffix = "") {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        const o = { v: 0 };
+        tl.to(
+          o,
+          {
+            v: to,
+            duration: dur,
+            ease: EASE,
+            onUpdate() {
+              el.textContent = prefix + Math.round(o.v).toLocaleString("en-US") + suffix;
+            },
+          },
+          at,
+        );
+      }
+      function sceneOut(id, at, dur = 0.5) {
+        const s = document.getElementById(id);
+        if (!s) return;
+        tl.to(s, { opacity: 0, duration: dur, ease: "power1.inOut" }, at);
+      }
+
+      // ---------- B1: the problem ----------
+      sceneIn("B1", 0.2);
+      tl.to("#B1 .card", { opacity: 0.25, duration: 1.2, ease: EASE }, 4.2);
+      sceneOut("B1", 7.5, 0.5);
+
+      // ---------- B2: the Space, channel + fund appear ----------
+      sceneIn("B2", 8.0);
+      tl.set("#channelFill", { width: 0 }, 0);
+      tl.to("#channelFill", { width: 290, duration: 1.6, ease: EASE }, 8.6);
+      tl.set("#fund", { x: 0 }, 0);
+      tl.to("#fund", { opacity: 1, x: 120, duration: 1.4, ease: EASE }, 8.6);
+      sceneOut("B2", 17.4, 0.6);
+
+      // ---------- B3: participants ----------
+      sceneIn("B3", 18.0);
+      tl.to("#fund", { x: 250, duration: 1.6, ease: EASE }, 18.6);
+      tl.to("#channelFill", { width: 420, duration: 1.6, ease: EASE }, 18.6);
+      sceneOut("B3", 26.4, 0.6);
+
+      // ---------- B4: policy closes the gate ----------
+      sceneIn("B4", 27.0);
+      tl.fromTo("#capBar", { width: 0 }, { width: "100%", duration: 1.4, ease: EASE }, 28.6);
+      tl.fromTo("#budgetBar", { width: 0 }, { width: "23.5%", duration: 1.4, ease: EASE }, 29.0);
+      tl.to("#fund", { x: 430, duration: 1.6, ease: EASE }, 28.0);
+      tl.to("#channelFill", { width: 600, duration: 1.6, ease: EASE }, 28.0);
+      sceneOut("B4", 37.3, 0.6);
+
+      // ---------- B5: request ----------
+      sceneIn("B5", 38.0);
+      tl.to("#fund", { x: 500, duration: 1.4, ease: EASE }, 38.6);
+      tl.to("#channelFill", { width: 670, duration: 1.4, ease: EASE }, 38.6);
+      sceneOut("B5", 46.3, 0.6);
+
+      // ---------- B6: escrow locks (signature moment) ----------
+      sceneIn("B6", 47.0);
+      tl.set("#escrow", { rotationX: -70, transformPerspective: 900, transformOrigin: "50% 50%" }, 0);
+      tl.to("#escrow", { opacity: 1, duration: 0.8, ease: EASE }, 51.0);
+      tl.to("#escrowLabel", { opacity: 1, duration: 0.8, ease: EASE }, 51.2);
+      tl.to("#escrow", { rotationX: 0, duration: 1.1, ease: EASE }, 51.0);
+      // the fund enters the locked segment: escrow split made visible
+      tl.to("#fund", { x: 742, duration: 1.6, ease: EASE }, 51.4);
+      tl.to("#channelFill", { width: 860, duration: 1.6, ease: EASE }, 51.4);
+      tl.to("#fund", { scale: 0.96, duration: 0.35, ease: EASE, yoyo: true, repeat: 1 }, 52.4);
+      sceneOut("B6", 57.3, 0.6);
+
+      // ---------- B7: the refusal ----------
+      sceneIn("B7", 58.0);
+      // split-frame turn: request versus gate, then the collapse
+      tl.to("#B7 .scene-copy", { x: 0, duration: 1.2, ease: EASE }, 58.2);
+      tl.to("#fund", { x: 624, duration: 1.4, ease: "power3.out" }, 62.0);
+      tl.fromTo("#gate", { scaleY: 0.7 }, { scaleY: 1, duration: 0.5, ease: EASE }, 63.2);
+      tl.to("#gate", { backgroundColor: "#e5484d", duration: 0.4, ease: EASE }, 63.2);
+      tl.to("#gate", { backgroundColor: "rgba(255,255,255,0.3)", duration: 0.6, ease: EASE, delay: 4.2 }, 68.0);
+      tl.set("#denyStamp", { scale: 0.94 }, 0);
+      tl.to("#denyStamp", { opacity: 1, scale: 1, duration: 0.9, ease: EASE }, 62.8);
+      tl.fromTo("#denyStamp", { color: "rgba(229,72,77,0.35)" }, { color: "#e5484d", duration: 0.35, ease: EASE, yoyo: true, repeat: 3 }, 63.6);
+      tl.to("#escrow", { borderColor: "rgba(255,255,255,0.12)", backgroundColor: "rgba(255,255,255,0.02)", duration: 0.9, ease: EASE }, 64.0);
+      tl.to("#escrowLabel", { color: "rgba(255,255,255,0.5)", duration: 0.9, ease: EASE }, 64.0);
+      tl.to("#fund", { scale: 0.94, duration: 0.3, ease: EASE, yoyo: true, repeat: 1 }, 63.0);
+      sceneOut("B7", 70.3, 0.6);
+
+      // ---------- B8: proof releases the lock ----------
+      sceneIn("B8", 71.0);
+      tl.to("#escrow", { borderColor: "rgba(202,254,92,0.32)", backgroundColor: "rgba(202,254,92,0.05)", duration: 0.8, ease: EASE }, 74.6);
+      tl.to("#escrowLabel", { color: "#cafe5c", duration: 0.8, ease: EASE }, 74.6);
+      tl.to("#fund", { x: 1180, duration: 1.8, ease: EASE }, 74.6);
+      tl.to("#fund", { boxShadow: "0 0 46px rgba(202,254,92,0.55)", duration: 0.45, ease: EASE, yoyo: true, repeat: 1 }, 74.8);
+      tl.to("#channelFill", { width: 1350, duration: 1.8, ease: EASE }, 74.6);
+      sceneOut("B8", 81.3, 0.6);
+
+      // ---------- B9: authority narrows ----------
+      sceneIn("B9", 82.0);
+      // the gate narrows: transform-only motion, and the old cap is replaced
+      tl.to("#gate", { x: -140, duration: 1.6, ease: EASE }, 85.0);
+      tl.to("#gateCap", { x: -140, duration: 1.6, ease: EASE }, 85.0);
+      tl.to("#cap500", { opacity: 0, duration: 0.5, ease: EASE }, 85.2);
+      tl.to("#cap200", { opacity: 1, duration: 0.7, ease: EASE }, 85.4);
+      tl.to("#fund", { x: 420, duration: 1.6, ease: EASE }, 85.0);
+      tl.to("#channelFill", { width: 590, duration: 1.6, ease: EASE }, 85.0);
+      sceneOut("B9", 93.3, 0.6);
+
+      // ---------- B10: settlement ----------
+      sceneIn("B10", 94.0);
+      tl.to("#terminus", { opacity: 1, duration: 0.9, ease: EASE }, 99.0);
+      tl.to("#fund", { x: 1300, duration: 2.2, ease: EASE }, 99.0);
+      tl.to("#fund", { boxShadow: "0 0 60px rgba(202,254,92,0.6)", duration: 0.5, ease: EASE, yoyo: true, repeat: 1 }, 99.2);
+      tl.to("#channelFill", { width: 1468, duration: 2.2, ease: EASE }, 99.0);
+      sceneOut("B10", 107.3, 0.7);
+
+      // ---------- B11: close ----------
+      sceneIn("B11", 108.0);
+      // the channel resolves: the mechanism clears, the rail and the verified totals remain
+      tl.to(["#fund", "#escrow", "#escrowLabel", "#terminus", "#cap200", "#horizon", "#B11 .rule"], { opacity: 0, duration: 0.7, ease: EASE }, 108.2);
+      tl.to("#cap500", { opacity: 0.35, duration: 0.7, ease: EASE }, 108.2);
+      tl.to("#gate", { opacity: 0.25, duration: 0.7, ease: EASE }, 108.2);
+      countUp("#s1", 177, 110.4, 1.8);
+      countUp("#s2", 41, 110.6, 1.8);
+      countUp("#s3", 8, 110.8, 1.8);
+      const b11surface = document.getElementById("B11surface");
+      if (b11surface) {
+        tl.set(b11surface, { y: 24 }, 0);
+        tl.to(b11surface, { opacity: 1, y: 0, duration: 2.0, ease: EASE }, 109.0);
+      }
+      tl.set("#B11stats", { y: 20 }, 0);
+      tl.to("#B11stats", { opacity: 1, y: 0, duration: 1.6, ease: EASE }, 110.2);
+      tl.set("#B11footer span", { y: 14 }, 0);
+      tl.to("#B11footer span", { opacity: 1, y: 0, duration: 1.3, ease: EASE, stagger: 0.06 }, 115.0);
+      tl.to("#B11 .rule", { opacity: 0, duration: 0.6, ease: EASE }, 115.0);
+      tl.to({}, { duration: 0.01 }, 119.9);
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

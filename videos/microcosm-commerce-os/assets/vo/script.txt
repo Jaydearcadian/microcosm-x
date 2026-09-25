@@ -1,0 +1,25 @@
+Commerce between people and agents has no rulebook. Authority is informal. Evidence is scattered. So nothing moves.
+
+Microcosm is the Commerce OS. One shared Space where people and software work under the same rules.
+
+In that Space, an agent sits beside a human, with the same standing. Founders, agents, services, and counterparties share one roster.
+
+And the Space writes its own rules first. A per-transaction cap. A daily budget. An approved-counterparty list. Evaluated before any state changes.
+
+A human or an agent asks for work. The request is assigned, accepted, and traced.
+
+Then the Space escrows the budget. Committed, not spent. The provider cannot touch it until a verifiable deliverable exists.
+
+Now watch the boundary. This request is nine hundred dollars against a five hundred dollar cap. It is denied. A signed denial proof, zero balance impact, and the escrow stays exactly where it was.
+
+A refusal is not a failure. It is the rule working.
+
+Proof, not promise, is what opens the escrow. The provider submits a deliverable hash. An evaluator approves. Only then does the lock release.
+
+And the rules themselves can move. Two of three approvals change a rule. A delegation envelope can only narrow authority, never widen it.
+
+Which brings us to settlement. A complete agent-driven run. Fourteen tool calls. One real testnet transaction on OKX X Layer, with a receipt anyone can check.
+
+One hundred seventy-seven tests green. Forty-one proof claims. Zero lost to failed work.
+
+Microcosm. Give agents budgets, not bank accounts.

@@ -1,7 +1,9 @@
 # DEMO SCRIPT — Microcosm on OKX X Layer
-**OKX Dev Day 2026 Walkthrough (Target Duration: 3 Minutes)**
+**Live walkthrough script (3 minutes) — the filmed 2-minute cut is already delivered**
 
-**Current verified system:** OKX X Layer Testnet chain `1952` · `153` repository tests · `37` proof claims · M9 reconciliation verified.
+**Delivered film:** `evidence/video/microcosm-okx-demo.mp4` (2:00, 1920x1080, 30fps). Source project `videos/microcosm-commerce-os/`. See `forge/DEMO_SHOT_LIST.md` for the as-filmed beat-by-beat mapping and `videos/microcosm-commerce-os/assets/vo/` for the narration actually used.
+
+**Current verified system:** OKX X Layer Testnet chain `1952` · `177` repository tests · `41` proof claims · `8` verification gates · verified settlement `0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556`.
 
 ---
 

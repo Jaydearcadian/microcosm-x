@@ -1,0 +1,167 @@
+[a] MICROCOSM
+[a] The loop
+[a] Everyone
+[a] Open on Microcosm
+[p] COMMERCE OS · OKX X LAYER
+[span] One
+[span] shared
+[span] Space
+[span] where
+[span] people
+[span] and
+[span] software
+[span] get
+[span] work
+[span] done.
+[p] Requests, work, payments, and proof — coordinated under rules everyone can see, settled on OKX X Layer.
+[a] Create a Space
+[a] See a Space run
+[span] SHARED TREASURY
+[span] LIVE · SPACE-PROCUREMENT-001
+[span] $2,000
+[span] REMAINING TODAY
+[span] $2,000
+[span] daily budget
+[span] SPENT
+[span] ESCROWED
+[span] AVAILABLE
+[span] $2,000
+[span] $500
+[span] CAP / TRANSACTION
+[span] TREASURY
+[span] $5,000
+[span] SPENT TODAY
+[span] IN ESCROW
+[span] DENIALS HELD
+[span] held at policy
+[span] LATEST LEDGER
+[span] SPACE_FUNDED
+[span] Acme Procurement funded +5,000.00 USDC
+[span] WORK_SUBMITTED
+[span] job-0001 · GPU cluster · deliverable proof in
+[button] 0xaaaa…aaaaa
+[span] PROOF
+[span] PAYMENT_SETTLED
+[span] 350.00 USDC settled · X Layer
+[button] 0x1f2e…e8d7c
+[span] PROOF
+[span] PAYMENT_DENIED
+[span] $900.00 over-cap attempt held at the boundary
+[p] THE LOOP
+[span] Request
+[span] Work
+[span] Result
+[span] Payment
+[p] One flow, four states, zero improvisation. The Space decides what may happen; the chain records what did.
+[h3] Request
+[p] a person creates
+[p] A founder or teammate files a bounded request inside the Space. Intent is explicit before any money is in play.
+[h3] Work
+[p] a provider takes it
+[p] Creating the Work Order escrows budget out of the Space treasury. Funds are committed, not spendable.
+[h3] Result
+[p] proof is required
+[p] The provider submits a verifiable deliverable hash. No proof, no payout — approval is gated on evidence.
+[h3] Payment
+[p] an evaluator approves
+[p] Approval settles on OKX X Layer. Rejection or expiry triggers a Gaia exception refund — 100% back, $0 lost.
+[div] tests green
+[div] contracts on X Layer
+[div] lost to failed work
+[p] ONE SPACE, EVERYONE IN
+[span] People
+[span] and
+[span] software
+[span] side
+[span] side.
+[p] One Space holds five kinds of participant. The ontology is the point: a founder, an autonomous agent, a service, a partner organization, and a vendor all appear in the same ledger with the same standing.
+[h3] Human
+[p] Founders, operators, and the people who own the outcome.
+[h3] Agent
+[p] Autonomous workers inside the same rules, with the same ceiling.
+[h3] Service
+[p] APIs, daemons, and scheduled jobs that do the work.
+[h3] Organization
+[p] Teams and companies working under one shared agreement.
+[h3] Counterparty
+[p] The vendors payments are allowed to reach.
+[p] RULES EVERYONE CAN SEE
+[span] One
+[span] agreement,
+[span] enforced
+[span] equally
+[p] Caps, budgets, allowlists, and balances are written where everyone can read them, then checked deterministically before any signature exists. The rules do not care who is asking.
+[div] POLICY MATRIX · EXCERPT
+[span] Per-transaction cap
+[span] $500.00
+[span] any requester
+[span] Daily budget
+[span] $2,000.00
+[span] cumulative, resets daily
+[span] Approved counterparties
+[span] allowlisted before use
+[span] Treasury balance
+[span] $4,530.00
+[span] shared, spendable
+[span] DENIED · SAME VERDICT FOR ANYONE
+[h3] A $900 purchase that never happened
+[p] A request to buy a $900 workstation came through the Space. The cap is $500. The policy engine denied it deterministically — the same verdict it would have returned for a person, an agent, or a service.
+[li] Exceeds Space per-transaction cap: requested 900.00, limit 500.00
+[p] $0 moved · denial proof written
+[span] denialProof
+[button] 0xb41e…85a26
+[span] PROOF
+[p] LIVE WORK
+[h2] Every work order, on the
+[span] board
+[p] Funded means escrowed. Submitted means a deliverable hash exists. Completed means the evaluator approved and payment settled on X Layer — bound to that exact hash. The board is the money.
+[span] Funded
+[span] JOB
+[span] Dataset delivery Q3
+[span] 200.00
+[span] Escrowed from Space treasury · deadline set
+[p] PROVENANCE
+[span] Every
+[span] cent
+[span] traceable
+[p] Activity records carry a monotonically increasing seq per Space. Settlement receipts bind tx hash to deliverable hash. Onchain hashes link to OKLink; proof hashes stay labeled as proof.
+[span] ✓ OKLINK VERIFIED SOURCES
+[span] SettlementRouter
+[button] 0x9ab4…e4f5a
+[span] CONTRACT
+[span] AgenticCommerce
+[button] 0xc4d2…b4c5d
+[span] CONTRACT
+[div] AUDIT TICKER · seq ↑
+[span] 000
+[span] SPACE_CREATED
+[span] Acme Procurement created
+[span] 003
+[span] SPACE_FUNDED
+[span] Treasury capitalised +5,000.00 USDC
+[span] 004
+[span] REQUEST_CREATED
+[span] Provision 100 GPU-hours for the render queue
+[span] 009
+[span] WORK_CREATED
+[span] job-0001 · 350.00 USDC escrowed
+[span] 010
+[span] WORK_SUBMITTED
+[span] Deliverable proof submitted
+[span] 012
+[span] PAYMENT_SETTLED
+[span] 350.00 USDC settled on X Layer
+[span] 013
+[span] PAYMENT_DENIED
+[span] 900.00 USDC over-cap attempt held
+[div] event types streamed over SSE
+[span] 100
+[div] of failed-work escrow refunded
+[div] interfaces with identical terminal states (MCP · REST · SDK)
+[span] Open
+[span] Space
+[span] seconds
+[p] Name the Space, set the caps, invite everyone. The wizard walks you from empty treasury to first settled payment — every step is a receipt.
+[a] Create your Space
+[a] Read the API contract
+[a] See the rules hold

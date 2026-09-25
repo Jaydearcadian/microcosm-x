@@ -1,0 +1,47 @@
+{
+  "status": "pass",
+  "machine_status": "pass",
+  "approval_status": "approved",
+  "errors": [],
+  "warnings": [],
+  "error_codes": [],
+  "warning_codes": [],
+  "stats": {
+    "frame_count": 3,
+    "roles": [
+      "product_state",
+      "environment_introduction",
+      "mechanism_capture"
+    ],
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "image_stats": [
+      {
+        "role": "product_state",
+        "width": 1920,
+        "height": 1080,
+        "mean_luma": 11.179,
+        "mean_saturation": 0.0058
+      },
+      {
+        "role": "environment_introduction",
+        "width": 1920,
+        "height": 1080,
+        "mean_luma": 12.91,
+        "mean_saturation": 0.0054
+      },
+      {
+        "role": "mechanism_capture",
+        "width": 1920,
+        "height": 1080,
+        "mean_luma": 12.211,
+        "mean_saturation": 0.0074
+      }
+    ]
+  },
+  "machine_pass_is_sufficient": false,
+  "external_direction_approval_required": true,
+  "manifest": "videos/microcosm-commerce-os/proof/keyframe-proof.json"
+}

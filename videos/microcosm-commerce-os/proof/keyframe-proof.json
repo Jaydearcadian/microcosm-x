@@ -1,0 +1,86 @@
+{
+  "version": "demo-foundry-keyframe-proof-v1",
+  "project": "microcosm-okx",
+  "source": "frames extracted from the rendered master dist/microcosm-okx-demo.mp4 (deterministic browser capture, no generative imagery)",
+  "frames": [
+    {
+      "role": "product_state",
+      "beat": "B6",
+      "timecode": "00:00:52",
+      "image": "keyframes/A-product-state.png",
+      "object_attached": true,
+      "attachment_evidence": [
+        "the $1,530 fund token is seated inside the lime ESCROW LOCKED segment at the moment work-0001 is Funded",
+        "the Work order card beside it shows Escrowed $350.00 and state Open -> Funded"
+      ],
+      "trigger_visible": true,
+      "trigger": "the work-order funding action, shown as the card's Funded badge and the escrow segment materialising around the fund",
+      "product_anchors": [
+        "live Work order card bound to the work endpoint",
+        "ESCROW LOCKED - OPEN -> FUNDED label",
+        "per-transaction cap gate on the same channel"
+      ]
+    },
+    {
+      "role": "environment_introduction",
+      "beat": "B2",
+      "timecode": "00:00:13",
+      "image": "keyframes/B-environment-introduction.png",
+      "entry_cause_visible": true,
+      "entry_cause": "the fund lands on the channel as the Space is introduced, so the environment is entered by the product's own value arriving",
+      "background_origin": "brand_derived",
+      "continuity_anchors": [
+        "charcoal ground and lime accent taken from the deployed product's own tokens",
+        "MICROCOSM mark and OKX X LAYER TESTNET - 1952 chain label",
+        "the real Command Center capture with $1,530 remaining today and the $500 cap"
+      ],
+      "could_belong_to_any_product": false,
+      "product_anchors": [
+        "SHARED TREASURY $1,530 remaining today on a $2,000 daily budget",
+        "SPACE-WIDE AUTHORITY per-transaction $500 and daily $470 / $2,000",
+        "POLICY MATRIX with denials held 1 and zero balance impact"
+      ]
+    },
+    {
+      "role": "mechanism_capture",
+      "beat": "B10",
+      "timecode": "00:01:40",
+      "image": "keyframes/C-mechanism-capture.png",
+      "real_rule": "escrow releases only against a deliverable hash and an evaluation, then settles on OKX X Layer",
+      "visible_object_effect": "the fund completes its travel along the channel and comes to rest at the SETTLED terminus",
+      "resolution_visual": "the verified receipt card with receipt status 1 at block 41894186 and the published transaction hash",
+      "object_arrived": true,
+      "product_anchors": [
+        "SETTLED terminus on the authorized channel",
+        "settlement receipt bound to the verified testnet run",
+        "transaction hash 0xbd1957ff...c47556"
+      ]
+    }
+  ],
+  "continuity": {
+    "persistent_objects": [
+      {
+        "id": "the_space_fund",
+        "appears_in": ["product_state", "mechanism_capture"],
+        "lineage": "seated in the locked escrow segment, then released and resolved at the settled terminus",
+        "forbidden_operations": ["wholesale replacement", "hidden behind a wipe", "reset between beats"]
+      }
+    ],
+    "shared_tokens": [
+      "charcoal ground #020202",
+      "lime accent #cafe5c reserved for value movement",
+      "amber/red #e5484d reserved for refusal",
+      "JetBrains Mono for caps, hashes, and chain identifiers",
+      "the single horizontal authorized channel with the cap gate"
+    ]
+  },
+  "external_review": {
+    "reviewer": "human_reviewer:user",
+    "product_state_clear": true,
+    "environment_entry_clear": true,
+    "mechanism_rule_clear": true,
+    "destination_clear": true,
+    "product_identity_specific": true,
+    "notes": "Reviewed on rendered pixels from the master, not on source CSS."
+  }
+}
