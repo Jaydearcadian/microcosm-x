@@ -45,7 +45,7 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
   const P = chain.addrs.provider;
 
   // 1. Founder (human) creates + capitalizes the Space.
-  const { space } = await client.createSpace({ name: 'Onboard Co', actorId: 'Founder-Ada' });
+  const { space } = await client.createSpace({ name: 'Onboard Co', actorId: 'Founder-Ada', chainId: chain.chainId });
   const spaceId = space.id;
   const founderMember = (await client.getSpace(spaceId)).space.members[0].id;
 

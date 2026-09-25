@@ -13,6 +13,7 @@ import { ensureChain } from '../../../mcp/test/helpers/chain.mjs';
 import { XLayerAdapter } from '../../../mcp/src/xlayer.js';
 
 const FOUNDER = 'Ada Founder';
+const AGENT = 'ConformanceBot';
 // Onchain-backed operator identities (member records carry real addresses;
 // settlement resolves display ids to these for the chain calls).
 let OP;
