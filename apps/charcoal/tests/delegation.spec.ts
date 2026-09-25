@@ -10,7 +10,8 @@ test('delegation view states the attenuation rule and shows the parent envelope'
 
 test('delegation is read-only until a wallet session is signed', async ({ page }) => {
   await page.goto('/app#delegation');
-  await expect(page.getByText(/Connect and sign a session as an admin, agent, or operator/)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Delegations are session-bound/)).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/Connect and sign a session as an admin, agent, or operator/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Create envelope' })).toHaveCount(0);
 });
 
@@ -19,6 +20,12 @@ test('delegation exposes no sign, verify, or revoke control without a session', 
   await expect(page.getByRole('heading', { name: 'Authority narrows. It never grows.' })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('button', { name: 'Sign envelope' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Revoke' })).toHaveCount(0);
+});
+
+test('delegation shows no error flash while signed out', async ({ page }) => {
+  await page.goto('/app#delegation');
+  await expect(page.getByRole('heading', { name: 'Authority narrows. It never grows.' })).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.action-flash--danger')).toHaveCount(0);
 });
 
 test('mobile delegation view has no horizontal overflow', async ({ page }) => {

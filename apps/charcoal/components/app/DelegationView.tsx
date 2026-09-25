@@ -43,6 +43,12 @@ export function DelegationView() {
 
   const load = useCallback(async () => {
     if (!spaceId) return;
+    // delegations are session-bound, so stay read-only rather than surfacing a 401
+    if (!isAuthenticated) {
+      setFailure(null);
+      setDelegations([]);
+      return;
+    }
     setFailure(null);
     try {
       setDelegations(await fetchDelegations(spaceId));
@@ -138,6 +144,7 @@ export function DelegationView() {
     </header>
 
     {failure && <div className="action-flash action-flash--danger" role="status">{failure}</div>}
+    {!isAuthenticated && <div className="action-flash" role="status">Delegations are session-bound. Connect a wallet and sign the session to see this Space's envelopes and to sign, verify, or revoke one.</div>}
     {flash && <div className="action-flash" role="status">{flash}</div>}
 
     <div className="gov-grid">

@@ -42,6 +42,13 @@ export function GovernanceView() {
 
   const load = useCallback(async () => {
     if (!spaceId) return;
+    // these routes are session-bound, so stay read-only rather than surfacing a 401
+    if (!isAuthenticated) {
+      setFailure(null);
+      setConfig(null);
+      setRequests([]);
+      return;
+    }
     setFailure(null);
     try {
       const [nextConfig, nextRequests] = await Promise.all([fetchGovernanceConfig(spaceId), fetchGovernanceRequests(spaceId)]);
@@ -122,6 +129,7 @@ export function GovernanceView() {
     </header>
 
     {failure && <div className="action-flash action-flash--danger" role="status">{failure}</div>}
+    {!isAuthenticated && <div className="action-flash" role="status">Governance is session-bound. Connect a wallet and sign the session to see this Space's quorum, its approval queue, and to cast a vote.</div>}
     {flash && <div className="action-flash" role="status">{flash}</div>}
 
     <div className="gov-grid">
