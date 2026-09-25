@@ -45,11 +45,17 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M9-8** | Onchain Indexer | `ProviderSet`, `BudgetSet`, `AdjudicatorSet`, and `RubricSet` update Open-job metadata state-only; `EvidenceAttached` records the observed deliverable hash and source log for Funded/Submitted jobs without inventing an evidence URI or changing status | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-8` PASS; 56/56) + `make test` (148 tests passed, 0 failed) | 2026-09-25 |
 | **M9-9** | Onchain Indexer | Optional viem WebSocket transport, HTTP and injected clients, explicit persisted reconciliation state, sanitized error visibility, and a non-overlapping polling run loop preserve sync API compatibility | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-9` transport/state/run-loop PASS) + `npm --workspace=@microcosm/mcp-server test` (86/86) | 2026-09-25 |
 | **M9-10** | Onchain Indexer | Persisted block hashes detect reorgs after restart, restore a canonical safe checkpoint, rewind orphaned projections, and replay canonical logs while supporting legacy snapshots without `blockHash` | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-9` reorg and legacy-cursor PASS; 61/61) + `make test` (153/153) | 2026-09-25 |
+| **M12-1** | Governance | High-value direct payments require an explicit durable M-of-N EIP-712 approval queue; signer identity is authenticated, policy is re-evaluated before execution, and settlement is one-time | `VERIFIED` | `node --test packages/policy-engine/test/governance.test.js mcp/test/governance.test.js packages/server/test/governance.test.js packages/server/test/governance-persistence.test.js` (M12-1…M12-6 PASS) + `make test` | 2026-09-25 |
 
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-25: M12 offchain threshold governance (M12-1)
+* **Commands**: `node --test packages/policy-engine/test/governance.test.js mcp/test/governance.test.js packages/server/test/governance.test.js packages/server/test/governance-persistence.test.js`; `make test`; `node scripts/verify-proof-ledger.mjs`.
+* **Output**: EIP-712 tamper/chain/expiry validation, explicit 2-of-3 quorum, duplicate and unauthorized signer rejection, REST HttpOnly-session/body-address spoof resistance, MCP parity, one-time execution, persistence, and legacy snapshot loading passed. The full gate passed 36 contract, 15 policy, 88 MCP, 11 server, and 9 SDK tests with 0 failures.
+* **Status**: `VERIFIED` for the additive M12 governance slice. Existing `/payments` behavior and contract settlement code were not changed.
 
 ### 2026-09-25: Wallet sessions and Space invitations (AUTH-1)
 * **Command**: `npm --workspace=@microcosm/server test` (`auth.test.js`).

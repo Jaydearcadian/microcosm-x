@@ -22,8 +22,8 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | Milestone | Scope / Claim | Status | Verification Evidence |
 | :--- | :--- | :---: | :--- |
 | **M0** | **Onchain Financial Kernel & Invariants** | `VERIFIED` | `make test-contracts` (36 Solidity tests pass) |
-| **M1** | **Space Policy Kernel & EIP-712 Attestation** | `VERIFIED` | `npm run test:policy` (13 tests pass, byte-for-byte fixture) |
-| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (25 tests pass, 24 tools verified) |
+| **M1** | **Space Policy Kernel & EIP-712 Attestation** | `VERIFIED` | `npm run test:policy` (15 tests pass, byte-for-byte fixture plus governance EIP-712 checks) |
+| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (88 tests pass, 30 tools verified) |
 | **M3** | **HTTP REST API & Server-Sent Events (SSE)** | `VERIFIED` | `npm run test:server` (M3-1…M3-6 pass: lifecycle, bounds, 422 denials, pagination, live SSE); contract frozen in `docs/API_CONTRACT.md` |
 | **M4** | **Persistent Storage Engine (Disk/SQLite)** | `VERIFIED` | `npm run test:server` (M4-1 round-trip + M4-2 SIGKILL survival PASS); atomic JSON snapshots, live box restores on restart |
 | **M5** | **Typed Client SDK & Curated Contract ABIs** | `VERIFIED` | `npm --workspace=@microcosm/sdk test` (9/9 client, wizard, and ABI tests pass) |
@@ -33,7 +33,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `VERIFIED` | `node --test mcp/test/indexer.test.js` (61/61) covers all indexed lifecycle events, HTTP/WebSocket/injected transports, explicit reconciliation recovery, non-overlapping polling, legacy cursor compatibility, and restart-safe reorg rewind; `make test` passes 153/153 |
 | **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
-| **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `PLANNED` | Phase 3 (Whitepaper Section 5.1) |
+| **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `VERIFIED` | `make test`; governance EIP-712, 2-of-3, session spoofing, idempotency, persistence, and REST/MCP parity tests pass |
 | **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) — kept as internal adjudication capability per rebaseline §19; not a product centerpiece (§20) |
 | **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `PLANNED` | Phase 3 (Whitepaper Section 8 & 15) — integration mechanisms answering product questions inside the Space, not product surfaces (§21) |
 | **M15** | **Multi-Tenant Enterprise Security & Fine-Grained Privacy** | `PLANNED` | Phase 4 (Whitepaper Section 20 & 21) |
@@ -173,7 +173,10 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 * **Whitepaper Reference**: Section 5.1 (*People*) & Section 20 (*Security Model*).
 * **Behavior**:
   * Autonomous agents can operate freely below the per-transaction cap ($500).
-  * Requests exceeding the cap enter a `PENDING_APPROVAL` queue requiring $M$-of-$N$ human signers via EIP-712 or smart accounts.
+  * Requests exceeding the cap enter a durable `PENDING` queue requiring exactly the configured $M$-of-$N$ signer quorum.
+  * EIP-712 approvals bind the immutable request, policy snapshot, chain, nonce, and deadline; execution re-checks every non-cap policy rule and settles once through the existing live path.
+  * REST, MCP, and SDK expose the same governance operations; REST signer identity is session-derived.
+* **Evidence**: `npm run test:policy` (15/15), focused governance MCP/server suites, and `make test` pass. Snapshot round-trip and legacy governance-map compatibility pass in `packages/server/test/governance-persistence.test.js`.
 
 ---
 

@@ -71,8 +71,9 @@ export class ApiError extends Error {
 
 export class SpaceClient {
   /** @param {string} baseUrl e.g. http://localhost:8787 */
-  constructor(baseUrl) {
+  constructor(baseUrl, { cookie = null } = {}) {
     this.baseUrl = String(baseUrl).replace(/\/$/, '');
+    this.cookie = cookie;
   }
 
   async _req(method, path, body, query = {}) {
@@ -82,7 +83,7 @@ export class SpaceClient {
     const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`;
     const res = await fetch(url, {
       method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(this.cookie ? { Cookie: this.cookie } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
@@ -138,6 +139,14 @@ export class SpaceClient {
   // --- payments ---
   /** @returns {Promise<{receipt:Receipt}>} throws PolicyDenial on boundary violation */
   requestPayment(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/payments`, args); }
+
+  configureGovernance(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/governance/config`, args); }
+  getGovernance(spaceId) { return this._req('GET', `/api/spaces/${spaceId}/governance/payments`); }
+  createGovernancePayment(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/governance/payments`, args); }
+  listGovernanceRequests(spaceId, query = {}) { return this._req('GET', `/api/spaces/${spaceId}/governance/requests`, undefined, query); }
+  getGovernanceRequest(spaceId, requestId) { return this._req('GET', `/api/spaces/${spaceId}/governance/requests/${requestId}`); }
+  signGovernanceRequest(spaceId, requestId, signature) { return this._req('POST', `/api/spaces/${spaceId}/governance/requests/${requestId}/sign`, { signature }); }
+  executeGovernanceRequest(spaceId, requestId) { return this._req('POST', `/api/spaces/${spaceId}/governance/requests/${requestId}/execute`, {}); }
 
   // --- activity ---
   listActivity(spaceId, query = {}) { return this._req('GET', `/api/spaces/${spaceId}/activity`, undefined, query); }

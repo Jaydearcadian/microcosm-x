@@ -69,6 +69,13 @@ const EVIDENCE_GATES = [
     claims: ['M4'],
   },
   {
+    id: 'M12-GOV',
+    name: 'M12 Governance EIP-712, Quorum, Auth, Idempotency, and Persistence Suite',
+    command: 'node --test packages/policy-engine/test/governance.test.js mcp/test/governance.test.js packages/server/test/governance.test.js packages/server/test/governance-persistence.test.js',
+    cwd: ROOT_DIR,
+    claims: ['M12-1'],
+  },
+  {
     id: 'SDK-CLIENT',
     name: 'SDK Client & Policy Boundary Suite (Rest, Bounds, DenialProof, Trace)',
     command: 'node --test packages/sdk/test/client.test.js',

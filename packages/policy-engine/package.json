@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.js",
+  "dependencies": {
+    "viem": "^2.56.9"
+  },
   "scripts": {
     "test": "node --test test/*.test.js"
   }

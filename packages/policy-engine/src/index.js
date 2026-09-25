@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 export * from './attestation.js';
+export * from './governance.js';
 
 /**
  * Converts a decimal string or number to cents (e.g. "500.00" -> 50000)

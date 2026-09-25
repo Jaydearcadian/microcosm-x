@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
-import { evaluateSpacePayment, toBaseUnits, fromBaseUnits } from '../../packages/policy-engine/src/index.js';
+import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig } from '../../packages/policy-engine/src/index.js';
 
 /**
  * In-memory Space store providing state continuity across MCP and API calls.
  */
 export class SpaceStore {
-  constructor() {
+  constructor({ settlement = null, seed = true } = {}) {
+    this.settlement = settlement;
     /** @type {Map<string, object>} */
     this.spaces = new Map();
     /** @type {Map<string, Array<object>>} */
@@ -20,6 +21,8 @@ export class SpaceStore {
     this.requests = new Map();
     /** @type {Map<string, object>} Space invitations keyed by invite code */
     this.invitations = new Map();
+    this.governanceRequests = new Map();
+    this.governanceExecutionClaims = new Set();
     this.indexerCursors = new Map();
     this.indexerReconciliations = new Map();
     this.indexerReorgSnapshots = new Map();
@@ -27,8 +30,8 @@ export class SpaceStore {
     this._nextParticipantSeq = 1;
     this._nextRequestSeq = 1;
     this._nextInviteSeq = 1;
-    // Seed with canonical Procurement Space
-    this.seedProcurementSpace();
+    this._nextGovernanceRequestSeq = 1;
+    if (seed) this.seedProcurementSpace();
   }
 
   seedProcurementSpace() {
@@ -125,8 +128,10 @@ export class SpaceStore {
    * must only mutate Space state after this resolves. There is no
    * simulated fallback anywhere in this file.
    */
-  async _liveSettle({ space, jobIdLabel, provider, evaluatorId, evaluatorAddr, description, budget, deliverableHash }) {
+  async _liveSettle(args) {
+    if (this.settlement) return this.settlement(args);
     const { XLayerAdapter } = await import('./xlayer.js');
+    const { space, jobIdLabel, provider, evaluatorId, evaluatorAddr, description, budget, deliverableHash } = args;
     const adapter = new XLayerAdapter();
     if (adapter.chainId !== space.chainId) {
       throw new Error(`Chain mismatch: Space '${space.id}' expects chain ${space.chainId}, adapter targets ${adapter.chainId} (${adapter.rpc})`);
@@ -146,49 +151,7 @@ export class SpaceStore {
     return { txHash: result.txHashes.complete, txHashes: result.txHashes, onchainJobId: result.jobId };
   }
 
-  async requestPayment({ spaceId, actorId, recipient, amount, memo }) {
-    const space = this.spaces.get(spaceId);
-    if (!space) {
-      throw new Error(`Space '${spaceId}' not found`);
-    }
-
-    const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
-    const evaluation = evaluateSpacePayment(space, {
-      actionId,
-      actorId,
-      recipient,
-      amount,
-      memo,
-    });
-
-    const timestamp = new Date().toISOString();
-
-    if (!evaluation.allowed) {
-      // Record denial proof in Space activity log
-      const record = {
-        type: 'PAYMENT_DENIED',
-        actionId,
-        actorId,
-        recipient,
-        amount,
-        reasons: evaluation.reasons,
-        denialProof: evaluation.denialProof,
-        timestamp,
-      };
-      this.activity.get(spaceId).push(record);
-
-      return {
-        status: 'REJECTED',
-        actionId,
-        reasons: evaluation.reasons,
-        denialProof: evaluation.denialProof,
-        spaceBalance: space.balance,
-      };
-    }
-
-    // Compliant payment: settle REAL value onchain first. If this throws,
-    // Space books are untouched — there is no simulated fallback.
-    const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
+  async _settleApprovedPayment({ space, actionId, actorId, recipient, amount, memo, evaluation, evaluatorAddr, receiptMetadata = {}, timestamp = new Date().toISOString() }) {
     let live;
     try {
       live = await this._liveSettle({
@@ -196,7 +159,7 @@ export class SpaceStore {
         jobIdLabel: actionId,
         provider: recipient,
         evaluatorId: actorId,
-        evaluatorAddr: memberAddr,
+        evaluatorAddr,
         description: memo || `Payment ${actionId}`,
         budget: amount,
         deliverableHash: evaluation.approvedIntent.deliverableHash || evaluation.approvedIntent.authHash,
@@ -208,14 +171,12 @@ export class SpaceStore {
     const balanceBefore = toBaseUnits(space.balance);
     const amountBase = toBaseUnits(amount);
     const spentTodayBefore = toBaseUnits(space.totalSpentToday);
-
     space.balance = fromBaseUnits(balanceBefore - amountBase);
     space.totalSpentToday = fromBaseUnits(spentTodayBefore + amountBase);
-
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId,
-      spaceId,
+      spaceId: space.id,
       actorId,
       recipient,
       amount,
@@ -229,19 +190,26 @@ export class SpaceStore {
       authHash: evaluation.approvedIntent.authHash,
       timestamp,
       memo,
+      ...receiptMetadata,
     };
-
     this.receipts.set(receipt.receiptId, receipt);
-    this.activity.get(spaceId).push({
-      type: 'PAYMENT_SETTLED',
-      ...receipt,
-    });
+    this.activity.get(space.id).push({ type: 'PAYMENT_SETTLED', ...receipt });
+    return { status: 'SETTLED', receipt, spaceBalance: space.balance };
+  }
 
-    return {
-      status: 'SETTLED',
-      receipt,
-      spaceBalance: space.balance,
-    };
+  async requestPayment({ spaceId, actorId, recipient, amount, memo }) {
+    const space = this.spaces.get(spaceId);
+    if (!space) throw new Error(`Space '${spaceId}' not found`);
+    const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
+    const evaluation = evaluateSpacePayment(space, { actionId, actorId, recipient, amount, memo });
+    const timestamp = new Date().toISOString();
+    if (!evaluation.allowed) {
+      const record = { type: 'PAYMENT_DENIED', actionId, actorId, recipient, amount, reasons: evaluation.reasons, denialProof: evaluation.denialProof, timestamp };
+      this.activity.get(spaceId).push(record);
+      return { status: 'REJECTED', actionId, reasons: evaluation.reasons, denialProof: evaluation.denialProof, spaceBalance: space.balance };
+    }
+    const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
+    return this._settleApprovedPayment({ space, actionId, actorId, recipient, amount, memo, evaluation, evaluatorAddr: memberAddr, timestamp });
   }
 
   /**
@@ -1863,6 +1831,221 @@ export class SpaceStore {
     }));
     this.activity.set(spaceId, entries);
     return { job: { ...job }, recorded: true };
+  }
+
+  _governanceConfigOrThrow(spaceId) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const config = space.governance;
+    const reasons = validateGovernanceConfig(config);
+    if (reasons.length > 0) throw new Error(`Space '${spaceId}' governance is not configured: ${reasons.join('; ')}`);
+    return { space, config: { ...config, signerAllowlist: config.signerAllowlist.map((address) => address.toLowerCase()) } };
+  }
+
+  getGovernanceConfig({ spaceId }) {
+    const { config } = this._governanceConfigOrThrow(spaceId);
+    return { ...config, signerAllowlist: [...config.signerAllowlist] };
+  }
+
+  configureSpaceGovernance({ spaceId, actorAddress, threshold, signerAllowlist, enabled = true }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const admin = (space.members || []).find((member) => String(member.address || '').toLowerCase() === String(actorAddress || '').toLowerCase() && member.role === 'admin');
+    if (!admin) throw new Error(`Only an admin of Space '${spaceId}' can configure governance`);
+    const config = { enabled, threshold, signerAllowlist };
+    const reasons = validateGovernanceConfig(config);
+    if (reasons.length > 0) throw new Error(`Invalid governance config: ${reasons.join('; ')}`);
+    space.governance = { ...config, signerAllowlist: config.signerAllowlist.map((address) => address.toLowerCase()) };
+    return this.getGovernanceConfig({ spaceId });
+  }
+
+  _governanceMember(space, address) {
+    return (space.members || []).find((member) => String(member.address || '').toLowerCase() === String(address || '').toLowerCase() && ['admin', 'agent', 'operator'].includes(member.role));
+  }
+
+  _governanceCapReason(space, amount) {
+    const max = space.rules?.maxPerTransaction;
+    if (!max || toBaseUnits(amount) <= toBaseUnits(max)) return null;
+    return `Exceeds Space per-transaction cap: requested ${amount} ${space.currency || 'USDC'}, max permitted is ${max}`;
+  }
+
+  _evaluateGovernancePayment(space, request) {
+    const requester = this._governanceMember(space, request.requesterAddress);
+    const evaluation = evaluateSpacePayment(space, {
+      actionId: request.actionId,
+      actorId: requester?.id || request.requesterAddress,
+      recipient: request.recipient,
+      amount: request.amount,
+      asset: request.asset,
+      memo: request.memo,
+      timestamp: new Date().toISOString(),
+    });
+    const capReason = this._governanceCapReason(space, request.amount);
+    const reasons = evaluation.reasons.filter((reason) => reason !== capReason);
+    const allowed = reasons.length === 0;
+    return {
+      ...evaluation,
+      allowed,
+      reasons,
+      capException: Boolean(capReason),
+      approvedIntent: allowed ? {
+        actionId: request.actionId,
+        spaceId: space.id,
+        actorId: request.requesterAddress,
+        recipient: request.recipient,
+        amount: request.amount,
+        asset: request.asset,
+        approvedAt: new Date().toISOString(),
+        memo: request.memo,
+        nonce: request.approval.nonce,
+        authHash: request.approval.policyHash,
+        deliverableHash: request.approval.policyHash,
+      } : null,
+    };
+  }
+
+  createGovernancePaymentRequest({ spaceId, requesterAddress, recipient, amount, memo = '', deadline }) {
+    const { space, config } = this._governanceConfigOrThrow(spaceId);
+    if (!this._governanceMember(space, requesterAddress)) throw new Error(`Requester '${requesterAddress}' is not a spending member of Space '${spaceId}'`);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(String(recipient || ''))) throw new Error('Governance payment recipient must be an EVM address');
+    const amountBase = toBaseUnits(amount);
+    if (amountBase <= 0n) throw new Error('Governance payment amount must be greater than zero');
+    const capReason = this._governanceCapReason(space, amount);
+    if (!capReason) throw new Error('Governance payment must exceed the Space per-transaction cap');
+    const deadlineMs = this._parseDeadline(deadline);
+    if (deadlineMs <= Date.now()) throw new Error('Governance payment deadline must be in the future');
+    const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
+    const createdAt = new Date().toISOString();
+    const requestId = `gov-${String(this._nextGovernanceRequestSeq++).padStart(4, '0')}-${crypto.randomUUID().slice(0, 8)}`;
+    const policySnapshot = {
+      chainId: space.chainId,
+      currency: space.currency,
+      balance: space.balance,
+      totalSpentToday: space.totalSpentToday,
+      rules: structuredClone(space.rules || {}),
+    };
+    const policyHash = governancePolicyHash(policySnapshot);
+    const approval = {
+      requestId,
+      spaceId,
+      recipient: String(recipient).toLowerCase(),
+      amount: amountBase.toString(),
+      asset: space.currency,
+      memo: String(memo || ''),
+      nonce: BigInt(`0x${crypto.randomBytes(16).toString('hex')}`).toString(),
+      deadline: Math.floor(deadlineMs / 1000).toString(),
+      policyHash,
+    };
+    const request = {
+      requestId,
+      spaceId,
+      actionId,
+      requesterAddress: String(requesterAddress).toLowerCase(),
+      recipient: approval.recipient,
+      amount: String(amount),
+      asset: space.currency,
+      memo: approval.memo,
+      deadline: new Date(deadlineMs).toISOString(),
+      deadlineMs,
+      chainId: space.chainId,
+      nonce: approval.nonce,
+      policyHash,
+      policySnapshot,
+      governanceSnapshot: { threshold: config.threshold, signerAllowlist: [...config.signerAllowlist] },
+      approval,
+      digest: governancePaymentDigest(approval, space.chainId),
+      approvals: [],
+      status: 'PENDING',
+      createdAt,
+      executedAt: null,
+      receipt: null,
+    };
+    const policy = this._evaluateGovernancePayment(space, request);
+    if (!policy.allowed) throw new Error(`Governance request violates non-cap policy: ${policy.reasons.join('; ')}`);
+    this.governanceRequests.set(requestId, request);
+    this.activity.get(spaceId).push({ type: 'GOVERNANCE_PAYMENT_REQUESTED', requestId, spaceId, amount: request.amount, recipient: request.recipient, digest: request.digest, createdAt });
+    return { request: structuredClone(request), typedData: governanceApprovalTypedData(approval, space.chainId) };
+  }
+
+  listGovernanceRequests({ spaceId, status = null }) {
+    this._getSpaceOrThrow(spaceId);
+    let requests = [...this.governanceRequests.values()].filter((request) => request.spaceId === spaceId);
+    if (status) requests = requests.filter((request) => request.status === status);
+    return requests.map((request) => structuredClone(request));
+  }
+
+  getGovernanceRequest({ spaceId, requestId }) {
+    this._getSpaceOrThrow(spaceId);
+    const request = this.governanceRequests.get(requestId);
+    if (!request || request.spaceId !== spaceId) throw new Error(`Governance request '${requestId}' not found in Space '${spaceId}'`);
+    return structuredClone(request);
+  }
+
+  async signGovernancePaymentRequest({ spaceId, requestId, signerAddress, signature }) {
+    const { space, config } = this._governanceConfigOrThrow(spaceId);
+    const request = this.governanceRequests.get(requestId);
+    if (!request || request.spaceId !== spaceId) throw new Error(`Governance request '${requestId}' not found in Space '${spaceId}'`);
+    if (request.status === 'EXECUTED' || request.status === 'EXECUTING') throw new Error(`Governance request '${requestId}' is already ${request.status.toLowerCase()}`);
+    if (request.status === 'APPROVED') throw new Error(`Governance request '${requestId}' already has its required approvals`);
+    if (request.deadlineMs <= Date.now()) throw new Error(`Governance request '${requestId}' has expired`);
+    const signer = String(signerAddress || '').toLowerCase();
+    if (request.approvals.some((approval) => approval.signerAddress === signer)) throw new Error(`Governance signer '${signer}' has already approved request '${requestId}'`);
+    const validation = await validateGovernanceApproval({ approval: { signerAddress: signer, signature, digest: request.digest }, request, chainId: space.chainId, signerAllowlist: request.governanceSnapshot.signerAllowlist, nowMs: Date.now() });
+    if (!validation.valid) {
+      const error = new Error(`Invalid governance approval: ${validation.reasons.join('; ')}`);
+      error.httpStatus = validation.reasons.some((reason) => reason.includes('not authorized')) ? 403 : 400;
+      error.httpCode = validation.reasons.some((reason) => reason.includes('not authorized')) ? 'FORBIDDEN' : 'VALIDATION';
+      throw error;
+    }
+    request.approvals.push({ signerAddress: signer, signature, digest: request.digest, approvedAt: new Date().toISOString() });
+    if (request.approvals.length === request.governanceSnapshot.threshold) request.status = 'APPROVED';
+    this.activity.get(spaceId).push({ type: 'GOVERNANCE_PAYMENT_SIGNED', requestId, spaceId, signerAddress: signer, approvalCount: request.approvals.length, threshold: request.governanceSnapshot.threshold, timestamp: request.approvals.at(-1).approvedAt });
+    return structuredClone(request);
+  }
+
+  async executeGovernancePaymentRequest({ spaceId, requestId, actorAddress }) {
+    const { space, config } = this._governanceConfigOrThrow(spaceId);
+    const request = this.governanceRequests.get(requestId);
+    if (!request || request.spaceId !== spaceId) throw new Error(`Governance request '${requestId}' not found in Space '${spaceId}'`);
+    if (!this._governanceMember(space, actorAddress)) throw new Error(`Executor '${actorAddress}' is not a spending member of Space '${spaceId}'`);
+    if (request.status === 'EXECUTED') return { status: 'EXECUTED', request: structuredClone(request), receipt: structuredClone(request.receipt) };
+    if (request.status === 'EXECUTING') throw new Error(`Governance request '${requestId}' is already executing`);
+    if (request.deadlineMs <= Date.now()) throw new Error(`Governance request '${requestId}' has expired`);
+    const claim = `${spaceId}:${requestId}`;
+    if (this.governanceExecutionClaims.has(claim)) throw new Error(`Governance request '${requestId}' is already executing`);
+    this.governanceExecutionClaims.add(claim);
+    try {
+      const unique = new Set();
+      for (const approval of request.approvals) {
+        if (unique.has(approval.signerAddress)) throw new Error(`Governance request '${requestId}' contains duplicate approvals`);
+        unique.add(approval.signerAddress);
+        const validation = await validateGovernanceApproval({ approval, request, chainId: space.chainId, signerAllowlist: request.governanceSnapshot.signerAllowlist, nowMs: Date.now() });
+        if (!validation.valid) throw new Error(`Governance request '${requestId}' has an invalid approval: ${validation.reasons.join('; ')}`);
+      }
+      if (unique.size !== request.governanceSnapshot.threshold) throw new Error(`Governance request '${requestId}' requires exactly ${request.governanceSnapshot.threshold} unique approvals`);
+      const policy = this._evaluateGovernancePayment(space, request);
+      if (!policy.allowed) throw new Error(`Governance request '${requestId}' violates non-cap policy: ${policy.reasons.join('; ')}`);
+      request.status = 'EXECUTING';
+      const settlement = await this._settleApprovedPayment({
+        space,
+        actionId: request.actionId,
+        actorId: request.requesterAddress,
+        recipient: request.recipient,
+        amount: request.amount,
+        memo: request.memo,
+        evaluation: policy,
+        evaluatorAddr: request.requesterAddress,
+        receiptMetadata: { governanceRequestId: requestId, governanceDigest: request.digest },
+      });
+      request.receipt = settlement.receipt;
+      request.executedAt = new Date().toISOString();
+      request.status = 'EXECUTED';
+      this.activity.get(spaceId).push({ type: 'GOVERNANCE_PAYMENT_EXECUTED', requestId, spaceId, receiptId: settlement.receipt.receiptId, digest: request.digest, approvalCount: request.approvals.length, timestamp: request.executedAt });
+      return { status: 'EXECUTED', request: structuredClone(request), receipt: structuredClone(settlement.receipt), spaceBalance: settlement.spaceBalance };
+    } catch (err) {
+      request.status = request.approvals.length === request.governanceSnapshot.threshold ? 'APPROVED' : 'PENDING';
+      throw err;
+    } finally {
+      this.governanceExecutionClaims.delete(claim);
+    }
   }
 
   /**

@@ -94,6 +94,60 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'governance_payments_configure',
+    description: 'Configure explicit M-of-N governance signers for a Space as an admin.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, actorAddress: { type: 'string' }, threshold: { type: 'integer' }, signerAllowlist: { type: 'array', items: { type: 'string' } }, enabled: { type: 'boolean' } },
+      required: ['spaceId', 'actorAddress', 'threshold', 'signerAllowlist'],
+    },
+  },
+  {
+    name: 'governance_payments_get',
+    description: 'Read the explicit M-of-N governance configuration for a Space.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] },
+  },
+  {
+    name: 'governance_payments_create',
+    description: 'Queue a high-value direct Space payment for M-of-N governance approval.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string' },
+        requesterAddress: { type: 'string' },
+        recipient: { type: 'string' },
+        amount: { type: 'string' },
+        memo: { type: 'string' },
+        deadline: { type: 'string' },
+      },
+      required: ['spaceId', 'requesterAddress', 'recipient', 'amount', 'deadline'],
+    },
+  },
+  {
+    name: 'governance_requests_list',
+    description: 'List governance payment requests in a Space.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, status: { type: 'string' } }, required: ['spaceId'] },
+  },
+  {
+    name: 'governance_requests_get',
+    description: 'Read one governance payment request and its approvals.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, requestId: { type: 'string' } }, required: ['spaceId', 'requestId'] },
+  },
+  {
+    name: 'governance_requests_sign',
+    description: 'Sign a governance payment request with an explicitly identified authorized wallet.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, requestId: { type: 'string' }, signerAddress: { type: 'string' }, signature: { type: 'string' } },
+      required: ['spaceId', 'requestId', 'signerAddress', 'signature'],
+    },
+  },
+  {
+    name: 'governance_requests_execute',
+    description: 'Execute an approved governance payment after immediate policy re-evaluation.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, requestId: { type: 'string' }, actorAddress: { type: 'string' } }, required: ['spaceId', 'requestId', 'actorAddress'] },
+  },
+  {
     name: 'activity_list',
     description: 'List the audit log of all settled payments and rejected policy denials for a Space.',
     inputSchema: {
@@ -556,6 +610,64 @@ export async function handleToolCall(store, name, args) {
           content: [{ type: 'text', text: `Execution error: ${err.message}` }],
           isError: true,
         };
+      }
+    }
+
+    case 'governance_payments_configure': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ governance: store.configureSpaceGovernance(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_payments_get': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ governance: store.getGovernanceConfig(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_payments_create': {
+      try {
+        const result = store.createGovernancePaymentRequest(args);
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_requests_list': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ requests: store.listGovernanceRequests(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_requests_get': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ request: store.getGovernanceRequest(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_requests_sign': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ request: await store.signGovernancePaymentRequest(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'governance_requests_execute': {
+      try {
+        const result = await store.executeGovernancePaymentRequest(args);
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
       }
     }
 

@@ -350,6 +350,77 @@ async function dispatch(app, req, res) {
         throwMapped(err);
       }
     }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/config$/);
+    if (m && req.method === 'POST') {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      requireFields(body, ['threshold', 'signerAllowlist']);
+      try {
+        const governance = await app.mutate(spaceId, async () => store.configureSpaceGovernance({ spaceId, actorAddress: current.address, threshold: body.threshold, signerAllowlist: body.signerAllowlist, enabled: body.enabled ?? true }));
+        return ok(200, { governance });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/payments$/);
+    if (m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      if (req.method === 'GET') {
+        return ok(200, { governance: store.getGovernanceConfig({ spaceId }) });
+      }
+      if (req.method === 'POST') {
+        requireFields(body, ['recipient', 'amount', 'deadline']);
+        try {
+          const result = await app.mutate(spaceId, async () => store.createGovernancePaymentRequest({ spaceId, requesterAddress: current.address, recipient: body.recipient, amount: body.amount, memo: body.memo || '', deadline: body.deadline }));
+          return ok(201, { request: result.request, typedData: result.typedData });
+        } catch (err) {
+          throwMapped(err);
+        }
+      }
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/requests$/);
+    if (req.method === 'GET' && m) {
+      requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      return ok(200, { requests: store.listGovernanceRequests({ spaceId, status: query.status || null }) });
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/requests\/([^/]+)$/);
+    if (req.method === 'GET' && m) {
+      requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const requestId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      try {
+        return ok(200, { request: store.getGovernanceRequest({ spaceId, requestId }) });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/requests\/([^/]+)\/(sign|execute)$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const requestId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      try {
+        if (m[3] === 'sign') requireFields(body, ['signature']);
+        const result = m[3] === 'sign'
+          ? await app.mutate(spaceId, async () => store.signGovernancePaymentRequest({ spaceId, requestId, signerAddress: current.address, signature: body.signature }))
+          : await app.mutate(spaceId, async () => store.executeGovernancePaymentRequest({ spaceId, requestId, actorAddress: current.address }));
+        return ok(200, m[3] === 'sign' ? { request: result } : { status: result.status, request: result.request, receipt: result.receipt, spaceBalance: result.spaceBalance });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
     m = path.match(/^\/api\/spaces\/([^/]+)\/fund$/);
     if (req.method === 'POST' && m) {
       requireFields(body, ['amount', 'actorId']);

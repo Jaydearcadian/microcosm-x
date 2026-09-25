@@ -1,7 +1,8 @@
-# Microcosm HTTP/SSE API Contract — v1 (FROZEN)
+# Microcosm HTTP/SSE API Contract — v1 (FROZEN) + v1.1 Governance Extension
 
-Status: frozen for UI-agent parallel build. Any change requires a version bump
-(`v2`) and a ledger entry — never silent drift. Semantic mirror of the MCP
+Status: v1 remains frozen for UI-agent parallel build. The additive M12
+governance extension is versioned separately; any v1 change requires a version
+bump (`v2`) and a ledger entry — never silent drift. Semantic mirror of the MCP
 surface (`mcp/src/tools.js`): **transport must not change semantics.**
 
 Base URL (dev): `http://localhost:8787`
@@ -87,6 +88,37 @@ Wallet access is address-bound. The client requests a short-lived nonce, signs t
 
 - `POST /api/spaces/:id/payments` `{ actorId, recipient, amount, memo? }` → `200 { status, receipt, spaceBalance }` or `422 { error: { code: "POLICY_DENIAL", details: { denialProof, reasons } } }`
 
+### Governance extension — M12 (additive, authenticated)
+
+The existing `/payments` route remains unchanged. Governance is enabled only
+when the Space has an explicit configuration containing `enabled: true`, an
+integer `threshold`, and an EVM-address `signerAllowlist`. Signer identities
+are recovered from the signature and, over REST, from the HttpOnly session;
+request-body addresses are ignored.
+
+The approval message is EIP-712 `GovernancePaymentApproval` with domain
+`Microcosm Governance`, version `1`, and the Space chain ID. It binds
+`requestId`, `spaceId`, `recipient`, `amount`, `asset`, `memo`, `nonce`,
+`deadline`, and `policyHash`. `policyHash` commits to the creation-time policy
+snapshot. At execution, balance, asset, daily budget, counterparty, schedule,
+and membership are evaluated again; only the per-transaction cap may be
+overridden by quorum.
+
+- `GET /api/spaces/:id/governance/payments` → `200 { governance }`
+- `POST /api/spaces/:id/governance/payments` `{ recipient, amount, deadline, memo? }` → `201 { request, typedData }`
+- `GET /api/spaces/:id/governance/requests?status=` → `200 { requests }`
+- `GET /api/spaces/:id/governance/requests/:requestId` → `200 { request }`
+- `POST /api/spaces/:id/governance/requests/:requestId/sign` `{ signature }` → `200 { request }`; the session address is the signer
+- `POST /api/spaces/:id/governance/requests/:requestId/execute` `{}` → `200 { status: "EXECUTED", request, receipt, spaceBalance }`
+
+Governance request statuses are `PENDING`, `APPROVED`, `EXECUTING`, and
+`EXECUTED`. Exactly the configured threshold of unique valid signatures is
+required. Duplicate, unauthorized, expired, tampered, and replayed approvals
+are rejected. Execution is claimed in-process before settlement and is marked
+`EXECUTED` only after the existing live settlement/accounting path succeeds.
+Queue, approval, and execution state is included in atomic snapshots; older
+snapshots without governance maps remain loadable.
+
 ### Activity & live stream
 
 - `GET /api/spaces/:id/activity?limit=&cursor=` → `{ activity: [{ seq, type, ... }], nextCursor }`
@@ -103,7 +135,9 @@ type RequestStatus = 'Open' | 'Assigned' | 'InProgress' | 'Completed' | 'Blocked
 interface Bounds { spaceId: string; treasuryBalance: string; spentToday: string; escrowed: string; remaining: string; dailyBudget: string; maxPerTransaction: string; denials: number; }
 interface Receipt { receiptId: string; txHash: string; txHashes: Record<string, string>; onchainJobId: string; amount: string; asset: string; network: string; chainId: number; status: 'SETTLED'; deliverableHash?: string; }
 interface DenialProof { spaceId: string; actorId: string; requestedAmount: string; reasons: string[]; proofHash: string; }
-interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT' | 'POLICY_DENIAL'; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
+interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT' | 'POLICY_DENIAL' | 'FORBIDDEN'; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
+interface GovernanceConfig { enabled: true; threshold: number; signerAllowlist: string[] }
+interface GovernanceRequest { requestId: string; spaceId: string; recipient: string; amount: string; asset: string; memo: string; deadline: string; policyHash: string; digest: string; status: 'PENDING' | 'APPROVED' | 'EXECUTING' | 'EXECUTED'; approvals: Array<{ signerAddress: string; signature: string; approvedAt: string }> }
 ```
 
 ## 5. Seed & dev server
