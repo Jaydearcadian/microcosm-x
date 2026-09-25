@@ -5,9 +5,11 @@ const require = createRequire(import.meta.url);
 const curatedAbis = require("../../packages/sdk/src/abis.json");
 const jobCreatedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCreated("));
 const jobFundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobFunded("));
-if (!jobCreatedFragment || !jobFundedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
+const jobSubmittedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobSubmitted("));
+if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
 export const JOB_CREATED_ABI = parseAbiItem(jobCreatedFragment);
 export const JOB_FUNDED_ABI = parseAbiItem(jobFundedFragment);
+export const JOB_SUBMITTED_ABI = parseAbiItem(jobSubmittedFragment);
 
 function addressKey(value) {
   return String(value).toLowerCase();
@@ -39,7 +41,7 @@ function orderedLogs(logs) {
 
 function eventName(log) {
   if (log.eventName) {
-    if (log.eventName !== "JobCreated" && log.eventName !== "JobFunded") {
+    if (log.eventName !== "JobCreated" && log.eventName !== "JobFunded" && log.eventName !== "JobSubmitted") {
       throw new Error(`Unsupported indexed event '${log.eventName}'`);
     }
     return log.eventName;
@@ -47,12 +49,13 @@ function eventName(log) {
   if (log.data && log.topics) {
     if (log.topics[0] === getEventSelector(JOB_CREATED_ABI)) return "JobCreated";
     if (log.topics[0] === getEventSelector(JOB_FUNDED_ABI)) return "JobFunded";
+    if (log.topics[0] === getEventSelector(JOB_SUBMITTED_ABI)) return "JobSubmitted";
   }
   throw new Error("Indexed log is missing a recognized event name or topic");
 }
 
 function eventArgs(log, name) {
-  const abi = name === "JobCreated" ? JOB_CREATED_ABI : JOB_FUNDED_ABI;
+  const abi = name === "JobCreated" ? JOB_CREATED_ABI : name === "JobFunded" ? JOB_FUNDED_ABI : JOB_SUBMITTED_ABI;
   const args = log.data && log.topics
     ? decodeEventLog({ abi: [abi], data: log.data, topics: log.topics }).args
     : log.args;
@@ -62,8 +65,12 @@ function eventArgs(log, name) {
     const [jobId, client, evaluator, provider, description, expiredAt] = args;
     return { jobId, client, evaluator, provider, description, expiredAt };
   }
-  const [jobId, amount] = args;
-  return { jobId, amount };
+  if (name === "JobFunded") {
+    const [jobId, amount] = args;
+    return { jobId, amount };
+  }
+  const [jobId, deliverableHash] = args;
+  return { jobId, deliverableHash };
 }
 
 export class JobCreatedIndexer {
@@ -116,7 +123,7 @@ export class JobCreatedIndexer {
 
     const logs = await this.client.getLogs({
       address: this.contractAddress,
-      events: [JOB_CREATED_ABI, JOB_FUNDED_ABI],
+      events: [JOB_CREATED_ABI, JOB_FUNDED_ABI, JOB_SUBMITTED_ABI],
       fromBlock: BigInt(start),
       toBlock: BigInt(end),
     });
@@ -154,8 +161,10 @@ export class JobCreatedIndexer {
           description: args.description,
           expiredAt: args.expiredAt,
         });
-      } else {
+      } else if (name === "JobFunded") {
         this.store.fundIndexedJob({ ...common, amount: args.amount });
+      } else {
+        this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
       }
       this.store.indexerCursors.set(this.cursorKey, position);
       await this.checkpoint();

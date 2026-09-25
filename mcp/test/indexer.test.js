@@ -64,6 +64,16 @@ function fundedLog({ jobId = 7n, amount = 123_456_789n, blockNumber = 10, logInd
   };
 }
 
+function submittedLog({ jobId = 7n, deliverableHash = `0x${"a".repeat(64)}`, blockNumber = 10, logIndex = 2, txDigit = "3" } = {}) {
+  return {
+    eventName: "JobSubmitted",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, deliverableHash },
+  };
+}
+
 function addOpenIndexedJob(store, log = createdLog()) {
   return store.upsertIndexedJob({
     spaceId,
@@ -78,6 +88,20 @@ function addOpenIndexedJob(store, log = createdLog()) {
     blockNumber: log.blockNumber,
     txHash: log.transactionHash,
     logIndex: log.logIndex,
+  });
+}
+
+function addFundedIndexedJob(store, created = createdLog(), funded = fundedLog()) {
+  addOpenIndexedJob(store, created);
+  return store.fundIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: funded.args.jobId,
+    amount: funded.args.amount,
+    blockNumber: funded.blockNumber,
+    txHash: funded.transactionHash,
+    logIndex: funded.logIndex,
   });
 }
 
@@ -331,6 +355,167 @@ test("M9-3: JobFunded projection persists across restart", async () => {
     assert.deepEqual(restartedJob.sourceLog, { blockNumber: 20, txHash: funded.transactionHash, logIndex: 3 });
     assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
     assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_FUNDED").length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("M9-4: JobSubmitted transitions Funded to Submitted and records its source log", () => {
+  const store = new SpaceStore();
+  const submitted = submittedLog();
+  addFundedIndexedJob(store);
+
+  const result = store.submitIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: submitted.args.jobId,
+    deliverableHash: submitted.args.deliverableHash,
+    blockNumber: submitted.blockNumber,
+    txHash: submitted.transactionHash,
+    logIndex: submitted.logIndex,
+  });
+
+  assert.equal(result.submitted, true);
+  assert.equal(result.job.status, "Submitted");
+  assert.equal(result.job.deliverableHash, submitted.args.deliverableHash);
+  assert.equal(result.job.submittedAt, result.job.statusHistory.at(-1).timestamp);
+  assert.deepEqual(result.job.statusHistory.at(-1), { status: "Submitted", timestamp: result.job.submittedAt });
+  assert.deepEqual(result.job.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Submitted"]);
+  assert.deepEqual(result.job.sourceLog, { blockNumber: 10, txHash: submitted.transactionHash, logIndex: 2 });
+  const activities = store.getActivity(spaceId).filter((entry) => entry.type === "WORK_SUBMITTED");
+  assert.equal(activities.length, 1);
+  assert.equal(activities[0].deliverableHash, submitted.args.deliverableHash);
+  assert.equal(activities[0].fromStatus, "Funded");
+  assert.equal(activities[0].toStatus, "Submitted");
+});
+
+test("M9-4: JobSubmitted has no Space financial side effects", () => {
+  const store = new SpaceStore();
+  const submitted = submittedLog();
+  const { job: fundedJob } = addFundedIndexedJob(store);
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const receiptsBefore = store.receipts.size;
+  store._settleJob = async () => { throw new Error("settlement must not run"); };
+  store._claimRefund = () => { throw new Error("refund must not run"); };
+
+  const { job } = store.submitIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: submitted.args.jobId,
+    deliverableHash: submitted.args.deliverableHash,
+    blockNumber: submitted.blockNumber,
+    txHash: submitted.transactionHash,
+    logIndex: submitted.logIndex,
+  });
+
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, receiptsBefore);
+  assert.equal(job.budget, fundedJob.budget);
+  assert.equal(job.escrowedAmount, fundedJob.escrowedAmount);
+  assert.equal(job.refunded, false);
+  assert.equal(job.refundedAmount, null);
+  assert.equal(job.settlement, null);
+});
+
+test("M9-4: combined indexer replay is idempotent and conflicts loudly", async () => {
+  const store = new SpaceStore();
+  const created = createdLog();
+  const funded = fundedLog();
+  const submitted = submittedLog();
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [created, funded, submitted] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const first = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const repeated = store.submitIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: submitted.args.jobId,
+    deliverableHash: submitted.args.deliverableHash,
+    blockNumber: submitted.blockNumber,
+    txHash: submitted.transactionHash,
+    logIndex: submitted.logIndex,
+  });
+  const replay = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+
+  assert.equal(first.processed, 3);
+  assert.equal(repeated.submitted, false);
+  assert.equal(replay.processed, 0);
+  assert.equal(replay.skipped, 3);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_SUBMITTED").length, 1);
+  assert.equal(store.indexerCursors.size, 1);
+  assert.throws(() => store.submitIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: submitted.args.jobId,
+    deliverableHash: `0x${"b".repeat(64)}`,
+    blockNumber: submitted.blockNumber,
+    txHash: submitted.transactionHash,
+    logIndex: submitted.logIndex,
+  }), /from 'Submitted'/);
+});
+
+test("M9-4: combined indexer applies same-block JobSubmitted in canonical order", async () => {
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 3 });
+  const funded = fundedLog({ logIndex: 4 });
+  const submitted = submittedLog({ logIndex: 5 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [submitted, funded, created] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const job = [...store.jobs.values()][0];
+
+  assert.equal(result.processed, 3);
+  assert.equal(job.status, "Submitted");
+  assert.equal(job.deliverableHash, submitted.args.deliverableHash);
+  assert.deepEqual(store.getActivity(spaceId).slice(-3).map((entry) => entry.type), ["WORK_CREATED", "WORK_FUNDED", "WORK_SUBMITTED"]);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: submitted.transactionHash, logIndex: 5 });
+});
+
+test("M9-4: JobSubmitted before JobFunded fails loudly", async () => {
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 1 });
+  const submitted = submittedLog({ logIndex: 2 });
+  const funded = fundedLog({ logIndex: 3 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [created, submitted, funded] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  await assert.rejects(indexer.sync({ fromBlock: 0, toBlock: 10 }), /cannot transition indexed job .* from 'Open'/);
+  assert.equal([...store.jobs.values()][0].status, "Open");
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_SUBMITTED").length, 0);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: created.transactionHash, logIndex: 1 });
+});
+
+test("M9-4: JobSubmitted projection persists across restart", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "microcosm-m9-submitted-"));
+  const snapshotPath = path.join(directory, "store.json");
+  try {
+    const created = createdLog({ blockNumber: 20, logIndex: 4 });
+    const funded = fundedLog({ blockNumber: 20, logIndex: 5 });
+    const submitted = submittedLog({ blockNumber: 20, logIndex: 6 });
+    const client = { getBlockNumber: async () => 20n, getLogs: async () => [created, funded, submitted] };
+    const store = new SpaceStore();
+    const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+
+    await indexer.sync({ fromBlock: 0, toBlock: 20 });
+    const cursor = indexer.getCursor();
+    const restartedStore = new SpaceStore();
+    assert.equal(load(restartedStore, snapshotPath), true);
+    const restarted = new JobCreatedIndexer({ store: restartedStore, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+    const replay = await restarted.sync({ fromBlock: 0, toBlock: 20 });
+    const restartedJob = [...restartedStore.jobs.values()][0];
+
+    assert.equal(replay.processed, 0);
+    assert.equal(replay.skipped, 3);
+    assert.equal(restartedJob.status, "Submitted");
+    assert.equal(restartedJob.deliverableHash, submitted.args.deliverableHash);
+    assert.deepEqual(restartedJob.sourceLog, { blockNumber: 20, txHash: submitted.transactionHash, logIndex: 6 });
+    assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_SUBMITTED").length, 1);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

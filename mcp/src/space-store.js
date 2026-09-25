@@ -1223,6 +1223,55 @@ export class SpaceStore {
     return { job: { ...job }, funded: true };
   }
 
+  submitIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, deliverableHash, blockNumber, txHash, logIndex }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const externalId = String(onchainJobId);
+    const onchainKey = `${chain}:${contract}:${externalId}`;
+    const job = [...this.jobs.values()].find((entry) => entry.onchainKey === onchainKey);
+    if (!job) throw new Error(`JobSubmitted references unknown indexed job '${onchainKey}'`);
+    if (job.spaceId !== spaceId) throw new Error(`Indexed job '${onchainKey}' belongs to Space '${job.spaceId}'`);
+    if (typeof deliverableHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(deliverableHash)) throw new Error('JobSubmitted requires a bytes32 deliverable hash');
+    const normalizedDeliverableHash = deliverableHash.toLowerCase();
+    const sourceLog = { blockNumber: Number(blockNumber), txHash: String(txHash).toLowerCase(), logIndex: Number(logIndex) };
+    const sameSourceLog = job.sourceLog && job.sourceLog.blockNumber === sourceLog.blockNumber && job.sourceLog.txHash === sourceLog.txHash && job.sourceLog.logIndex === sourceLog.logIndex;
+    if (job.status === 'Submitted' && sameSourceLog && job.deliverableHash === normalizedDeliverableHash) {
+      return { job: { ...job }, submitted: false };
+    }
+    if (job.status !== 'Funded') {
+      throw new Error(`JobSubmitted cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    job.deliverableHash = normalizedDeliverableHash;
+    job.status = 'Submitted';
+    job.submittedAt = timestamp;
+    job.statusHistory.push({ status: 'Submitted', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push({
+      type: 'WORK_SUBMITTED',
+      jobId: job.jobId,
+      spaceId,
+      source: 'onchain',
+      onchainJobId: externalId,
+      onchainKey,
+      chainId: chain,
+      contractAddress: contract,
+      deliverableHash: normalizedDeliverableHash,
+      fromStatus: 'Funded',
+      toStatus: 'Submitted',
+      blockNumber: sourceLog.blockNumber,
+      txHash: sourceLog.txHash,
+      logIndex: sourceLog.logIndex,
+      timestamp,
+    });
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, submitted: true };
+  }
+
   /**
    * Read a Work Order by ID (applies lazy expiry first).
    */
