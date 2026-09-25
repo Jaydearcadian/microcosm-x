@@ -747,3 +747,17 @@ button {
 .deleg-escalation strong { color: var(--danger); font-family: var(--font-ui); font-size: 11px; letter-spacing: .16em; }
 .deleg-escalation span { color: var(--text); font-size: 13px; }
 @media (max-width: 1100px) { .deleg-compare { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- M14 agent surface ---------- */
+.agent-caps { display: grid; gap: 10px; margin-top: 16px; }
+.agent-cap { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); }
+.agent-cap span { color: var(--accent); font-size: 12px; letter-spacing: .12em; }
+.agent-cap p { color: var(--muted); font-size: 13px; }
+.agent-verdict { display: grid; gap: 4px; margin-top: 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--hairline); }
+.agent-verdict.is-ok { border-color: rgba(202, 254, 92, .4); background: rgba(202, 254, 92, .05); }
+.agent-verdict.is-blocked { border-color: rgba(229, 72, 77, .45); background: rgba(229, 72, 77, .07); }
+.agent-verdict strong { font-family: var(--font-ui); font-size: 12px; letter-spacing: .16em; }
+.agent-verdict.is-ok strong { color: var(--accent); }
+.agent-verdict.is-blocked strong { color: var(--danger); }
+.agent-verdict span { color: var(--muted); font-size: 13px; }
+.agent-verdict__reasons { color: var(--text) !important; }

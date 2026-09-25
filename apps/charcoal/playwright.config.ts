@@ -24,7 +24,9 @@ export default defineConfig({
     {
       command: 'npx next dev --port 3010 --hostname 127.0.0.1',
       cwd: '.',
-      env: { NEXT_PUBLIC_MICROCOSM_API: 'http://127.0.0.1:8788' },
+      // both the browser client and the /api rewrite must hit the same fresh server,
+      // otherwise the suite silently exercises whatever host the default proxy names
+      env: { NEXT_PUBLIC_MICROCOSM_API: 'http://127.0.0.1:8788', MICROCOSM_API_PROXY: 'http://127.0.0.1:8788' },
       url: 'http://127.0.0.1:3010/app/onboarding',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,

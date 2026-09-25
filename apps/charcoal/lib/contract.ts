@@ -134,3 +134,49 @@ export async function verifyDelegation(spaceId: string, delegationId: string): P
 export async function revokeDelegation(spaceId: string, delegationId: string): Promise<AuthorityDelegation> {
   return (await post<{ delegation: AuthorityDelegation }>(`/api/spaces/${q(spaceId)}/delegations/${q(delegationId)}/revoke`, {})).delegation;
 }
+
+// ---- M14 capability manifest + x402 v2 intent lifecycle ----
+export interface CapabilityManifest {
+  schema: string;
+  space: { id: string; name: string; network: string; chainId: number; currency: string };
+  capabilities: Record<string, { id: string }>;
+  policy: {
+    maxPerTransaction: string | null;
+    dailyBudget: string | null;
+    allowlist: { type: string; enabled: boolean };
+  };
+}
+export interface X402Accept {
+  scheme: string; network: string; amount: string; asset: string; payTo: string; maxTimeoutSeconds: number;
+}
+export interface X402PaymentRequired {
+  x402Version: number;
+  resource: { url: string };
+  accepts: X402Accept[];
+}
+export interface X402Validation {
+  valid: boolean; protocolValid: boolean; policyAllowed: boolean;
+  selectedAccept: { amountDecimal: string; amount: string; asset: string; payTo: string; network: string; scheme: string; maxTimeoutSeconds: number } | null;
+  reasons: string[];
+  resource?: { url: string };
+}
+export interface X402Intent {
+  intentId: string; spaceId: string; requesterAddress: string; amount: string; amountDecimal: string;
+  asset: string; payTo: string; network: string; chainId: number; expiry: string; nonce: string;
+  digest: string; status: string; resourceUrl?: string; receipt?: { txHash?: string } | null;
+}
+export async function fetchCapabilityManifest(spaceId: string, signal?: AbortSignal): Promise<CapabilityManifest> {
+  return (await request<{ manifest: CapabilityManifest }>(`/api/spaces/${q(spaceId)}/capability-manifest`, { signal })).manifest;
+}
+export async function validateX402Intent(spaceId: string, body: { paymentRequired: X402PaymentRequired; selectedAcceptIndex: number; actorId: string; expectedAssetAddress: string }): Promise<X402Validation> {
+  return (await post<{ validation: X402Validation }>(`/api/spaces/${q(spaceId)}/payments/x402/validate`, body)).validation;
+}
+export async function createX402Intent(spaceId: string, body: { paymentRequired: X402PaymentRequired; selectedAcceptIndex: number; expectedAssetAddress: string }): Promise<{ status: string; intent: X402Intent; typedData: Eip712TypedData }> {
+  return post(`/api/spaces/${q(spaceId)}/payments/x402/intents`, body);
+}
+export async function signX402Intent(spaceId: string, intentId: string, signature: string, digest?: string): Promise<X402Intent> {
+  return (await post<{ intent: X402Intent }>(`/api/spaces/${q(spaceId)}/payments/x402/intents/${q(intentId)}/sign`, { signature, digest })).intent;
+}
+export async function settleX402Intent(spaceId: string, intentId: string): Promise<X402Intent> {
+  return (await post<{ intent: X402Intent }>(`/api/spaces/${q(spaceId)}/payments/x402/intents/${q(intentId)}/settle`, {})).intent;
+}
