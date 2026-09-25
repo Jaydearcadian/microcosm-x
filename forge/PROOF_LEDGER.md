@@ -35,7 +35,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (92 tests passed, 0 failed) | 2026-09-25 |
 | **AGENTIC-1** | Agent / E2E | Tool-using agent completes Request → Work → proof → evaluation → real testnet settlement and trace | `VERIFIED` | `node scripts/agentic-testnet-e2e.mjs`; 14 MCP calls; tx `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`; receipt status `1` at block `41861915` | 2026-09-25 |
-| **AUTH-1** | Access / Auth | Wallet signature creates an HttpOnly session; admin invite code grants address-bound Space membership | `VERIFIED` | `npm --workspace=@microcosm/server test` (`wallet session authenticates an address and supports Space invitations` PASS) | 2026-09-25 |
+| **AUTH-1** | Access / Auth | Wallet signature creates an HttpOnly session; admin creates bearer or address-restricted Space invites; redemption binds membership | `VERIFIED` | `npm --workspace=@microcosm/server test` (`wallet session authenticates an address and supports Space invitations` PASS); bearer redemption PASS; Playwright `/app/access` PASS | 2026-09-25 |
 
 
 ---
@@ -44,7 +44,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 
 ### 2026-09-25: Wallet sessions and Space invitations (AUTH-1)
 * **Command**: `npm --workspace=@microcosm/server test` (`auth.test.js`).
-* **Output**: generated throwaway wallet signed the server nonce; session cookie authenticated the founder; founder created a Space; admin issued an address-bound invite; second wallet redeemed it; address-scoped Space discovery returned the new Space.
+* **Output**: generated throwaway wallet signed the server nonce; session cookie authenticated the founder; founder created a Space; admin issued an unbound bearer invite; second wallet redeemed it; redemption bound the invite to the second wallet; address-scoped Space discovery returned the new Space. Targeted address-restricted invites remain supported.
 * **Status**: `VERIFIED`. Raw private keys and signatures are not persisted; the server stores session tokens and invite state only.
 
 ### 2026-09-25: Testnet tool-using agent acceptance (AGENTIC-1)

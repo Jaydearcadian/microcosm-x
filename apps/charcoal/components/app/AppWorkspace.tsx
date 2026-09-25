@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { AppDataProvider } from "@/lib/app-data";
 import { AppShell, type AppView } from "@/components/app/AppShell";
 import { CommandView } from "@/components/app/CommandView";
 import { WorkView } from "@/components/app/WorkView";
 import { OnboardingView } from "@/components/app/OnboardingView";
 import { AuditView } from "@/components/app/AuditView";
+import { InviteRedeem } from "@/components/app/InviteRedeem";
 
 const VIEWS: AppView[] = ["command", "work", "onboarding", "audit"];
 
@@ -17,7 +19,8 @@ function viewFromHash(): AppView {
   return VIEWS.includes(value) ? value : "command";
 }
 
-export function AppWorkspace() {
+export function AppWorkspace({ accessCode = "" }: { accessCode?: string } = {}) {
+  const pathname = usePathname();
   const [view, setView] = useState<AppView>(viewFromHash);
   useEffect(() => {
     const sync = () => setView(viewFromHash());
@@ -29,5 +32,5 @@ export function AppWorkspace() {
     const path = next === "onboarding" ? "/app/onboarding" : "/app";
     window.history.replaceState(null, "", `${path}#${next}`);
   };
-  return <AppDataProvider><AppShell active={view} onChange={changeView}>{view === "command" ? <CommandView /> : view === "work" ? <WorkView /> : view === "onboarding" ? <OnboardingView /> : <AuditView />}</AppShell></AppDataProvider>;
+  return <AppDataProvider><AppShell active={view} onChange={changeView}>{pathname === "/app/access" ? <InviteRedeem code={accessCode} /> : view === "command" ? <CommandView /> : view === "work" ? <WorkView /> : view === "onboarding" ? <OnboardingView /> : <AuditView />}</AppShell></AppDataProvider>;
 }

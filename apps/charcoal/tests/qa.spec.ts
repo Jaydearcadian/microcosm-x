@@ -9,7 +9,11 @@ test('Space access requires an authenticated wallet', async ({ page }) => {
   await page.goto('/app#command');
   await expect(page.getByText('Connect a wallet to enter a Space.')).toBeVisible();
 });
-
+test('bearer invite URL opens the redemption surface', async ({ page }) => {
+  await page.goto('/app/access?code=invite-demo');
+  await expect(page.getByRole('heading', { name: 'Join the Space.' })).toBeVisible();
+  await expect(page.getByText('invite-demo')).toBeVisible();
+});
 
 test('onboarding surfaces API failures instead of hanging', async ({ page }) => {
   await page.route('**/api/health', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'health unavailable' } }) }));

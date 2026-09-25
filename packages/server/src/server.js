@@ -368,7 +368,6 @@ async function dispatch(app, req, res) {
       const current = requireSession();
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
-      requireFields(body, ['address']);
       try {
         const invitation = await app.mutate(spaceId, async () => store.createInvitation({ spaceId, inviterId: current.address, address: body.address, role: body.role || 'member', displayName: body.displayName }));
         return ok(201, { invitation });

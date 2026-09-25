@@ -47,7 +47,7 @@ export async function fetchAuthSession(signal?: AbortSignal): Promise<AuthSessio
 export async function fetchAuthChallenge(address: string, signal?: AbortSignal): Promise<AuthChallenge> { return request<AuthChallenge>(`/api/auth/challenge?address=${q(address)}`, { signal }); }
 export async function createAuthSession(address: string, signature: string): Promise<AuthSession> { return post<AuthSession>("/api/auth/session", { address, signature }); }
 export async function revokeAuthSession(): Promise<AuthSession> { return post<AuthSession>("/api/auth/logout", {}); }
-export async function createSpaceInvitation(spaceId: string, body: { address: string; role?: string; displayName?: string }): Promise<Invitation> { return (await post<{ invitation: Invitation }>(`/api/spaces/${q(spaceId)}/invitations`, body)).invitation; }
+export async function createSpaceInvitation(spaceId: string, body: { address?: string; role?: string; displayName?: string }): Promise<Invitation> { return (await post<{ invitation: Invitation }>(`/api/spaces/${q(spaceId)}/invitations`, body)).invitation; }
 export async function redeemSpaceInvitation(code: string): Promise<{ space: Space; invitation: Invitation }> { return post("/api/auth/invitations/redeem", { code }); }
 export async function fetchSpaces(actorId?: string, signal?: AbortSignal): Promise<SpaceSummary[]> { const query = actorId ? `?actorId=${q(actorId)}` : ""; return (await request<{ spaces: SpaceSummary[] }>(`/api/spaces${query}`, { signal })).spaces; }
 export async function fetchSpace(spaceId: string, signal?: AbortSignal): Promise<Space> { return (await request<{ space: Space }>(`/api/spaces/${q(spaceId)}`, { signal })).space; }

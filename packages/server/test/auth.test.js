@@ -29,8 +29,9 @@ test('wallet session authenticates an address and supports Space invitations', a
     assert.equal(created.response.status, 201);
     const spaceId = created.json.space.id;
 
-    const invitation = await request(ctx.url, 'POST', `/api/spaces/${spaceId}/invitations`, { address: invitee.address, role: 'member', displayName: 'Invited Operator' }, founderCookie);
+    const invitation = await request(ctx.url, 'POST', `/api/spaces/${spaceId}/invitations`, { role: 'member', displayName: 'Invited Operator' }, founderCookie);
     assert.equal(invitation.response.status, 201);
+    assert.equal(invitation.json.invitation.address, null);
     const code = invitation.json.invitation.code;
 
     const inviteeChallenge = await request(ctx.url, 'GET', `/api/auth/challenge?address=${invitee.address}`);

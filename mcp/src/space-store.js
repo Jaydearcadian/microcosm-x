@@ -449,14 +449,14 @@ export class SpaceStore {
 
   createInvitation({ spaceId, inviterId, address, role = 'member', displayName }) {
     const space = this._getSpaceOrThrow(spaceId);
-    if (!/^0x[0-9a-fA-F]{40}$/.test(String(address || ''))) throw new Error('Invitation requires a valid EVM address');
-    const normalized = String(address).toLowerCase();
+    if (address && !/^0x[0-9a-fA-F]{40}$/.test(String(address))) throw new Error('Invitation target requires a valid EVM address');
+    const normalized = address ? String(address).toLowerCase() : null;
     if (!['member', 'agent', 'service', 'admin'].includes(role)) throw new Error(`Invalid invitation role '${role}'`);
     const inviter = (space.members || []).find((item) => item.id === inviterId || item.name === inviterId || String(item.address || '').toLowerCase() === String(inviterId).toLowerCase());
     if (!inviter || inviter.role !== 'admin') throw new Error(`Only an admin can invite members to Space '${spaceId}'`);
-    if ((space.members || []).some((item) => String(item.address || '').toLowerCase() === normalized)) throw new Error(`Address '${normalized}' already belongs to Space '${spaceId}'`);
+    if (normalized && (space.members || []).some((item) => String(item.address || '').toLowerCase() === normalized)) throw new Error(`Address '${normalized}' already belongs to Space '${spaceId}'`);
     const code = `invite-${String(this._nextInviteSeq++).padStart(4, '0')}-${crypto.randomBytes(4).toString('hex')}`;
-    const invitation = { code, spaceId, address: normalized, role, displayName: displayName || normalized, inviterId, status: 'PENDING', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
+    const invitation = { code, spaceId, address: normalized, role, displayName: displayName || normalized || 'Invited member', inviterId, status: 'PENDING', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() };
     this.invitations.set(code, invitation);
     this.activity.get(spaceId).push({ type: 'INVITATION_CREATED', spaceId, code, address: normalized, role, inviterId, expiresAt: invitation.expiresAt, timestamp: invitation.createdAt });
     return { ...invitation };
@@ -469,7 +469,7 @@ export class SpaceStore {
     if (!invitation) throw new Error('Invitation not found');
     if (invitation.status !== 'PENDING') throw new Error(`Invitation is already ${invitation.status.toLowerCase()}`);
     if (Date.parse(invitation.expiresAt) < Date.now()) throw new Error('Invitation has expired');
-    if (invitation.address !== normalized) throw new Error('Invitation is bound to a different wallet address');
+    if (invitation.address && invitation.address !== normalized) throw new Error('Invitation is bound to a different wallet address');
     const space = this._getSpaceOrThrow(invitation.spaceId);
     const existing = (space.members || []).find((member) => String(member.address || '').toLowerCase() === normalized);
     if (!existing) {
@@ -477,6 +477,7 @@ export class SpaceStore {
       (space.members || []).push(member);
       this.participants.set(`part-${String(this._nextParticipantSeq++).padStart(4, '0')}`, { participantId: `part-${String(this._nextParticipantSeq - 1).padStart(4, '0')}`, spaceId: space.id, displayName: member.name, kind: invitation.role === 'agent' ? 'Agent' : invitation.role === 'service' ? 'Service' : 'Human', role: invitation.role, address: normalized, externalRef: null, status: 'Active', addedBy: invitation.inviterId, joinedAt: new Date().toISOString() });
     }
+    if (!invitation.address) invitation.address = normalized;
     invitation.status = 'REDEEMED';
     invitation.redeemedBy = normalized;
     invitation.redeemedAt = new Date().toISOString();

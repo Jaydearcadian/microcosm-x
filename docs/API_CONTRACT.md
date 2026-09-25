@@ -33,8 +33,8 @@ Wallet access is address-bound. The client requests a short-lived nonce, signs t
 - `GET /api/auth/challenge?address=` → `{ address, nonce, message, expiresAt }`
 - `POST /api/auth/session` `{ address, signature }` → session response plus `Set-Cookie`
 - `POST /api/auth/logout` → clears the session cookie
-- `POST /api/spaces/:id/invitations` `{ address, role?, displayName? }` → admin-only invite code
-- `POST /api/auth/invitations/redeem` `{ code }` → authenticated address becomes a Space member
+- `POST /api/spaces/:id/invitations` `{ address?, role?, displayName? }` → admin-only bearer invite code; omit `address` for a transferable link
+- `POST /api/auth/invitations/redeem` `{ code }` → authenticated address claims the invite once and becomes a Space member; an explicitly supplied target address remains enforced
 
 ## 3. Endpoints
 
