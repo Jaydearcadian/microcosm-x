@@ -1126,6 +1126,7 @@ export class SpaceStore {
       statusHistory: [{ status: 'Open', timestamp: now }],
       deliverableHash: null,
       evidenceUri: null,
+      evidenceAttached: null,
       feedback: null,
       deadline: new Date(deadlineMs).toISOString(),
       deadlineMs,
@@ -1179,6 +1180,188 @@ export class SpaceStore {
       this.activity.set(spaceId, entries);
     }
     return { job: { ...job }, created: true };
+  }
+
+  setProviderIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, provider, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'ProviderSet' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof provider !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(provider)) throw new Error('ProviderSet requires a valid provider address');
+    const normalizedProvider = provider.toLowerCase();
+    if (normalizedProvider === '0x0000000000000000000000000000000000000000') throw new Error('ProviderSet requires a non-zero provider address');
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.provider === normalizedProvider) {
+      return { job: { ...job }, providerSet: false };
+    }
+    if (job.status !== 'Open') throw new Error(`ProviderSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.provider && job.provider !== '0x0000000000000000000000000000000000000000') throw new Error(`ProviderSet conflicts with indexed job provider '${job.provider}'`);
+
+    const timestamp = new Date().toISOString();
+    job.provider = normalizedProvider;
+    job.sourceLog = sourceLog;
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_PROVIDER_SET',
+      fromStatus: 'Open',
+      toStatus: 'Open',
+      provider: normalizedProvider,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, providerSet: true };
+  }
+
+  setBudgetIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, amount, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'BudgetSet' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof amount !== 'bigint' || amount < 0n) throw new Error('BudgetSet requires a uint256 amount');
+    const budget = fromBaseUnits(amount);
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.budget === budget) {
+      return { job: { ...job }, budgetSet: false };
+    }
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog)) throw new Error(`BudgetSet conflicts with indexed job budget '${job.budget}'`);
+    if (job.status !== 'Open') throw new Error(`BudgetSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+
+    const timestamp = new Date().toISOString();
+    job.budget = budget;
+    job.sourceLog = sourceLog;
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_BUDGET_SET',
+      fromStatus: 'Open',
+      toStatus: 'Open',
+      amount: budget,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, budgetSet: true };
+  }
+
+  setAdjudicatorIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, adjudicator, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'AdjudicatorSet' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof adjudicator !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(adjudicator)) throw new Error('AdjudicatorSet requires a valid adjudicator address');
+    const normalizedAdjudicator = adjudicator.toLowerCase();
+    if (normalizedAdjudicator === '0x0000000000000000000000000000000000000000') throw new Error('AdjudicatorSet requires a non-zero adjudicator address');
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.adjudicator === normalizedAdjudicator) {
+      return { job: { ...job }, adjudicatorSet: false };
+    }
+    if (job.status !== 'Open') throw new Error(`AdjudicatorSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.adjudicator && job.adjudicator !== normalizedAdjudicator) throw new Error(`AdjudicatorSet conflicts with indexed job adjudicator '${job.adjudicator}'`);
+
+    const timestamp = new Date().toISOString();
+    job.adjudicator = normalizedAdjudicator;
+    job.sourceLog = sourceLog;
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_ADJUDICATOR_SET',
+      fromStatus: 'Open',
+      toStatus: 'Open',
+      adjudicator: normalizedAdjudicator,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, adjudicatorSet: true };
+  }
+
+  setRubricIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, rubricHash, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'RubricSet' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof rubricHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(rubricHash)) throw new Error('RubricSet requires a bytes32 rubric hash');
+    const normalizedRubricHash = rubricHash.toLowerCase();
+    if (normalizedRubricHash === `0x${'0'.repeat(64)}`) throw new Error('RubricSet requires a non-zero rubric hash');
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.rubricHash === normalizedRubricHash) {
+      return { job: { ...job }, rubricSet: false };
+    }
+    if (job.status !== 'Open') throw new Error(`RubricSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.rubricHash && job.rubricHash !== normalizedRubricHash) throw new Error(`RubricSet conflicts with indexed job rubric '${job.rubricHash}'`);
+
+    const timestamp = new Date().toISOString();
+    job.rubricHash = normalizedRubricHash;
+    job.sourceLog = sourceLog;
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_RUBRIC_SET',
+      fromStatus: 'Open',
+      toStatus: 'Open',
+      rubricHash: normalizedRubricHash,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, rubricSet: true };
+  }
+
+  recordIndexedEvidenceAttached({ spaceId, chainId, contractAddress, onchainJobId, deliverableHash, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'EvidenceAttached' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof deliverableHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(deliverableHash)) throw new Error('EvidenceAttached requires a bytes32 deliverable hash');
+    const normalizedDeliverableHash = deliverableHash.toLowerCase();
+    if (job.status !== 'Funded' && job.status !== 'Submitted') throw new Error(`EvidenceAttached cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status === 'Submitted' && job.deliverableHash !== normalizedDeliverableHash) throw new Error(`EvidenceAttached hash conflicts with indexed job deliverable '${job.deliverableHash}'`);
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.evidenceAttached) {
+      if (this._sameIndexedSourceLog(job.evidenceAttached.sourceLog, sourceLog) && job.evidenceAttached.deliverableHash === normalizedDeliverableHash) {
+        return { job: { ...job }, evidenceAttached: false };
+      }
+      if (job.evidenceAttached.deliverableHash !== normalizedDeliverableHash) {
+        throw new Error(`EvidenceAttached conflicts with recorded evidence for indexed job '${onchainKey}'`);
+      }
+    }
+
+    const timestamp = new Date().toISOString();
+    job.evidenceAttached = {
+      deliverableHash: normalizedDeliverableHash,
+      observedAt: timestamp,
+      sourceLog,
+    };
+    job.sourceLog = sourceLog;
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_EVIDENCE_ATTACHED',
+      fromStatus: job.status,
+      toStatus: job.status,
+      deliverableHash: normalizedDeliverableHash,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, evidenceAttached: true };
   }
 
   fundIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, amount, blockNumber, txHash, logIndex }) {

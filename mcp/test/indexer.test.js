@@ -37,7 +37,7 @@ function fundJob(jobId, amount) {
 const indexedContract = "0x4444444444444444444444444444444444444444";
 const spaceId = "space-procurement-001";
 
-function createdLog({ jobId = 7n, blockNumber = 10, logIndex = 0, txDigit = "1" } = {}) {
+function createdLog({ jobId = 7n, provider = "0x3333333333333333333333333333333333333333", blockNumber = 10, logIndex = 0, txDigit = "1" } = {}) {
   return {
     eventName: "JobCreated",
     blockNumber,
@@ -47,7 +47,7 @@ function createdLog({ jobId = 7n, blockNumber = 10, logIndex = 0, txDigit = "1" 
       jobId,
       client: "0x1111111111111111111111111111111111111111",
       evaluator: "0x2222222222222222222222222222222222222222",
-      provider: "0x3333333333333333333333333333333333333333",
+      provider,
       description: "indexed work",
       expiredAt: 2_000_000_000n,
     },
@@ -61,6 +61,56 @@ function fundedLog({ jobId = 7n, amount = 123_456_789n, blockNumber = 10, logInd
     transactionHash: `0x${txDigit.repeat(64)}`,
     logIndex,
     args: { jobId, amount },
+  };
+}
+
+function providerSetLog({ jobId = 7n, provider = "0x6666666666666666666666666666666666666666", blockNumber = 10, logIndex = 1, txDigit = "c" } = {}) {
+  return {
+    eventName: "ProviderSet",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, provider },
+  };
+}
+
+function budgetSetLog({ jobId = 7n, amount = 123_456_789n, blockNumber = 10, logIndex = 2, txDigit = "d" } = {}) {
+  return {
+    eventName: "BudgetSet",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, amount },
+  };
+}
+
+function adjudicatorSetLog({ jobId = 7n, adjudicator = "0x5555555555555555555555555555555555555555", blockNumber = 10, logIndex = 3, txDigit = "e" } = {}) {
+  return {
+    eventName: "AdjudicatorSet",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, adjudicator },
+  };
+}
+
+function rubricSetLog({ jobId = 7n, rubricHash = `0x${"b".repeat(64)}`, blockNumber = 10, logIndex = 4, txDigit = "f" } = {}) {
+  return {
+    eventName: "RubricSet",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, rubricHash },
+  };
+}
+
+function evidenceAttachedLog({ jobId = 7n, deliverableHash = `0x${"a".repeat(64)}`, blockNumber = 10, logIndex = 7, txDigit = "1" } = {}) {
+  return {
+    eventName: "EvidenceAttached",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, deliverableHash },
   };
 }
 
@@ -315,7 +365,7 @@ test("M9-1: JobCreated indexer ingests two logs and survives restart replay idem
     });
 
     const first = await indexer.sync({ toBlock: head });
-    assert.equal(first.processed, 3);
+    assert.equal(first.processed, 4);
     assert.equal(store.jobs.size, 2);
     assert.equal(store.jobs.get(`onchain-${chain.chainId}-${chain.contracts.AgenticCommerce.slice(2, 10).toLowerCase()}-${firstJobId}`).status, "Open");
     assert.equal(store.jobs.get(`onchain-${chain.chainId}-${chain.contracts.AgenticCommerce.slice(2, 10).toLowerCase()}-${secondJobId}`).budget, "42.500000");
@@ -1362,6 +1412,224 @@ test("M9-7: adjudication resolution and attested evidence persist across restart
     assert.deepEqual(attested.attestedSettlement.sourceLog, { blockNumber: 20, txHash: logs[9].transactionHash, logIndex: 9 });
     assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_RESOLVED").length, 1);
     assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_ATTESTED_SETTLEMENT").length, 1);
+    assert.equal(restartedStore.receipts.size, 0);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("M9-8: ProviderSet updates an Open indexed job without financial side effects", () => {
+  const store = new SpaceStore();
+  const created = createdLog({ provider: "0x0000000000000000000000000000000000000000" });
+  const event = providerSetLog();
+  addOpenIndexedJob(store, created);
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const result = store.setProviderIndexedJob(eventInput(event, { provider: event.args.provider }));
+  const job = result.job;
+
+  assert.equal(result.providerSet, true);
+  assert.equal(job.status, "Open");
+  assert.equal(job.provider, event.args.provider);
+  assert.equal(job.escrowedAmount, "0.000000");
+  assert.deepEqual(job.sourceLog, { blockNumber: event.blockNumber, txHash: event.transactionHash, logIndex: event.logIndex });
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, 0);
+  assert.equal(store.getActivity(spaceId).at(-1).type, "WORK_PROVIDER_SET");
+});
+
+test("M9-8: BudgetSet updates an Open indexed job budget without escrowing", () => {
+  const store = new SpaceStore();
+  const event = budgetSetLog();
+  addOpenIndexedJob(store);
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const result = store.setBudgetIndexedJob(eventInput(event, { amount: event.args.amount }));
+
+  assert.equal(result.budgetSet, true);
+  assert.equal(result.job.status, "Open");
+  assert.equal(result.job.budget, "123.456789");
+  assert.equal(result.job.escrowedAmount, "0.000000");
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, 0);
+  assert.equal(store.getActivity(spaceId).at(-1).type, "WORK_BUDGET_SET");
+});
+
+test("M9-8: AdjudicatorSet updates Open-job metadata without changing status", () => {
+  const store = new SpaceStore();
+  const event = adjudicatorSetLog();
+  addOpenIndexedJob(store);
+  const result = store.setAdjudicatorIndexedJob(eventInput(event, { adjudicator: event.args.adjudicator }));
+
+  assert.equal(result.adjudicatorSet, true);
+  assert.equal(result.job.status, "Open");
+  assert.equal(result.job.adjudicator, event.args.adjudicator);
+  assert.equal(result.job.adjudication, null);
+  assert.equal(store.getActivity(spaceId).at(-1).type, "WORK_ADJUDICATOR_SET");
+});
+
+test("M9-8: RubricSet updates Open-job metadata without changing status", () => {
+  const store = new SpaceStore();
+  const event = rubricSetLog();
+  addOpenIndexedJob(store);
+  const result = store.setRubricIndexedJob(eventInput(event, { rubricHash: event.args.rubricHash }));
+
+  assert.equal(result.rubricSet, true);
+  assert.equal(result.job.status, "Open");
+  assert.equal(result.job.rubricHash, event.args.rubricHash);
+  assert.equal(store.getActivity(spaceId).at(-1).type, "WORK_RUBRIC_SET");
+});
+
+test("M9-8: EvidenceAttached records the observed hash and source log without inventing a URI", () => {
+  const store = new SpaceStore();
+  const event = evidenceAttachedLog();
+  addSubmittedIndexedJob(store);
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const result = store.recordIndexedEvidenceAttached(eventInput(event, { deliverableHash: event.args.deliverableHash }));
+
+  assert.equal(result.evidenceAttached, true);
+  assert.equal(result.job.status, "Submitted");
+  assert.equal(result.job.evidenceUri, null);
+  assert.equal(result.job.evidenceAttached.deliverableHash, event.args.deliverableHash);
+  assert.deepEqual(result.job.evidenceAttached.sourceLog, { blockNumber: event.blockNumber, txHash: event.transactionHash, logIndex: event.logIndex });
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, 0);
+  assert.equal(store.getActivity(spaceId).at(-1).type, "WORK_EVIDENCE_ATTACHED");
+});
+
+test("M9-8: metadata and evidence replays are no-ops while conflicts fail loudly", () => {
+  const store = new SpaceStore();
+  const created = createdLog({ provider: "0x0000000000000000000000000000000000000000" });
+  addOpenIndexedJob(store, created);
+  const provider = providerSetLog();
+  const budget = budgetSetLog({ logIndex: 2 });
+  const adjudicator = adjudicatorSetLog({ logIndex: 3 });
+  const rubric = rubricSetLog({ logIndex: 4 });
+  const funded = fundedLog({ logIndex: 5 });
+  const submitted = submittedLog({ logIndex: 6 });
+  const evidence = evidenceAttachedLog({ logIndex: 7 });
+  const providerInput = eventInput(provider, { provider: provider.args.provider });
+  const budgetInput = eventInput(budget, { amount: budget.args.amount });
+  const adjudicatorInput = eventInput(adjudicator, { adjudicator: adjudicator.args.adjudicator });
+  const rubricInput = eventInput(rubric, { rubricHash: rubric.args.rubricHash });
+
+  assert.equal(store.setProviderIndexedJob(providerInput).providerSet, true);
+  assert.equal(store.setProviderIndexedJob(providerInput).providerSet, false);
+  assert.equal(store.setBudgetIndexedJob(budgetInput).budgetSet, true);
+  assert.equal(store.setBudgetIndexedJob(budgetInput).budgetSet, false);
+  assert.throws(() => store.setBudgetIndexedJob({ ...budgetInput, amount: 1n }), /conflicts/);
+  assert.equal(store.setAdjudicatorIndexedJob(adjudicatorInput).adjudicatorSet, true);
+  assert.equal(store.setAdjudicatorIndexedJob(adjudicatorInput).adjudicatorSet, false);
+  assert.equal(store.setRubricIndexedJob(rubricInput).rubricSet, true);
+  assert.equal(store.setRubricIndexedJob(rubricInput).rubricSet, false);
+  assert.throws(() => store.setProviderIndexedJob({ ...providerInput, provider: "0x7777777777777777777777777777777777777777" }), /conflicts/);
+  assert.throws(() => store.setAdjudicatorIndexedJob({ ...adjudicatorInput, adjudicator: "0x7777777777777777777777777777777777777777" }), /conflicts/);
+  assert.throws(() => store.setRubricIndexedJob({ ...rubricInput, rubricHash: `0x${"c".repeat(64)}` }), /conflicts/);
+
+  assert.equal(store.fundIndexedJob(eventInput(funded, { amount: funded.args.amount })).funded, true);
+  assert.equal(store.submitIndexedJob(eventInput(submitted, { deliverableHash: submitted.args.deliverableHash })).submitted, true);
+  const evidenceInput = eventInput(evidence, { deliverableHash: evidence.args.deliverableHash });
+  assert.equal(store.recordIndexedEvidenceAttached(evidenceInput).evidenceAttached, true);
+  assert.equal(store.recordIndexedEvidenceAttached(evidenceInput).evidenceAttached, false);
+  const secondEvidence = evidenceAttachedLog({ logIndex: 8, txDigit: "9" });
+  const secondEvidenceInput = eventInput(secondEvidence, { deliverableHash: secondEvidence.args.deliverableHash });
+  assert.equal(store.recordIndexedEvidenceAttached(secondEvidenceInput).evidenceAttached, true);
+  assert.throws(() => store.recordIndexedEvidenceAttached({ ...evidenceInput, deliverableHash: `0x${"b".repeat(64)}` }), /conflicts/);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_PROVIDER_SET").length, 1);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_BUDGET_SET").length, 1);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_EVIDENCE_ATTACHED").length, 2);
+});
+
+test("M9-8: combined indexer orders all metadata/evidence events canonically in one block", async () => {
+  const store = new SpaceStore();
+  const logs = [
+    createdLog({ provider: "0x0000000000000000000000000000000000000000", logIndex: 0 }),
+    providerSetLog({ logIndex: 1 }),
+    budgetSetLog({ logIndex: 2 }),
+    adjudicatorSetLog({ logIndex: 3 }),
+    rubricSetLog({ logIndex: 4 }),
+    fundedLog({ logIndex: 5 }),
+    submittedLog({ logIndex: 6 }),
+    evidenceAttachedLog({ logIndex: 7 }),
+  ];
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client: { getBlockNumber: async () => 10n, getLogs: async () => [...logs].reverse() } });
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const job = [...store.jobs.values()][0];
+
+  assert.equal(result.processed, 8);
+  assert.equal(job.status, "Submitted");
+  assert.equal(job.provider, providerSetLog().args.provider);
+  assert.equal(job.budget, "123.456789");
+  assert.equal(job.escrowedAmount, "123.456789");
+  assert.equal(job.adjudicator, adjudicatorSetLog().args.adjudicator);
+  assert.equal(job.rubricHash, rubricSetLog().args.rubricHash);
+  assert.equal(job.evidenceUri, null);
+  assert.deepEqual(store.getActivity(spaceId).map((entry) => entry.type), ["WORK_CREATED", "WORK_PROVIDER_SET", "WORK_BUDGET_SET", "WORK_ADJUDICATOR_SET", "WORK_RUBRIC_SET", "WORK_FUNDED", "WORK_SUBMITTED", "WORK_EVIDENCE_ATTACHED"]);
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, 0);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: evidenceAttachedLog().transactionHash, logIndex: 7 });
+
+  const replay = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  assert.equal(replay.processed, 0);
+  assert.equal(replay.skipped, 8);
+  assert.equal(store.getActivity(spaceId).length, 8);
+});
+
+test("M9-8: invalid metadata ordering and evidence state fail loudly", async () => {
+  const providerFirst = new SpaceStore();
+  const providerIndexer = new JobCreatedIndexer({ store: providerFirst, chainId: 1952, contractAddress: indexedContract, client: { getBlockNumber: async () => 10n, getLogs: async () => [providerSetLog({ logIndex: 0 }), createdLog({ provider: "0x0000000000000000000000000000000000000000", logIndex: 1 })] } });
+  await assert.rejects(providerIndexer.sync({ fromBlock: 0, toBlock: 10 }), /unknown indexed job/);
+
+  const budgetAfterFunding = new SpaceStore();
+  addOpenIndexedJob(budgetAfterFunding);
+  budgetAfterFunding.fundIndexedJob(eventInput(fundedLog(), { amount: fundedLog().args.amount }));
+  assert.throws(() => budgetAfterFunding.setBudgetIndexedJob(eventInput(budgetSetLog({ logIndex: 2 }), { amount: 1n })), /from 'Funded'/);
+
+  const metadataAfterFunding = new SpaceStore();
+  addOpenIndexedJob(metadataAfterFunding);
+  metadataAfterFunding.fundIndexedJob(eventInput(fundedLog(), { amount: fundedLog().args.amount }));
+  assert.throws(() => metadataAfterFunding.setAdjudicatorIndexedJob(eventInput(adjudicatorSetLog(), { adjudicator: adjudicatorSetLog().args.adjudicator })), /from 'Funded'/);
+  assert.throws(() => metadataAfterFunding.setRubricIndexedJob(eventInput(rubricSetLog(), { rubricHash: rubricSetLog().args.rubricHash })), /from 'Funded'/);
+
+  const evidenceBeforeFunding = new SpaceStore();
+  addOpenIndexedJob(evidenceBeforeFunding);
+  assert.throws(() => evidenceBeforeFunding.recordIndexedEvidenceAttached(eventInput(evidenceAttachedLog(), { deliverableHash: `0x${"a".repeat(64)}` })), /from 'Open'/);
+});
+
+test("M9-8: metadata/evidence projection persists across restart and remains side-effect free", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "microcosm-m9-metadata-"));
+  const snapshotPath = path.join(directory, "store.json");
+  try {
+    const logs = [
+      createdLog({ provider: "0x0000000000000000000000000000000000000000", blockNumber: 20, logIndex: 0 }),
+      providerSetLog({ blockNumber: 20, logIndex: 1 }),
+      budgetSetLog({ blockNumber: 20, logIndex: 2 }),
+      adjudicatorSetLog({ blockNumber: 20, logIndex: 3 }),
+      rubricSetLog({ blockNumber: 20, logIndex: 4 }),
+      fundedLog({ blockNumber: 20, logIndex: 5 }),
+      submittedLog({ blockNumber: 20, logIndex: 6 }),
+      evidenceAttachedLog({ blockNumber: 20, logIndex: 7 }),
+    ];
+    const client = { getBlockNumber: async () => 20n, getLogs: async () => logs };
+    const store = new SpaceStore();
+    const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+    await indexer.sync({ fromBlock: 0, toBlock: 20 });
+    const cursor = indexer.getCursor();
+    const restartedStore = new SpaceStore();
+    assert.equal(load(restartedStore, snapshotPath), true);
+    const restarted = new JobCreatedIndexer({ store: restartedStore, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+    const replay = await restarted.sync({ fromBlock: 0, toBlock: 20 });
+    const job = [...restartedStore.jobs.values()][0];
+
+    assert.equal(replay.processed, 0);
+    assert.equal(replay.skipped, 8);
+    assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
+    assert.equal(job.provider, providerSetLog().args.provider);
+    assert.equal(job.budget, "123.456789");
+    assert.equal(job.adjudicator, adjudicatorSetLog().args.adjudicator);
+    assert.equal(job.rubricHash, rubricSetLog().args.rubricHash);
+    assert.equal(job.evidenceAttached.deliverableHash, evidenceAttachedLog().args.deliverableHash);
+    assert.equal(job.evidenceUri, null);
+    assert.equal(restartedStore.getActivity(spaceId).length, 8);
     assert.equal(restartedStore.receipts.size, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });

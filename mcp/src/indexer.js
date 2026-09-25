@@ -4,6 +4,11 @@ import { createPublicClient, decodeEventLog, getEventSelector, http, parseAbiIte
 const require = createRequire(import.meta.url);
 const curatedAbis = require("../../packages/sdk/src/abis.json");
 const jobCreatedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCreated("));
+const providerSetFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event ProviderSet("));
+const budgetSetFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event BudgetSet("));
+const adjudicatorSetFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicatorSet("));
+const rubricSetFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event RubricSet("));
+const evidenceAttachedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event EvidenceAttached("));
 const jobFundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobFunded("));
 const jobSubmittedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobSubmitted("));
 const jobCompletedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCompleted("));
@@ -13,8 +18,13 @@ const refundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.start
 const adjudicationRequestedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationRequested("));
 const adjudicationResolvedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationResolved("));
 const attestedJobSettlementFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AttestedJobSettlement("));
-if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !jobCompletedFragment || !jobRejectedFragment || !jobExpiredFragment || !refundedFragment || !adjudicationRequestedFragment || !adjudicationResolvedFragment || !attestedJobSettlementFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
+if (!jobCreatedFragment || !providerSetFragment || !budgetSetFragment || !adjudicatorSetFragment || !rubricSetFragment || !evidenceAttachedFragment || !jobFundedFragment || !jobSubmittedFragment || !jobCompletedFragment || !jobRejectedFragment || !jobExpiredFragment || !refundedFragment || !adjudicationRequestedFragment || !adjudicationResolvedFragment || !attestedJobSettlementFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
 export const JOB_CREATED_ABI = parseAbiItem(jobCreatedFragment);
+export const PROVIDER_SET_ABI = parseAbiItem(providerSetFragment);
+export const BUDGET_SET_ABI = parseAbiItem(budgetSetFragment);
+export const ADJUDICATOR_SET_ABI = parseAbiItem(adjudicatorSetFragment);
+export const RUBRIC_SET_ABI = parseAbiItem(rubricSetFragment);
+export const EVIDENCE_ATTACHED_ABI = parseAbiItem(evidenceAttachedFragment);
 export const JOB_FUNDED_ABI = parseAbiItem(jobFundedFragment);
 export const JOB_SUBMITTED_ABI = parseAbiItem(jobSubmittedFragment);
 export const JOB_COMPLETED_ABI = parseAbiItem(jobCompletedFragment);
@@ -27,6 +37,11 @@ export const ATTESTED_JOB_SETTLEMENT_ABI = parseAbiItem(attestedJobSettlementFra
 
 const eventAbis = {
   JobCreated: JOB_CREATED_ABI,
+  ProviderSet: PROVIDER_SET_ABI,
+  BudgetSet: BUDGET_SET_ABI,
+  AdjudicatorSet: ADJUDICATOR_SET_ABI,
+  RubricSet: RUBRIC_SET_ABI,
+  EvidenceAttached: EVIDENCE_ATTACHED_ABI,
   JobFunded: JOB_FUNDED_ABI,
   JobSubmitted: JOB_SUBMITTED_ABI,
   JobCompleted: JOB_COMPLETED_ABI,
@@ -97,6 +112,26 @@ function eventArgs(log, name) {
   if (name === "JobCreated") {
     const [jobId, client, evaluator, provider, description, expiredAt] = args;
     return { jobId, client, evaluator, provider, description, expiredAt };
+  }
+  if (name === "ProviderSet") {
+    const [jobId, provider] = args;
+    return { jobId, provider };
+  }
+  if (name === "BudgetSet") {
+    const [jobId, amount] = args;
+    return { jobId, amount };
+  }
+  if (name === "AdjudicatorSet") {
+    const [jobId, adjudicator] = args;
+    return { jobId, adjudicator };
+  }
+  if (name === "RubricSet") {
+    const [jobId, rubricHash] = args;
+    return { jobId, rubricHash };
+  }
+  if (name === "EvidenceAttached") {
+    const [jobId, deliverableHash] = args;
+    return { jobId, deliverableHash };
   }
   if (name === "JobFunded") {
     const [jobId, amount] = args;
@@ -231,6 +266,16 @@ export class JobCreatedIndexer {
           description: args.description,
           expiredAt: args.expiredAt,
         });
+      } else if (name === "ProviderSet") {
+        this.store.setProviderIndexedJob({ ...common, provider: args.provider });
+      } else if (name === "BudgetSet") {
+        this.store.setBudgetIndexedJob({ ...common, amount: args.amount });
+      } else if (name === "AdjudicatorSet") {
+        this.store.setAdjudicatorIndexedJob({ ...common, adjudicator: args.adjudicator });
+      } else if (name === "RubricSet") {
+        this.store.setRubricIndexedJob({ ...common, rubricHash: args.rubricHash });
+      } else if (name === "EvidenceAttached") {
+        this.store.recordIndexedEvidenceAttached({ ...common, deliverableHash: args.deliverableHash });
       } else if (name === "JobFunded") {
         this.store.fundIndexedJob({ ...common, amount: args.amount });
       } else if (name === "JobSubmitted") {
