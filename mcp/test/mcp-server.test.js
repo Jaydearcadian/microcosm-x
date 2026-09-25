@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SpaceStore } from '../src/space-store.js';
 import { handleToolCall, TOOL_DEFINITIONS } from '../src/tools.js';
 
-test('MCP-TOOLS: Tool definitions list 37 Space operations including the x402 intent lifecycle', () => {
-  assert.equal(TOOL_DEFINITIONS.length, 37);
+test('MCP-TOOLS: Tool definitions list 43 Space operations including delegation and x402 lifecycles', () => {
+  assert.equal(TOOL_DEFINITIONS.length, 43);
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
   assert.ok(toolNames.includes('spaces_list'));
   assert.ok(toolNames.includes('spaces_capabilities'));

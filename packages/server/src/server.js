@@ -362,6 +362,79 @@ async function dispatch(app, req, res) {
       needSpace(spaceId);
       return ok(200, { manifest: store.getCapabilityManifest(spaceId) });
     }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/delegations$/);
+    if (m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const space = needSpace(spaceId);
+      if (req.method === 'GET') {
+        return ok(200, { delegations: store.listDelegations({ spaceId, status: query.status || null }) });
+      }
+      if (req.method === 'POST') {
+        const input = body.delegation && typeof body.delegation === 'object' ? { ...body, ...body.delegation } : body;
+        const parent = (space.members || []).find((member) => String(member.address || '').toLowerCase() === current.address);
+        if (!parent || !['admin', 'agent', 'operator'].includes(parent.role)) throw Object.assign(new Error('Authenticated session is not a spending member of this Space'), { httpStatus: 403, httpCode: 'FORBIDDEN' });
+        try {
+          const result = await app.mutate(spaceId, async () => store.createDelegation({ ...input, spaceId, parentActor: current.address, parentRole: input.parentRole || parent.role }));
+          return ok(201, result);
+        } catch (err) {
+          throwMapped(err);
+        }
+      }
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/delegations\/([^/]+)$/);
+    if (req.method === 'GET' && m) {
+      requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const delegationId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      try {
+        return ok(200, { delegation: store.getDelegation({ spaceId, delegationId }) });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/delegations\/([^/]+)\/sign$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const delegationId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      requireFields(body, ['signature']);
+      try {
+        const delegation = await app.mutate(spaceId, async () => store.signDelegation({ spaceId, delegationId, parentActor: current.address, signature: body.signature, digest: body.digest }));
+        return ok(200, { delegation });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/delegations\/([^/]+)\/verify$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const delegationId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      try {
+        const verification = await app.mutate(spaceId, async () => store.verifyDelegation({ spaceId, delegationId, parentActor: current.address, delegation: body.delegation, signature: body.signature, digest: body.digest }));
+        return ok(200, { verification });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/delegations\/([^/]+)\/revoke$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const delegationId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      try {
+        const delegation = await app.mutate(spaceId, async () => store.revokeDelegation({ spaceId, delegationId, parentActor: current.address }));
+        return ok(200, { delegation });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
     m = path.match(/^\/api\/spaces\/([^/]+)\/payments\/x402\/validate$/);
     if (req.method === 'POST' && m) {
       const spaceId = decodeURIComponent(m[1]);

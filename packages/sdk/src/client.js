@@ -159,6 +159,13 @@ export class SpaceClient {
   signGovernanceRequest(spaceId, requestId, signature) { return this._req('POST', `/api/spaces/${spaceId}/governance/requests/${requestId}/sign`, { signature }); }
   executeGovernanceRequest(spaceId, requestId) { return this._req('POST', `/api/spaces/${spaceId}/governance/requests/${requestId}/execute`, {}); }
 
+  createDelegation(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/delegations`, args); }
+  listDelegations(spaceId, query = {}) { return this._req('GET', `/api/spaces/${spaceId}/delegations`, undefined, query); }
+  getDelegation(spaceId, delegationId) { return this._req('GET', `/api/spaces/${spaceId}/delegations/${delegationId}`); }
+  signDelegation(spaceId, delegationId, args) { return this._req('POST', `/api/spaces/${spaceId}/delegations/${delegationId}/sign`, args); }
+  verifyDelegation(spaceId, delegationId, args = {}) { return this._req('POST', `/api/spaces/${spaceId}/delegations/${delegationId}/verify`, args); }
+  revokeDelegation(spaceId, delegationId, args = {}) { return this._req('POST', `/api/spaces/${spaceId}/delegations/${delegationId}/revoke`, args); }
+
   // --- activity ---
   listActivity(spaceId, query = {}) { return this._req('GET', `/api/spaces/${spaceId}/activity`, undefined, query); }
 

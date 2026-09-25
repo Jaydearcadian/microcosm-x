@@ -26,6 +26,8 @@ export function snapshot(store) {
     invitations: [...store.invitations.entries()],
     governanceRequests: [...store.governanceRequests.entries()],
     x402Intents: [...store.x402Intents.entries()],
+    delegations: [...store.delegations.entries()],
+    delegationNonces: [...store.delegationNonces.entries()],
     indexerCursors: [...store.indexerCursors.entries()],
     indexerReconciliations: [...store.indexerReconciliations.entries()],
     indexerReorgSnapshots: [...store.indexerReorgSnapshots.entries()],
@@ -72,6 +74,8 @@ export function load(store, filePath) {
   store.governanceExecutionClaims = new Set();
   store.x402Intents = new Map(data.x402Intents || []);
   store.x402ExecutionClaims = new Set();
+  store.delegations = new Map(data.delegations || []);
+  store.delegationNonces = new Map(data.delegationNonces || []);
   store.indexerCursors = new Map(data.indexerCursors || []);
   store.indexerReconciliations = new Map(data.indexerReconciliations || []);
   store.indexerReorgSnapshots = new Map(data.indexerReorgSnapshots || []);

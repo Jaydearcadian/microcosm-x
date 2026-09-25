@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest } from '../../packages/policy-engine/src/index.js';
+import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest, authorityDelegationDigest, authorityDelegationTypedData, normalizeAuthorityDelegation, verifyAuthorityDelegationSignature, validateAuthorityDelegation, authoritySubsetProof } from '../../packages/policy-engine/src/index.js';
 import { validateX402PaymentIntent as validateX402PaymentIntentPure, normalizeX402Expiry, newX402Nonce, verifyX402IntentSignature, x402IntentDigest, x402IntentTypedData } from './x402.js';
 
 /**
@@ -29,6 +29,8 @@ export class SpaceStore {
     this.governanceExecutionClaims = new Set();
     this.x402Intents = new Map();
     this.x402ExecutionClaims = new Set();
+    this.delegations = new Map();
+    this.delegationNonces = new Map();
     this.indexerCursors = new Map();
     this.indexerReconciliations = new Map();
     this.indexerReorgSnapshots = new Map();
@@ -2021,6 +2023,175 @@ export class SpaceStore {
     }));
     this.activity.set(spaceId, entries);
     return { job: { ...job }, recorded: true };
+  }
+
+  _delegationActivity(spaceId) {
+    if (!this.activity.has(spaceId)) this.activity.set(spaceId, []);
+    return this.activity.get(spaceId);
+  }
+
+  _delegationMemberOrThrow(space, parentActor) {
+    const member = (space.members || []).find((item) => String(item.address || '').toLowerCase() === String(parentActor || '').toLowerCase());
+    if (!member || !['admin', 'agent', 'operator'].includes(member.role)) throw new Error(`Parent '${parentActor}' is not a spending member of Space '${space.id}'`);
+    return member;
+  }
+
+  _delegationChildOrThrow(space, child, childRole) {
+    const address = String(child || '').toLowerCase();
+    const member = (space.members || []).find((item) => String(item.address || '').toLowerCase() === address);
+    if (member) {
+      if (member.role !== childRole) throw new Error(`Child '${child}' has role '${member.role}', not '${childRole}'`);
+      return { member, participantId: member.id };
+    }
+    const participant = [...this.participants.values()].find((item) => item.spaceId === space.id && item.status === 'Active' && String(item.address || '').toLowerCase() === address);
+    if (!participant) throw new Error(`Child '${child}' is not a member or address-backed participant of Space '${space.id}'`);
+    if (participant.role !== childRole && childRole !== 'member') throw new Error(`Child '${child}' has role '${participant.role}', not '${childRole}'`);
+    return { member: null, participantId: participant.participantId };
+  }
+
+  _delegationOrThrow(spaceId, delegationId) {
+    const delegation = this.delegations.get(delegationId);
+    if (!delegation || delegation.spaceId !== spaceId) throw new Error(`Authority delegation '${delegationId}' not found in Space '${spaceId}'`);
+    if (delegation.status !== 'REVOKED' && BigInt(delegation.expiry) * 1000n <= BigInt(Date.now())) {
+      delegation.status = 'EXPIRED';
+      delegation.expiredAt = new Date().toISOString();
+      delegation.activity.push({ type: 'DELEGATION_EXPIRED', timestamp: delegation.expiredAt });
+      this._delegationActivity(spaceId).push({ type: 'DELEGATION_EXPIRED', delegationId, spaceId, timestamp: delegation.expiredAt });
+    }
+    return delegation;
+  }
+
+  _delegationParentEnvelope(space, parent) {
+    const rules = space.rules || {};
+    return {
+      delegationId: `parent-${space.id}`,
+      spaceId: space.id,
+      parentActor: parent.address,
+      child: parent.address,
+      parentRole: parent.role,
+      childRole: parent.role,
+      maxPerTransaction: rules.maxPerTransaction,
+      dailyBudget: rules.dailyBudget,
+      allowedCounterparties: (rules.allowedCounterparties || []).map((item) => String(item).toLowerCase()),
+      asset: space.currency,
+      chainId: space.chainId,
+      nonce: '0',
+      expiry: (2n ** 256n - 1n).toString(),
+      policySnapshotHash: `0x${'0'.repeat(64)}`,
+    };
+  }
+
+  createDelegation(args = {}) {
+    const input = args.delegation && typeof args.delegation === 'object' ? { ...args, ...args.delegation } : args;
+    const space = this._getSpaceOrThrow(input.spaceId);
+    let normalized;
+    try {
+      normalized = normalizeAuthorityDelegation(input, { chainId: input.chainId });
+    } catch (error) {
+      throw new Error(`Invalid authority delegation: ${error.message}`);
+    }
+    const validation = validateAuthorityDelegation(input, { nowMs: Date.now(), chainId: space.chainId });
+    if (!validation.valid) throw new Error(`Invalid authority delegation: ${validation.reasons.join('; ')}`);
+    const candidate = {
+      ...input,
+      spaceId: normalized.spaceId,
+      parentActor: normalized.parentActor,
+      child: normalized.child,
+      parentRole: normalized.parentRole,
+      childRole: normalized.childRole,
+      allowedCounterparties: normalized.allowedCounterparties,
+      asset: normalized.asset,
+      chainId: normalized.chainId,
+      nonce: normalized.nonce,
+      expiry: normalized.expiry,
+      policySnapshotHash: normalized.policySnapshotHash,
+    };
+    const parent = this._delegationMemberOrThrow(space, normalized.parentActor);
+    if (parent.role !== normalized.parentRole) throw new Error(`Parent role '${normalized.parentRole}' does not match Space role '${parent.role}'`);
+    this._delegationChildOrThrow(space, normalized.child, normalized.childRole);
+    if (normalized.chainId !== String(space.chainId)) throw new Error(`Delegation chainId must be ${space.chainId}`);
+    if (normalized.asset.toLowerCase() !== String(space.currency).toLowerCase()) throw new Error(`Delegation asset must be ${space.currency}`);
+    const parentEnvelope = this._delegationParentEnvelope(space, parent);
+    const proof = authoritySubsetProof(parentEnvelope, candidate);
+    if (!proof.valid) throw new Error(`Delegation expands parent authority: ${proof.reasons.join('; ')}`);
+    if (this.delegations.has(normalized.delegationId)) throw new Error(`Duplicate delegation '${normalized.delegationId}'`);
+    const nonceKey = `${normalized.spaceId}:${normalized.parentActor}:${normalized.nonce}`;
+    if (this.delegationNonces.has(nonceKey)) throw new Error(`Duplicate delegation nonce '${normalized.nonce}' for parent '${normalized.parentActor}'`);
+    const now = new Date().toISOString();
+    const delegation = {
+      ...candidate,
+      expiryAt: new Date(Number(normalized.expiry) * 1000).toISOString(),
+      digest: authorityDelegationDigest(candidate, space.chainId),
+      typedData: authorityDelegationTypedData(candidate, space.chainId),
+      status: 'PENDING',
+      signature: null,
+      signedBy: null,
+      signedAt: null,
+      revokedAt: null,
+      revokedBy: null,
+      createdAt: now,
+      activity: [{ type: 'DELEGATION_CREATED', delegationId: normalized.delegationId, spaceId: normalized.spaceId, parentActor: normalized.parentActor, child: normalized.child, digest: authorityDelegationDigest(candidate, space.chainId), timestamp: now }],
+    };
+    delegation.digest = authorityDelegationDigest(candidate, space.chainId);
+    this.delegations.set(normalized.delegationId, delegation);
+    this.delegationNonces.set(nonceKey, normalized.delegationId);
+    this._delegationActivity(normalized.spaceId).push({ ...delegation.activity[0] });
+    return { delegation: structuredClone(delegation), typedData: structuredClone(delegation.typedData), proof: structuredClone(proof) };
+  }
+
+  listDelegations({ spaceId, status = null } = {}) {
+    this._getSpaceOrThrow(spaceId);
+    let delegations = [...this.delegations.values()].filter((item) => item.spaceId === spaceId).map((item) => this._delegationOrThrow(spaceId, item.delegationId));
+    if (status) delegations = delegations.filter((item) => item.status === status);
+    return delegations.map((item) => structuredClone(item));
+  }
+
+  getDelegation({ spaceId, delegationId }) {
+    this._getSpaceOrThrow(spaceId);
+    return structuredClone(this._delegationOrThrow(spaceId, delegationId));
+  }
+
+  async signDelegation({ spaceId, delegationId, signature, digest, parentActor }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const delegation = this._delegationOrThrow(spaceId, delegationId);
+    if (parentActor && String(parentActor).toLowerCase() !== delegation.parentActor) throw new Error('Authority delegation is bound to a different parent session');
+    if (delegation.status !== 'PENDING') throw new Error(`Authority delegation '${delegationId}' is ${delegation.status.toLowerCase()}`);
+    const verified = await verifyAuthorityDelegationSignature({ delegation, signature, signerAddress: delegation.parentActor, digest, nowMs: Date.now(), chainId: space.chainId });
+    delegation.signature = signature;
+    delegation.signedBy = verified.signer;
+    delegation.signedAt = new Date().toISOString();
+    delegation.status = 'SIGNED';
+    delegation.activity.push({ type: 'DELEGATION_SIGNED', signer: verified.signer, digest: verified.digest, timestamp: delegation.signedAt });
+    this._delegationActivity(spaceId).push({ type: 'DELEGATION_SIGNED', delegationId, spaceId, signer: verified.signer, digest: verified.digest, timestamp: delegation.signedAt });
+    return structuredClone(delegation);
+  }
+
+  async verifyDelegation({ spaceId, delegationId, delegation: candidate, signature, digest, parentActor } = {}) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const stored = this._delegationOrThrow(spaceId, delegationId);
+    if (stored.status !== 'SIGNED') throw new Error(`Authority delegation '${delegationId}' is not signed`);
+    if (parentActor && String(parentActor).toLowerCase() !== stored.parentActor) throw new Error('Authority delegation is bound to a different parent session');
+    const subject = candidate || stored;
+    const expected = authorityDelegationDigest(stored, space.chainId);
+    if (authorityDelegationDigest(subject, space.chainId).toLowerCase() !== expected.toLowerCase()) throw new Error('Authority delegation is tampered');
+    const verified = await verifyAuthorityDelegationSignature({ delegation: subject, signature: signature || stored.signature, signerAddress: stored.parentActor, digest: digest || stored.digest, nowMs: Date.now(), chainId: space.chainId });
+    return { valid: true, delegationId, signer: verified.signer, digest: verified.digest, status: stored.status };
+  }
+
+  revokeDelegation({ spaceId, delegationId, parentActor, actorAddress }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const delegation = this._delegationOrThrow(spaceId, delegationId);
+    const revoker = String(parentActor || actorAddress || '').toLowerCase();
+    if (revoker !== delegation.parentActor) throw new Error('Only the delegation parent can revoke this delegation');
+    if (delegation.status === 'REVOKED') throw new Error(`Authority delegation '${delegationId}' is already revoked`);
+    if (delegation.status === 'EXPIRED') throw new Error(`Authority delegation '${delegationId}' has expired`);
+    const timestamp = new Date().toISOString();
+    delegation.status = 'REVOKED';
+    delegation.revokedAt = timestamp;
+    delegation.revokedBy = revoker;
+    delegation.activity.push({ type: 'DELEGATION_REVOKED', actor: revoker, timestamp });
+    this._delegationActivity(spaceId).push({ type: 'DELEGATION_REVOKED', delegationId, spaceId, actor: revoker, timestamp });
+    return structuredClone(delegation);
   }
 
   _governanceConfigOrThrow(spaceId) {

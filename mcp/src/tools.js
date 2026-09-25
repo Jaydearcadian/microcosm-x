@@ -164,6 +164,55 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'delegations_create',
+    description: 'Create a cryptographically signed-ready, strictly attenuated authority delegation for a Space.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string' },
+        delegationId: { type: 'string' },
+        parentActor: { type: 'string' },
+        child: { type: 'string' },
+        parentRole: { type: 'string' },
+        childRole: { type: 'string' },
+        maxPerTransaction: { type: 'string' },
+        dailyBudget: { type: 'string' },
+        allowedCounterparties: { type: 'array', items: { type: 'string' } },
+        asset: { type: 'string' },
+        chainId: { type: 'integer' },
+        nonce: { type: 'string' },
+        expiry: { type: 'string' },
+        policySnapshotHash: { type: 'string' },
+      },
+      required: ['spaceId', 'delegationId', 'parentActor', 'child', 'parentRole', 'childRole', 'maxPerTransaction', 'dailyBudget', 'allowedCounterparties', 'asset', 'chainId', 'nonce', 'expiry', 'policySnapshotHash'],
+    },
+  },
+  {
+    name: 'delegations_list',
+    description: 'List authority delegations in a Space.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, status: { type: 'string' } }, required: ['spaceId'] },
+  },
+  {
+    name: 'delegations_get',
+    description: 'Read one authority delegation.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, delegationId: { type: 'string' } }, required: ['spaceId', 'delegationId'] },
+  },
+  {
+    name: 'delegations_sign',
+    description: 'Sign an authority delegation with the parent identity and exact EIP-712 digest.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, delegationId: { type: 'string' }, parentActor: { type: 'string' }, signature: { type: 'string' }, digest: { type: 'string' } }, required: ['spaceId', 'delegationId', 'parentActor', 'signature'] },
+  },
+  {
+    name: 'delegations_verify',
+    description: 'Verify the exact stored authority delegation digest and parent signature.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, delegationId: { type: 'string' }, parentActor: { type: 'string' }, delegation: { type: 'object' }, signature: { type: 'string' }, digest: { type: 'string' } }, required: ['spaceId', 'delegationId'] },
+  },
+  {
+    name: 'delegations_revoke',
+    description: 'Revoke an authority delegation using the parent identity.',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, delegationId: { type: 'string' }, parentActor: { type: 'string' } }, required: ['spaceId', 'delegationId', 'parentActor'] },
+  },
+  {
     name: 'governance_payments_configure',
     description: 'Configure explicit M-of-N governance signers for a Space as an admin.',
     inputSchema: {
@@ -740,6 +789,54 @@ export async function handleToolCall(store, name, args) {
           content: [{ type: 'text', text: `Execution error: ${err.message}` }],
           isError: true,
         };
+      }
+    }
+
+    case 'delegations_create': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify(store.createDelegation(args), null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'delegations_list': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ delegations: store.listDelegations(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'delegations_get': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ delegation: store.getDelegation(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'delegations_sign': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ delegation: await store.signDelegation(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'delegations_verify': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify(await store.verifyDelegation(args), null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'delegations_revoke': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ delegation: store.revokeDelegation(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
       }
     }
 

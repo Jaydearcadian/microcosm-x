@@ -31,7 +31,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | Public AWS deployment and Playwright QA (16/16) pass; credential-free injected-wallet sign-in, session persistence, bearer redemption, mobile overflow, and accessibility semantics are verified; literal external-wallet-extension acceptance remains |
 | **M8** | **3-Minute Demo Video & OKX Dev Day 2026 Submission** | `PLANNED` | Script ready in `forge/DEMO_SCRIPT.md` |
 | **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `VERIFIED` | `node --test mcp/test/indexer.test.js` (61/61) covers all indexed lifecycle events, HTTP/WebSocket/injected transports, explicit reconciliation recovery, non-overlapping polling, legacy cursor compatibility, and restart-safe reorg rewind; `make test` passes 153/153 |
-| **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
+| **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `VERIFIED` | Focused M10 policy, MCP, REST, SDK, and persistence suites pass; `make test` passes 177/177. This slice proves signed bounded delegation envelopes only; delegated settlement remains out of scope |
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `VERIFIED` | `make test`; governance EIP-712, 2-of-3, session spoofing, idempotency, persistence, and REST/MCP parity tests pass |
 | **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) — kept as internal adjudication capability per rebaseline §19; not a product centerpiece (§20) |
@@ -156,6 +156,10 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 * **Behavior**:
   * A child agent cannot acquire capabilities, spending caps, or counterparty access exceeding its parent.
   * Delegation tokens are cryptographically bound and verifiable offline.
+  * The first slice implements exact six-decimal base-unit cap and daily-budget comparison, counterparty set inclusion, role non-escalation, expiry, nonce, and policy-snapshot binding.
+  * `AuthorityDelegation` EIP-712 envelopes are persisted and exposed additively through policy, MCP, authenticated REST, and SDK surfaces.
+  * This slice deliberately does not route delegated authority through `/payments` or settlement.
+* **Evidence**: `node --test packages/policy-engine/test/delegation.test.js mcp/test/delegation.test.js packages/server/test/delegation.test.js packages/sdk/test/delegation.test.js` (M10-1…M10-9 PASS); `make test` (36 contracts, 20 policy, 94 MCP, 16 server, 11 SDK tests passed; 177 total).
 
 ---
 

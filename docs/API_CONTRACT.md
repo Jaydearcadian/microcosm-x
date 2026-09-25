@@ -1,6 +1,6 @@
 # Microcosm HTTP/SSE API Contract — v2 (FROZEN) + Governance and M14 Extensions
 
-Status: v2 is frozen for UI-agent parallel build. The existing capability and payment routes remain unchanged; M12 governance and M14 capability discovery, x402 validation, and authenticated x402 intent lifecycle are additive extensions. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
+Status: v2 is frozen for UI-agent parallel build. The existing capability and payment routes remain unchanged; M12 governance, M14 capability discovery, x402 validation, authenticated x402 intent lifecycle, and M10 authority delegation are additive extensions. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
 
 Base URL (dev): `http://localhost:8787`
 
@@ -103,7 +103,23 @@ The signing preparation is EIP-712 `X402Intent` with domain name `Microcosm x402
 
 Intent statuses are `PENDING`, `SIGNED`, `SETTLED`, and `REJECTED`. Settlement requires a signed intent and a configured compatible EIP-3009 asset/facilitator adapter. Without one, the route returns `501 { error: { code: "UNSUPPORTED_SETTLEMENT" } }` and does not create a receipt or change the intent to settled. An injected adapter is called once; it must return a valid transaction hash or successful real receipt shape. There is no simulated or fabricated settlement path. The lifecycle maps and sequence counter are included in atomic snapshots.
 
-### Payments (bounded disbursement)
+### M10 authority delegation — cryptographically verifiable attenuation
+
+Delegation is an additive authority envelope. It does not authorize delegated settlement and does not alter `/payments` or any existing work/payment state transition. All delegation routes require the HttpOnly wallet session. The authenticated parent address is the signer and cannot be replaced by request-body identity.
+
+The EIP-712 type is `AuthorityDelegation`, with domain name `Microcosm Authority Delegation`, version `1`, and the Space chain ID. The signed message binds `delegationId`, `spaceId`, `parentActor`, `child`, `parentRole`, `childRole`, base-unit `maxPerTransaction`, base-unit `dailyBudget`, `allowedCounterparties`, `asset`, `chainId`, `nonce`, epoch-second `expiry`, and `policySnapshotHash`. Amount input is a positive decimal with at most six fractional digits and is converted to exact six-decimal base units for the typed message.
+
+- `POST /api/spaces/:id/delegations` → `201 { delegation, typedData, proof }`; the parent is derived from the session and the current parent role is checked.
+- `GET /api/spaces/:id/delegations?status=` → `200 { delegations }`
+- `GET /api/spaces/:id/delegations/:delegationId` → `200 { delegation }`
+- `POST /api/spaces/:id/delegations/:delegationId/sign` `{ signature, digest? }` → `200 { delegation }`
+- `POST /api/spaces/:id/delegations/:delegationId/verify` `{ delegation?, signature?, digest? }` → `200 { verification }`
+- `POST /api/spaces/:id/delegations/:delegationId/revoke` → `200 { delegation }`
+
+The child must be a Space member or an active address-backed participant. The parent must be an existing Space `admin`, `agent`, or `operator`. A child cap, daily budget, expiry, asset, chain, role, or counterparty set may only attenuate the parent/Space authority. Exact decimal base-unit comparison and set inclusion are checked before persistence. Duplicate delegation IDs, duplicate parent nonces, malformed addresses, non-positive limits, wrong asset/chain, role escalation, extra counterparties, expired envelopes, tamper, wrong signer, and revoked envelopes fail without state transition.
+
+Delegation statuses are `PENDING`, `SIGNED`, `EXPIRED`, and `REVOKED`. The immutable digest, typed data, signature, status, expiry, nonce claim, and activity are included in atomic snapshots.
+
 
 - `POST /api/spaces/:id/payments` `{ actorId, recipient, amount, memo? }` → `200 { status, receipt, spaceBalance }` or `422 { error: { code: "POLICY_DENIAL", details: { denialProof, reasons } } }`
 
@@ -144,7 +160,7 @@ snapshots without governance maps remain loadable.
 - `GET /api/spaces/:id/events?since=` → **text/event-stream**
   - wire: `event: <TYPE>\ndata: <json>\n\n`, `:heartbeat` comments every 20s
   - envelope: `{ seq, type, at, spaceId, payload }`
-  - `type` values mirror activity types: `SPACE_CREATED`, `SPACE_FUNDED`, `PARTICIPANT_ADDED`, `PARTICIPANT_REMOVED`, `REQUEST_CREATED`, `REQUEST_ACCEPTED`, `REQUEST_COMPLETED`, `REQUEST_BLOCKED`, `REQUEST_CANCELLED`, `WORK_CREATED`, `WORK_DENIED`, `WORK_SUBMITTED`, `WORK_COMPLETED`, `WORK_REJECTED`, `WORK_EXPIRED`, `WORK_ADJUDICATION_REQUESTED`, `WORK_ADJUDICATION_RESOLVED`, `PAYMENT_SETTLED`, `PAYMENT_DENIED`
+  - `type` values mirror activity types: `SPACE_CREATED`, `SPACE_FUNDED`, `PARTICIPANT_ADDED`, `PARTICIPANT_REMOVED`, `REQUEST_CREATED`, `REQUEST_ACCEPTED`, `REQUEST_COMPLETED`, `REQUEST_BLOCKED`, `REQUEST_CANCELLED`, `WORK_CREATED`, `WORK_DENIED`, `WORK_SUBMITTED`, `WORK_COMPLETED`, `WORK_REJECTED`, `WORK_EXPIRED`, `WORK_ADJUDICATION_REQUESTED`, `WORK_ADJUDICATION_RESOLVED`, `DELEGATION_CREATED`, `DELEGATION_SIGNED`, `DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `PAYMENT_SETTLED`, `PAYMENT_DENIED`
 
 ## 4. TypeScript shapes (mirrored in M5 SDK)
 
@@ -160,6 +176,7 @@ interface GovernanceRequest { requestId: string; spaceId: string; recipient: str
 interface CapabilityManifest { schema: 'microcosm.space.capability-manifest/v1'; space: { id: string; name: string; network: string; chainId: number; currency: string }; capabilities: { payment: { id: 'payment' }; work: { id: 'work' }; request: { id: 'request' }; court: { id: 'court' } }; policy: { maxPerTransaction: string | null; dailyBudget: string | null; allowlist: { type: 'counterparties'; enabled: boolean } } }
 interface X402Validation { valid: boolean; protocolValid: boolean; policyAllowed: boolean; reasons: string[]; selectedAcceptIndex: number | null; selectedAccept: { scheme: string; network: string; asset: string; payTo: string; amount: string; amountDecimal: string | null; maxTimeoutSeconds: number } | null }
 interface X402Intent { intentId: string; spaceId: string; requester: string; requesterIdentity: { address: string; memberId: string }; resourceUrl: string; selectedAccept: { scheme: string; network: string; amount: string; amountDecimal: string; asset: string; payTo: string; maxTimeoutSeconds: number }; amount: string; asset: string; payTo: string; network: string; chainId: number; expiry: string; status: 'PENDING' | 'SIGNED' | 'SETTLED' | 'REJECTED'; digest: string; signature?: string | null; txHash?: string; receipt?: object }
+interface AuthorityDelegation { delegationId: string; spaceId: string; parentActor: string; child: string; parentRole: 'member' | 'agent' | 'operator' | 'admin'; childRole: 'member' | 'agent' | 'operator' | 'admin'; maxPerTransaction: string; dailyBudget: string; allowedCounterparties: string[]; asset: string; chainId: number; nonce: string; expiry: string; policySnapshotHash: string; digest: string; status: 'PENDING' | 'SIGNED' | 'EXPIRED' | 'REVOKED'; signature: string | null; activity: Array<Record<string, unknown>> }
 ```
 
 ## 5. Seed & dev server
