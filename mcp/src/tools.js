@@ -90,6 +90,50 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'payments_x402_intent_create',
+    description: 'Create a session-bound x402 v2 intent after offline validation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string' },
+        sessionAddress: { type: 'string' },
+        paymentRequired: { type: 'object' },
+        selectedAcceptIndex: { type: 'integer', minimum: 0 },
+        expectedAssetAddress: { type: 'string' },
+        expiry: { type: 'string' },
+        expiresInSeconds: { type: 'integer', minimum: 1 },
+      },
+      required: ['spaceId', 'sessionAddress', 'paymentRequired', 'selectedAcceptIndex', 'expectedAssetAddress'],
+    },
+  },
+  {
+    name: 'payments_x402_intent_get',
+    description: 'Get a session-bound x402 intent.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, intentId: { type: 'string' }, sessionAddress: { type: 'string' } },
+      required: ['spaceId', 'intentId', 'sessionAddress'],
+    },
+  },
+  {
+    name: 'payments_x402_intent_sign',
+    description: 'Sign a session-bound x402 intent with its exact EIP-712 digest.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, intentId: { type: 'string' }, sessionAddress: { type: 'string' }, signature: { type: 'string' }, digest: { type: 'string' } },
+      required: ['spaceId', 'intentId', 'sessionAddress', 'signature'],
+    },
+  },
+  {
+    name: 'payments_x402_intent_settle',
+    description: 'Settle a signed x402 intent only through a configured real settlement adapter.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, intentId: { type: 'string' }, sessionAddress: { type: 'string' }, digest: { type: 'string' }, asset: { type: 'string' }, network: { type: 'string' }, chainId: { type: 'integer' } },
+      required: ['spaceId', 'intentId', 'sessionAddress'],
+    },
+  },
+  {
     name: 'payments_request',
     description: 'Request a disbursement from a Space treasury to a recipient. Checked against Space policy rules before settlement.',
     inputSchema: {
@@ -617,6 +661,38 @@ export async function handleToolCall(store, name, args) {
           content: [{ type: 'text', text: `Execution error: ${err.message}` }],
           isError: true,
         };
+      }
+    }
+
+    case 'payments_x402_intent_create': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify(await store.createX402Intent(args), null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'payments_x402_intent_get': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ intent: store.getX402Intent(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'payments_x402_intent_sign': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ intent: await store.signX402Intent(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
+      }
+    }
+
+    case 'payments_x402_intent_settle': {
+      try {
+        return { content: [{ type: 'text', text: JSON.stringify({ intent: await store.settleX402Intent(args) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: 'text', text: `Execution error: ${err.message}` }], isError: true };
       }
     }
 

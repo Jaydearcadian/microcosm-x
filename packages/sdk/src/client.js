@@ -111,6 +111,14 @@ export class SpaceClient {
   getCapabilityManifest(spaceId) { return this._req('GET', `/api/spaces/${spaceId}/capability-manifest`); }
   validateX402Payment(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/payments/x402/validate`, args); }
   validateX402PaymentIntent(spaceId, args) { return this.validateX402Payment(spaceId, args); }
+  createX402Intent(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/payments/x402/intents`, args); }
+  getX402Intent(spaceId, intentId) { return this._req('GET', `/api/spaces/${spaceId}/payments/x402/intents/${intentId}`); }
+  signX402Intent(spaceId, intentId, args) { return this._req('POST', `/api/spaces/${spaceId}/payments/x402/intents/${intentId}/sign`, args); }
+  settleX402Intent(spaceId, intentId, args = {}) { return this._req('POST', `/api/spaces/${spaceId}/payments/x402/intents/${intentId}/settle`, args); }
+  createX402PaymentIntent(spaceId, args) { return this.createX402Intent(spaceId, args); }
+  getX402PaymentIntent(spaceId, intentId) { return this.getX402Intent(spaceId, intentId); }
+  signX402PaymentIntent(spaceId, intentId, args) { return this.signX402Intent(spaceId, intentId, args); }
+  settleX402PaymentIntent(spaceId, intentId, args = {}) { return this.settleX402Intent(spaceId, intentId, args); }
   fundSpace(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/fund`, args); }
 
   // --- participants ---

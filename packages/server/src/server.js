@@ -43,6 +43,9 @@ function storeError(err) {
     return { status: 404, body: apiError(404, 'NOT_FOUND', message) };
   }
   // State machine conflicts first: "only Open …", "already …", halts.
+  if (/x402 intent .*mismatch|x402 intent digest|x402 intent signature|x402 intent .*expired|x402 intent is bound/i.test(message)) {
+    return { status: 400, body: apiError(400, 'VALIDATION', message) };
+  }
   if (/only |already|terminal|halted|cannot |Adjudicating|verdict|nothing to judge/i.test(message)) {
     return { status: 409, body: apiError(409, 'STATE_CONFLICT', message) };
   }
@@ -177,8 +180,11 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
   return { store, auth, subscribers, publish, mutate, checkpoint, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
 }
 
-export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore() } = {}) {
+export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore(), x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null } = {}) {
   let restored = false;
+  if (x402Settlement !== null) store.x402Settlement = x402Settlement;
+  if (x402SettlementAdapter !== null) store.x402SettlementAdapter = x402SettlementAdapter;
+  if (x402Facilitator !== null) store.x402Facilitator = x402Facilitator;
   if (dataPath) {
     restored = loadSnapshot(store, dataPath);
   }
@@ -363,6 +369,36 @@ async function dispatch(app, req, res) {
       requireFields(body, ['paymentRequired', 'selectedAcceptIndex', 'actorId', 'expectedAssetAddress']);
       const validation = await store.validateX402PaymentIntent({ spaceId, ...body });
       return ok(200, { validation });
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/payments\/x402\/intents$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      requireFields(body, ['paymentRequired', 'selectedAcceptIndex', 'expectedAssetAddress']);
+      const result = await app.mutate(spaceId, () => store.createX402Intent({ ...body, spaceId, sessionAddress: current.address }));
+      if (result.status === 'REJECTED') return sendJson(res, 422, { ...result, error: { code: 'POLICY_DENIAL', message: 'x402 intent failed Space policy validation' } }, headers);
+      return ok(201, result);
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/payments\/x402\/intents\/([^/]+)\/(sign|settle)$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const intentId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      if (m[3] === 'sign') requireFields(body, ['signature']);
+      const result = await app.mutate(spaceId, () => m[3] === 'sign'
+        ? store.signX402Intent({ spaceId, intentId, sessionAddress: current.address, signature: body.signature, digest: body.digest })
+        : store.settleX402Intent({ spaceId, intentId, sessionAddress: current.address, digest: body.digest, asset: body.asset, network: body.network, chainId: body.chainId }));
+      return ok(200, m[3] === 'sign' ? { intent: result } : { intent: result });
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/payments\/x402\/intents\/([^/]+)$/);
+    if (req.method === 'GET' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      const intentId = decodeURIComponent(m[2]);
+      needSpace(spaceId);
+      return ok(200, { intent: store.getX402Intent({ spaceId, intentId, sessionAddress: current.address }) });
     }
     m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/config$/);
     if (m && req.method === 'POST') {

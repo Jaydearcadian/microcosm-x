@@ -35,7 +35,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `VERIFIED` | `make test`; governance EIP-712, 2-of-3, session spoofing, idempotency, persistence, and REST/MCP parity tests pass |
 | **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) — kept as internal adjudication capability per rebaseline §19; not a product centerpiece (§20) |
-| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `IN PROGRESS` | First slice: `npm run test:policy`, `npm run test:mcp`, `npm run test:server`, and `npm run test:sdk` cover deterministic sanitized capability manifests and offline x402 v2 validation; x402 settlement, HTTP 402, A2A, MPP, and AP2 remain unimplemented |
+| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `IN PROGRESS` | First two slices: deterministic sanitized capability manifests, offline x402 v2 validation, authenticated session-bound EIP-712 intent lifecycle, and injected-adapter settlement evidence pass focused x402 tests and `make test`; real facilitator deployment, HTTP 402, A2A, MPP, and AP2 remain unimplemented |
 | **M15** | **Multi-Tenant Enterprise Security & Fine-Grained Privacy** | `PLANNED` | Phase 4 (Whitepaper Section 20 & 21) |
 | **M16** | **Cross-Chain Settlement Rails (Circle CCTP / OKX Bridge)** | `PLANNED` | Phase 4 (Whitepaper Section 26) |
 

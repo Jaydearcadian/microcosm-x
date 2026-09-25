@@ -1,8 +1,25 @@
+import crypto from 'node:crypto';
 import { evaluateSpacePayment } from '../../packages/policy-engine/src/index.js';
+import { hashTypedData, verifyTypedData } from 'viem';
 
 const MAX_TIMEOUT_SECONDS = 3600;
 const UINT256_MAX = (1n << 256n) - 1n;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const DOMAIN_NAME = 'Microcosm x402 Intent';
+const TYPES = Object.freeze({
+  X402Intent: [
+    { name: 'intentId', type: 'string' },
+    { name: 'spaceId', type: 'string' },
+    { name: 'requester', type: 'address' },
+    { name: 'resource', type: 'string' },
+    { name: 'amount', type: 'string' },
+    { name: 'asset', type: 'address' },
+    { name: 'payTo', type: 'address' },
+    { name: 'network', type: 'string' },
+    { name: 'expiry', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+  ],
+});
 let coreValidatorPromise;
 
 function fallbackParse(value) {
@@ -98,7 +115,7 @@ export async function validateX402PaymentIntent({ space, paymentRequired, select
       policyAllowed: false,
       reasons,
       selectedAcceptIndex,
-      selectedAccept: { network: selected.network, asset: selected.asset, payTo: selected.payTo, amount: selected.amount, amountDecimal, maxTimeoutSeconds: selected.maxTimeoutSeconds },
+      selectedAccept: { scheme: selected.scheme, network: selected.network, asset: selected.asset, payTo: selected.payTo, amount: selected.amount, amountDecimal, maxTimeoutSeconds: selected.maxTimeoutSeconds },
     };
   }
 
@@ -114,8 +131,93 @@ export async function validateX402PaymentIntent({ space, paymentRequired, select
     policyAllowed: policy.allowed,
     reasons: policy.reasons,
     selectedAcceptIndex,
-    selectedAccept: { network: selected.network, asset: selected.asset, payTo: selected.payTo, amount: selected.amount, amountDecimal, maxTimeoutSeconds: selected.maxTimeoutSeconds },
+    selectedAccept: { scheme: selected.scheme, network: selected.network, asset: selected.asset, payTo: selected.payTo, amount: selected.amount, amountDecimal, maxTimeoutSeconds: selected.maxTimeoutSeconds },
   };
+}
+
+export function normalizeX402Expiry(expiry, maxTimeoutSeconds, nowMs = Date.now()) {
+  const timeout = Number.isInteger(maxTimeoutSeconds) ? maxTimeoutSeconds : MAX_TIMEOUT_SECONDS;
+  let expiryMs;
+  if (expiry === undefined || expiry === null || expiry === '') {
+    expiryMs = nowMs + timeout * 1000;
+  } else if (typeof expiry === 'number') {
+    expiryMs = expiry < 1e12 ? expiry * 1000 : expiry;
+  } else if (typeof expiry === 'string' && /^\d+$/.test(expiry.trim())) {
+    const value = Number(expiry.trim());
+    expiryMs = value < 1e12 ? value * 1000 : value;
+  } else {
+    expiryMs = Date.parse(expiry);
+  }
+  if (!Number.isFinite(expiryMs)) throw new Error('x402 intent expiry must be an ISO date or epoch');
+  if (expiryMs <= nowMs) throw new Error('x402 intent expiry must be in the future');
+  if (expiryMs > nowMs + MAX_TIMEOUT_SECONDS * 1000) throw new Error(`x402 intent expiry must be within ${MAX_TIMEOUT_SECONDS} seconds`);
+  return expiryMs;
+}
+
+export function x402IntentTypedData(intent) {
+  return {
+    domain: {
+      name: DOMAIN_NAME,
+      version: '1',
+      chainId: intent.chainId,
+    },
+    types: TYPES,
+    primaryType: 'X402Intent',
+    message: {
+      intentId: intent.intentId,
+      spaceId: intent.spaceId,
+      requester: intent.requester,
+      resource: intent.resourceUrl,
+      amount: intent.amount,
+      asset: intent.asset,
+      payTo: intent.payTo,
+      network: intent.network,
+      expiry: String(Math.floor(new Date(intent.expiry).getTime() / 1000)),
+      nonce: intent.nonce,
+    },
+  };
+}
+
+export function x402IntentDigest(intent) {
+  const typedData = x402IntentTypedData(intent);
+  return hashTypedData({
+    domain: typedData.domain,
+    types: typedData.types,
+    primaryType: typedData.primaryType,
+    message: {
+      ...typedData.message,
+      expiry: BigInt(typedData.message.expiry),
+      nonce: BigInt(typedData.message.nonce),
+    },
+  });
+}
+
+export async function verifyX402IntentSignature(intent, signature, { address, digest, nowMs = Date.now() } = {}) {
+  const signer = String(address || '').toLowerCase();
+  if (!ADDRESS.test(signer)) throw new Error('x402 intent signer must be an EVM address');
+  if (!/^0x[0-9a-fA-F]+$/.test(String(signature || ''))) throw new Error('A valid x402 intent signature is required');
+  if (new Date(intent.expiry).getTime() <= nowMs) throw new Error('x402 intent has expired');
+  const expectedDigest = x402IntentDigest(intent);
+  if (digest && String(digest).toLowerCase() !== expectedDigest.toLowerCase()) throw new Error('x402 intent digest does not match the immutable intent');
+  const typedData = x402IntentTypedData(intent);
+  const valid = await verifyTypedData({
+    address: signer,
+    domain: typedData.domain,
+    types: typedData.types,
+    primaryType: typedData.primaryType,
+    message: {
+      ...typedData.message,
+      expiry: BigInt(typedData.message.expiry),
+      nonce: BigInt(typedData.message.nonce),
+    },
+    signature,
+  });
+  if (!valid) throw new Error('x402 intent signature does not match the authenticated signer and exact digest');
+  return { digest: expectedDigest, signer };
+}
+
+export function newX402Nonce() {
+  return BigInt(`0x${crypto.randomBytes(16).toString('hex')}`).toString();
 }
 
 export const validateX402PaymentRequired = validateX402PaymentIntent;

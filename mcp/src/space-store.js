@@ -1,13 +1,16 @@
 import crypto from 'node:crypto';
 import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest } from '../../packages/policy-engine/src/index.js';
-import { validateX402PaymentIntent as validateX402PaymentIntentPure } from './x402.js';
+import { validateX402PaymentIntent as validateX402PaymentIntentPure, normalizeX402Expiry, newX402Nonce, verifyX402IntentSignature, x402IntentDigest, x402IntentTypedData } from './x402.js';
 
 /**
  * In-memory Space store providing state continuity across MCP and API calls.
  */
 export class SpaceStore {
-  constructor({ settlement = null, seed = true } = {}) {
+  constructor({ settlement = null, x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null, seed = true } = {}) {
     this.settlement = settlement;
+    this.x402Settlement = x402Settlement;
+    this.x402SettlementAdapter = x402SettlementAdapter;
+    this.x402Facilitator = x402Facilitator;
     /** @type {Map<string, object>} */
     this.spaces = new Map();
     /** @type {Map<string, Array<object>>} */
@@ -24,6 +27,8 @@ export class SpaceStore {
     this.invitations = new Map();
     this.governanceRequests = new Map();
     this.governanceExecutionClaims = new Set();
+    this.x402Intents = new Map();
+    this.x402ExecutionClaims = new Set();
     this.indexerCursors = new Map();
     this.indexerReconciliations = new Map();
     this.indexerReorgSnapshots = new Map();
@@ -32,6 +37,7 @@ export class SpaceStore {
     this._nextRequestSeq = 1;
     this._nextInviteSeq = 1;
     this._nextGovernanceRequestSeq = 1;
+    this._nextX402IntentSeq = 1;
     if (seed) this.seedProcurementSpace();
   }
 
@@ -130,6 +136,180 @@ export class SpaceStore {
   async validateX402PaymentIntent(args) {
     const space = this._getSpaceOrThrow(args.spaceId);
     return validateX402PaymentIntentPure({ ...args, space });
+  }
+
+  _x402RequesterOrThrow(space, sessionAddress) {
+    const address = String(sessionAddress || '').toLowerCase();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(address)) throw new Error('Authenticated x402 session address is required');
+    const member = (space.members || []).find((item) => String(item.address || '').toLowerCase() === address);
+    if (!member) throw new Error(`Authenticated address '${address}' is not a member of Space '${space.id}'`);
+    return { address, memberId: member.id };
+  }
+
+  _x402IntentOrThrow(spaceId, intentId) {
+    const intent = this.x402Intents.get(intentId);
+    if (!intent || intent.spaceId !== spaceId) throw new Error(`x402 intent '${intentId}' not found in Space '${spaceId}'`);
+    return intent;
+  }
+
+  _assertX402Binding(intent, binding = {}) {
+    if (binding.digest && String(binding.digest).toLowerCase() !== intent.digest.toLowerCase()) throw new Error('x402 intent digest does not match the immutable intent');
+    if (binding.asset && String(binding.asset).toLowerCase() !== intent.asset.toLowerCase()) throw new Error(`x402 intent asset mismatch: expected ${intent.asset}`);
+    if (binding.network && binding.network !== intent.network) throw new Error(`x402 intent network mismatch: expected ${intent.network}`);
+    if (binding.chainId !== undefined && Number(binding.chainId) !== intent.chainId) throw new Error(`x402 intent chain mismatch: expected ${intent.chainId}`);
+  }
+
+  async createX402Intent(args) {
+    const space = this._getSpaceOrThrow(args.spaceId);
+    const requester = this._x402RequesterOrThrow(space, args.sessionAddress);
+    const validation = await validateX402PaymentIntentPure({ ...args, space, actorId: requester.memberId });
+    if (!validation.valid) return { status: 'REJECTED', intent: null, validation };
+    const selectedAccept = validation.selectedAccept;
+    const expiresInSeconds = args.expiresInSeconds ?? args.maxTimeoutSeconds;
+    if (expiresInSeconds !== undefined && (!Number.isInteger(Number(expiresInSeconds)) || Number(expiresInSeconds) < 1 || Number(expiresInSeconds) > selectedAccept.maxTimeoutSeconds)) {
+      throw new Error('x402 intent expiresInSeconds must be between 1 and selected maxTimeoutSeconds');
+    }
+    const expiryMs = normalizeX402Expiry(
+      args.expiry ?? args.expiresAt ?? (expiresInSeconds === undefined ? undefined : new Date(Date.now() + Number(expiresInSeconds) * 1000).toISOString()),
+      selectedAccept.maxTimeoutSeconds,
+    );
+    const now = new Date().toISOString();
+    const intentId = `x402-${String(this._nextX402IntentSeq++).padStart(4, '0')}-${crypto.randomUUID().slice(0, 8)}`;
+    const intent = {
+      intentId,
+      spaceId: space.id,
+      requester: requester.address,
+      requesterAddress: requester.address,
+      requesterMemberId: requester.memberId,
+      resourceUrl: validation.validation?.resource?.url || args.paymentRequired?.resource?.url,
+      selectedAccept: Object.freeze({
+        scheme: selectedAccept.scheme,
+        network: selectedAccept.network,
+        amount: selectedAccept.amount,
+        amountDecimal: selectedAccept.amountDecimal,
+        asset: String(selectedAccept.asset).toLowerCase(),
+        payTo: String(selectedAccept.payTo).toLowerCase(),
+        maxTimeoutSeconds: selectedAccept.maxTimeoutSeconds,
+      }),
+      amount: selectedAccept.amount,
+      amountDecimal: selectedAccept.amountDecimal,
+      asset: String(selectedAccept.asset).toLowerCase(),
+      payTo: String(selectedAccept.payTo).toLowerCase(),
+      network: selectedAccept.network,
+      chainId: space.chainId,
+      expiry: new Date(expiryMs).toISOString(),
+      expiryMs,
+      nonce: newX402Nonce(),
+      requesterIdentity: { address: requester.address, memberId: requester.memberId },
+      selectedAcceptIndex: args.selectedAcceptIndex,
+      resource: Object.freeze({ url: args.paymentRequired.resource.url }),
+      status: 'PENDING',
+      signature: null,
+      digest: null,
+      receipt: null,
+      createdAt: now,
+      signedAt: null,
+      settledAt: null,
+      sourceActivity: { type: 'X402_INTENT_CREATED', intentId, spaceId: space.id, timestamp: now },
+    };
+    intent.resourceUrl = intent.resourceUrl || args.paymentRequired.resource.url;
+    intent.digest = x402IntentDigest(intent);
+    intent.typedData = x402IntentTypedData(intent);
+    this.x402Intents.set(intentId, intent);
+    this.activity.get(space.id).push({ ...intent.sourceActivity, requester: requester.address, amount: intent.amount, asset: intent.asset, payTo: intent.payTo, network: intent.network, expiry: intent.expiry, digest: intent.digest });
+    return { status: 'PENDING', intent: structuredClone(intent), typedData: structuredClone(intent.typedData) };
+  }
+
+  getX402Intent({ spaceId, intentId, sessionAddress }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const requester = this._x402RequesterOrThrow(space, sessionAddress);
+    const intent = this._x402IntentOrThrow(spaceId, intentId);
+    if (intent.requester !== requester.address) throw new Error('x402 intent is bound to a different authenticated session');
+    return structuredClone(intent);
+  }
+
+  async signX402Intent({ spaceId, intentId, sessionAddress, signature, digest }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const requester = this._x402RequesterOrThrow(space, sessionAddress);
+    const intent = this._x402IntentOrThrow(spaceId, intentId);
+    if (intent.requester !== requester.address) throw new Error('x402 intent is bound to a different authenticated session');
+    if (intent.status === 'SIGNED') throw new Error(`x402 intent '${intentId}' is already signed`);
+    if (intent.status === 'SETTLED') throw new Error(`x402 intent '${intentId}' is already settled`);
+    if (intent.status === 'REJECTED') throw new Error(`x402 intent '${intentId}' is rejected`);
+    if (Date.parse(intent.expiry) <= Date.now()) throw new Error(`x402 intent '${intentId}' has expired`);
+    const verification = await verifyX402IntentSignature(intent, signature, { address: requester.address, digest });
+    intent.signature = signature;
+    intent.signedBy = requester.address;
+    intent.digest = verification.digest;
+    intent.status = 'SIGNED';
+    intent.signedAt = new Date().toISOString();
+    this.activity.get(spaceId).push({ type: 'X402_INTENT_SIGNED', spaceId, intentId, signer: requester.address, digest: intent.digest, timestamp: intent.signedAt });
+    return structuredClone(intent);
+  }
+
+  _x402AdapterOrNull() {
+    return this.x402Settlement || this.x402SettlementAdapter || this.x402Facilitator || null;
+  }
+
+  _assertX402AdapterCompatible(intent, adapter) {
+    if (!adapter) return false;
+    const configuredAsset = adapter.assetAddress || adapter.asset || adapter.expectedAssetAddress;
+    const configuredChain = adapter.chainId ?? adapter.networkChainId;
+    const configuredNetwork = adapter.network;
+    if (configuredAsset && String(configuredAsset).toLowerCase() !== intent.asset.toLowerCase()) return false;
+    if (configuredChain !== undefined && Number(configuredChain) !== intent.chainId) return false;
+    if (configuredNetwork && configuredNetwork !== intent.network) return false;
+    if (typeof adapter.supports === 'function' && !adapter.supports(intent)) return false;
+    return true;
+  }
+
+  _assertX402Receipt(result) {
+    if (!result || typeof result !== 'object' || result.simulated === true || result.receipt?.simulated === true) throw new Error('x402 settlement adapter did not return a real receipt');
+    const receipt = result.receipt || result.txReceipt || null;
+    const txHash = result.txHash || receipt?.transactionHash || receipt?.txHash;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(String(txHash || ''))) throw new Error('x402 settlement adapter did not return a valid transaction hash');
+    if (receipt && receipt.status !== undefined && !['0x1', '1', 1, true].includes(receipt.status)) throw new Error('x402 settlement adapter returned an unsuccessful receipt');
+    return { ...result, txHash, receipt };
+  }
+
+  async settleX402Intent({ spaceId, intentId, sessionAddress, digest, asset, network, chainId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const requester = this._x402RequesterOrThrow(space, sessionAddress);
+    const intent = this._x402IntentOrThrow(spaceId, intentId);
+    if (intent.requester !== requester.address) throw new Error('x402 intent is bound to a different authenticated session');
+    this._assertX402Binding(intent, { digest, asset, network, chainId });
+    const adapter = this._x402AdapterOrNull();
+    if (!adapter || !this._assertX402AdapterCompatible(intent, adapter)) {
+      const error = new Error('UNSUPPORTED_SETTLEMENT: no compatible EIP-3009 asset/facilitator adapter is configured');
+      error.httpStatus = 501;
+      error.httpCode = 'UNSUPPORTED_SETTLEMENT';
+      throw error;
+    }
+    if (Date.parse(intent.expiry) <= Date.now()) throw new Error(`x402 intent '${intentId}' has expired`);
+    if (intent.status === 'SETTLED') throw new Error(`x402 intent '${intentId}' is already settled`);
+    if (intent.status !== 'SIGNED') throw new Error(`x402 intent '${intentId}' must be signed before settlement`);
+    const claim = `${spaceId}:${intentId}`;
+    if (this.x402ExecutionClaims.has(claim)) throw new Error(`x402 intent '${intentId}' is already executing`);
+    this.x402ExecutionClaims.add(claim);
+    try {
+      const settle = typeof adapter === 'function' ? adapter : adapter.settle || adapter.facilitate;
+      if (typeof settle !== 'function') {
+        const error = new Error('UNSUPPORTED_SETTLEMENT: configured adapter has no settle method');
+        error.httpStatus = 501;
+        error.httpCode = 'UNSUPPORTED_SETTLEMENT';
+        throw error;
+      }
+      const result = await settle.call(adapter, { intent: structuredClone(intent), signature: intent.signature, digest: intent.digest });
+      const settlement = this._assertX402Receipt(result);
+      intent.receipt = structuredClone(settlement);
+      intent.txHash = settlement.txHash;
+      intent.status = 'SETTLED';
+      intent.settledAt = new Date().toISOString();
+      this.activity.get(spaceId).push({ type: 'X402_INTENT_SETTLED', spaceId, intentId, txHash: intent.txHash, digest: intent.digest, timestamp: intent.settledAt });
+      return structuredClone(intent);
+    } finally {
+      this.x402ExecutionClaims.delete(claim);
+    }
   }
 
   /**

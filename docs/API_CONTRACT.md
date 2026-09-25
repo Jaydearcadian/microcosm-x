@@ -1,6 +1,6 @@
 # Microcosm HTTP/SSE API Contract — v2 (FROZEN) + Governance and M14 Extensions
 
-Status: v2 is frozen for UI-agent parallel build. The existing capability and payment routes remain unchanged; M12 governance and M14 read-only capability discovery/x402 validation are additive extensions. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
+Status: v2 is frozen for UI-agent parallel build. The existing capability and payment routes remain unchanged; M12 governance and M14 capability discovery, x402 validation, and authenticated x402 intent lifecycle are additive extensions. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
 
 Base URL (dev): `http://localhost:8787`
 
@@ -88,7 +88,20 @@ Wallet access is address-bound. The client requests a short-lived nonce, signs t
 - `paymentRequired` must be x402 version 2. `selectedAcceptIndex` is mandatory and selects exactly one `accepts` entry; the first entry is never selected implicitly.
 - Validation requires `network === "eip155:<space.chainId>"`, the exact explicitly configured `expectedAssetAddress`, a non-zero EVM `payTo`, a positive uint256 atomic `amount`, and `maxTimeoutSeconds` in the bounded range `1..3600`.
 - The atomic amount is converted to a six-decimal decimal string without floating point and evaluated through the existing Space policy, including transaction cap, daily budget, and counterparty allowlist.
-- The existing `/payments` route is unchanged. The M14 route never returns a receipt, signature, settlement status, or protocol-specific Space fields.
+- The existing `/payments` route is unchanged. The M14 validation route never returns a receipt, signature, settlement status, or protocol-specific Space fields.
+
+### M14 authenticated x402 intent lifecycle
+
+- `POST /api/spaces/:id/payments/x402/intents` `{ paymentRequired, selectedAcceptIndex, expectedAssetAddress, expiry?, expiresInSeconds? }` → `201 { status: "PENDING", intent, typedData }`
+- `GET /api/spaces/:id/payments/x402/intents/:intentId` → `200 { intent }`
+- `POST /api/spaces/:id/payments/x402/intents/:intentId/sign` `{ signature, digest? }` → `200 { intent }`
+- `POST /api/spaces/:id/payments/x402/intents/:intentId/settle` `{ digest?, asset?, network?, chainId? }` → `200 { intent }`
+
+All four lifecycle routes require the HttpOnly wallet session. The requester and signer are derived from the session address; body `requesterAddress`, `signerAddress`, and related identity fields are ignored. Creation is permitted only after the existing offline x402 v2 validation passes. A created intent is persisted with its immutable selected accept, resource URL, amount, asset, payTo, network, requester, expiry, status, EIP-712 digest, typed data, and source activity.
+
+The signing preparation is EIP-712 `X402Intent` with domain name `Microcosm x402 Intent`, version `1`, and the Space chain ID. Signature verification is against the exact stored digest and the authenticated session holder. Expiry, tamper, wrong signer, duplicate signature, wrong asset, and wrong chain fail without state transition.
+
+Intent statuses are `PENDING`, `SIGNED`, `SETTLED`, and `REJECTED`. Settlement requires a signed intent and a configured compatible EIP-3009 asset/facilitator adapter. Without one, the route returns `501 { error: { code: "UNSUPPORTED_SETTLEMENT" } }` and does not create a receipt or change the intent to settled. An injected adapter is called once; it must return a valid transaction hash or successful real receipt shape. There is no simulated or fabricated settlement path. The lifecycle maps and sequence counter are included in atomic snapshots.
 
 ### Payments (bounded disbursement)
 
@@ -145,7 +158,8 @@ interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT
 interface GovernanceConfig { enabled: true; threshold: number; signerAllowlist: string[] }
 interface GovernanceRequest { requestId: string; spaceId: string; recipient: string; amount: string; asset: string; memo: string; deadline: string; policyHash: string; digest: string; status: 'PENDING' | 'APPROVED' | 'EXECUTING' | 'EXECUTED'; approvals: Array<{ signerAddress: string; signature: string; approvedAt: string }> }
 interface CapabilityManifest { schema: 'microcosm.space.capability-manifest/v1'; space: { id: string; name: string; network: string; chainId: number; currency: string }; capabilities: { payment: { id: 'payment' }; work: { id: 'work' }; request: { id: 'request' }; court: { id: 'court' } }; policy: { maxPerTransaction: string | null; dailyBudget: string | null; allowlist: { type: 'counterparties'; enabled: boolean } } }
-interface X402Validation { valid: boolean; protocolValid: boolean; policyAllowed: boolean; reasons: string[]; selectedAcceptIndex: number | null; selectedAccept: { network: string; asset: string; payTo: string; amount: string; amountDecimal: string | null; maxTimeoutSeconds: number } | null }
+interface X402Validation { valid: boolean; protocolValid: boolean; policyAllowed: boolean; reasons: string[]; selectedAcceptIndex: number | null; selectedAccept: { scheme: string; network: string; asset: string; payTo: string; amount: string; amountDecimal: string | null; maxTimeoutSeconds: number } | null }
+interface X402Intent { intentId: string; spaceId: string; requester: string; requesterIdentity: { address: string; memberId: string }; resourceUrl: string; selectedAccept: { scheme: string; network: string; amount: string; amountDecimal: string; asset: string; payTo: string; maxTimeoutSeconds: number }; amount: string; asset: string; payTo: string; network: string; chainId: number; expiry: string; status: 'PENDING' | 'SIGNED' | 'SETTLED' | 'REJECTED'; digest: string; signature?: string | null; txHash?: string; receipt?: object }
 ```
 
 ## 5. Seed & dev server

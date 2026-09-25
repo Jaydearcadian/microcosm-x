@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { SpaceStore } from '../src/space-store.js';
 import { handleToolCall, TOOL_DEFINITIONS } from '../src/tools.js';
 
@@ -92,4 +93,37 @@ test('M14-MCP-3: x402 uses the selected accept and applies cap, budget, and allo
   assert.ok(JSON.parse(allowlist.content[0].text).validation.reasons.some((reason) => reason.includes('approved counterparties')));
   assert.equal(TOOL_DEFINITIONS.some((tool) => tool.name === 'spaces_capability_manifest'), true);
   assert.equal(TOOL_DEFINITIONS.some((tool) => tool.name === 'payments_x402_validate'), true);
+});
+
+test('M14-MCP-4: x402 intent create/get/sign/settle share the store lifecycle', async () => {
+  const account = privateKeyToAccount(generatePrivateKey());
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'MCP x402 Space', actorId: account.address });
+  store.bindMemberAddress(space.id, account.address, account.address);
+  store.fundSpace({ spaceId: space.id, amount: '1000.00', actorId: account.address });
+  store.getSpace(space.id).rules.allowedCounterparties = [RECIPIENT];
+  const createdResult = await handleToolCall(store, 'payments_x402_intent_create', {
+    spaceId: space.id,
+    sessionAddress: account.address,
+    paymentRequired: paymentRequired(),
+    selectedAcceptIndex: 0,
+    expectedAssetAddress: ASSET,
+  });
+  const created = JSON.parse(createdResult.content[0].text);
+  assert.equal(created.intent.status, 'PENDING');
+  const fetched = await handleToolCall(store, 'payments_x402_intent_get', { spaceId: space.id, intentId: created.intent.intentId, sessionAddress: account.address });
+  assert.equal(JSON.parse(fetched.content[0].text).intent.digest, created.intent.digest);
+  const signature = await account.signTypedData({
+    domain: created.typedData.domain,
+    types: created.typedData.types,
+    primaryType: created.typedData.primaryType,
+    message: { ...created.typedData.message, expiry: BigInt(created.typedData.message.expiry), nonce: BigInt(created.typedData.message.nonce) },
+  });
+  const signedResult = await handleToolCall(store, 'payments_x402_intent_sign', { spaceId: space.id, intentId: created.intent.intentId, sessionAddress: account.address, signature });
+  assert.equal(JSON.parse(signedResult.content[0].text).intent.status, 'SIGNED');
+  store.x402SettlementAdapter = { async settle() { return { txHash: `0x${'22'.repeat(32)}`, receipt: { status: 1 } }; } };
+  const settledResult = await handleToolCall(store, 'payments_x402_intent_settle', { spaceId: space.id, intentId: created.intent.intentId, sessionAddress: account.address });
+  const settled = JSON.parse(settledResult.content[0].text);
+  assert.equal(settled.intent.status, 'SETTLED');
+  assert.equal(store.getActivity(space.id).filter((entry) => entry.type === 'X402_INTENT_SETTLED').length, 1);
 });

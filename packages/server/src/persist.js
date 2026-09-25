@@ -25,6 +25,7 @@ export function snapshot(store) {
     requests: [...store.requests.entries()],
     invitations: [...store.invitations.entries()],
     governanceRequests: [...store.governanceRequests.entries()],
+    x402Intents: [...store.x402Intents.entries()],
     indexerCursors: [...store.indexerCursors.entries()],
     indexerReconciliations: [...store.indexerReconciliations.entries()],
     indexerReorgSnapshots: [...store.indexerReorgSnapshots.entries()],
@@ -34,6 +35,7 @@ export function snapshot(store) {
       request: store._nextRequestSeq,
       invite: store._nextInviteSeq,
       governanceRequest: store._nextGovernanceRequestSeq,
+      x402Intent: store._nextX402IntentSeq,
     },
   };
 }
@@ -68,6 +70,8 @@ export function load(store, filePath) {
   store.invitations = new Map(data.invitations || []);
   store.governanceRequests = new Map(data.governanceRequests || []);
   store.governanceExecutionClaims = new Set();
+  store.x402Intents = new Map(data.x402Intents || []);
+  store.x402ExecutionClaims = new Set();
   store.indexerCursors = new Map(data.indexerCursors || []);
   store.indexerReconciliations = new Map(data.indexerReconciliations || []);
   store.indexerReorgSnapshots = new Map(data.indexerReorgSnapshots || []);
@@ -76,6 +80,7 @@ export function load(store, filePath) {
   store._nextRequestSeq = data.counters?.request ?? 1;
   store._nextInviteSeq = data.counters?.invite ?? 1;
   store._nextGovernanceRequestSeq = data.counters?.governanceRequest ?? 1;
+  store._nextX402IntentSeq = data.counters?.x402Intent ?? 1;
   return true;
 }
 
