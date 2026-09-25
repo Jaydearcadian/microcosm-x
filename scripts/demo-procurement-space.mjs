@@ -15,6 +15,11 @@
  * authorizations recorded in the audit trail; every payout they trigger is
  * a real onchain transfer. (No onchain GenLayer court deployed yet — see M13.)
  *
+ * Environment: PRIVATE_KEY (deployer, pays gas + funds escrow), optional
+ * PROVIDER_ADDRESS + PROVIDER_KEY for a distinct supplier signer; without
+ * them the deployer acts as supplier (single-key mode). Needs testnet OKB
+ * for gas and USDC for escrow (mock USDC returns to your own wallets).
+ *
  * Loop demonstrated (rebaseline §17 Slice 10):
  * 1.  Create Space
  * 2.  Add people + add agent (participants)
@@ -29,12 +34,14 @@
 
 import { SpaceStore } from '../mcp/src/space-store.js';
 import { handleToolCall } from '../mcp/src/tools.js';
+import { liveReady, deployerAddress } from '../mcp/src/xlayer.js';
 
 const store = new SpaceStore();
 const AGENT_ID = 'agent-procure-01';
 const EVALUATOR_ID = 'admin-01';
-const VENDOR_ADDRESS = '0xeE791E89F4Ad69662A96dcb2ABa52Eb8dcbDCEEE'; // live provider wallet
-const COURT_ADDRESS = '0x8888888888888888888888888888888888888888';
+// Live counterparty wallet: a distinct PROVIDER_ADDRESS (+PROVIDER_KEY) when
+// supplied, otherwise the deployer itself (single-key mode — the supplier
+// display name stays narrative; the receipt shows the real address either way).
 
 function header(title) {
   console.log('\n' + '='.repeat(70));
@@ -48,6 +55,15 @@ function futureDeadline(days = 7) {
 
 async function main() {
   header('MICROCOSM — A BUSINESS RUNNING ITSELF WITH PEOPLE AND SOFTWARE (OKX X LAYER)');
+
+  // Live preflight: fail fast with a clear cause instead of dying mid-demo.
+  const ready = await liveReady();
+  if (!ready.ok) {
+    throw new Error(`Demo needs live chain access: ${ready.reason}`);
+  }
+  const VENDOR_ADDRESS = process.env.PROVIDER_ADDRESS || deployerAddress();
+  const distinctProvider = Boolean(process.env.PROVIDER_ADDRESS);
+  console.log(`\n[PREFLIGHT] chain ${ready.chainId} reachable; supplier wallet ${VENDOR_ADDRESS}${distinctProvider ? ' (distinct provider key)' : ' (single-key mode: deployer acts as supplier)'}`);
 
   // Step 1: Create Space
   console.log('\n[STEP 1] Company creates a Space for its procurement operation...');
@@ -64,7 +80,7 @@ async function main() {
 
   // Register the deployer's live wallet as the Space authority address so
   // onchain settlements bind to a real evaluator, then fund the treasury.
-  store.spaces.get(SPACE_ID).members[0].address = '0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367';
+  store.spaces.get(SPACE_ID).members[0].address = deployerAddress();
   store.spaces.get(SPACE_ID).rules.allowedCounterparties.push(VENDOR_ADDRESS);
   const fundRes = await handleToolCall(store, 'spaces_fund', {
     spaceId: SPACE_ID, amount: '5000.00', actorId: 'founder-01',

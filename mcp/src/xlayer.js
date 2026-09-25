@@ -98,8 +98,12 @@ function privKey() {
   return key;
 }
 
-export function requireAddress(label, value) {
-  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(value) || isZeroAddress(value)) {
+/** Address of the configured deployer key (transient process use only). */
+export function deployerAddress() {
+  return cast(['wallet', 'address', '--private-key', privKey()]).trim().split(' ')[0];
+}
+
+export function requireAddress(label, value) {  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(value) || isZeroAddress(value)) {
     throw new Error(`XLayerAdapter: live settlement requires an EVM address ${label}, got '${value}'`);
   }
   return value;
@@ -121,21 +125,60 @@ export function toBaseUnitsExact(amount) {
   return BigInt(m[1]) * 1000000n + BigInt(frac);
 }
 
+/** Strip key material from any string destined for logs/errors. */
+export function scrubSecrets(s) {
+  return String(s).replace(/--private-key\s+\S+/g, '--private-key <redacted>');
+}
+
 function cast(args, { input = null } = {}) {
   try {
     return execFileSync('cast', args, { input, encoding: 'utf8', timeout: 180_000 }).trim();
   } catch (err) {
     const out = [err.stdout, err.stderr, err.message].filter(Boolean).join('\n').slice(0, 2000);
-    throw new Error(`XLayerAdapter: cast failed (${args.slice(0, 3).join(' ')}): ${out}`);
+    throw new Error(scrubSecrets(`XLayerAdapter: cast failed (${args.slice(0, 3).join(' ')}): ${out}`));
   }
 }
 
-function sendAs(key, to, sig, args) {
-  const out = cast(['send', to, sig, ...args, '--private-key', key, '--rpc-url', rpcUrl()]);
+/** Pending nonce for an address (base for a rapid-fire sequence). */
+function senderNonce(key) {
+  const addr = cast(['wallet', 'address', '--private-key', key]);
+  const n = cast(['nonce', addr, '--block', 'pending', '--rpc-url', rpcUrl()]);
+  return BigInt(n.split(' ')[0]);
+}
+
+function sendAs(key, to, sig, args, { nonce = null } = {}) {
+  const nonceArgs = nonce !== null && nonce !== undefined ? ['--nonce', String(nonce)] : [];
+  const out = cast(['send', to, sig, ...args, ...nonceArgs, '--private-key', key, '--rpc-url', rpcUrl()]);
   const status = (out.match(/^status\s+(\d+)/m) || [])[1];
   const txHash = (out.match(/^transactionHash\s+(0x[0-9a-fA-F]+)/m) || [])[1];
   if (status !== '1' || !txHash) throw new Error(`XLayerAdapter: tx failed or hash unparseable (status ${status})`);
   return { txHash, status: '0x1' };
+}
+
+/**
+ * Sequential-nonce sender for one key. Remote RPCs (testnet) lag on their
+ * pending-nonce view, so rapid-fire `cast send` calls collide there
+ * (nonce-too-low reverts); assigning nonces explicitly from a single fetched
+ * base eliminates the race, with one refetch-and-retry for interference.
+ * Local automining chains (anvil) cannot race and manage nonces perfectly
+ * themselves — explicit nonces only add gap risk there, so they are skipped
+ * on localhost. Same transactions either way; only the assignment differs.
+ */
+function makeSequencer(key) {
+  const explicit = !/127\.0\.0\.1|localhost/.test(rpcUrl());
+  let n = explicit ? senderNonce(key) : null;
+  const sendOne = (to, sig, args) => explicit
+    ? sendAs(key, to, sig, args, { nonce: n++ })
+    : sendAs(key, to, sig, args);
+  return (to, sig, args) => {
+    try {
+      return sendOne(to, sig, args);
+    } catch (err) {
+      if (!explicit || !/nonce too low|nonce too high|replacement transaction|known transaction/i.test(err.message)) throw err;
+      n = senderNonce(key);
+      return sendAs(key, to, sig, args, { nonce: n++ });
+    }
+  };
 }
 
 function send(to, sig, args) {
@@ -182,21 +225,25 @@ export class XLayerAdapter {
     const kernel = addresses().AgenticCommerce;
     const usdc = addresses().MockERC20;
     const expiredAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+    const deployerKey = privKey();
+    const sendD = makeSequencer(deployerKey);
 
-    const create = send(kernel, 'createJob(address,address,uint256,string)', [
+    const create = sendD(kernel, 'createJob(address,address,uint256,string)', [
       provider, evaluator, String(expiredAt), description || `Work ${jobIdLabel}`,
     ]);
     const jobId = this._readCreatedJobId(create.txHash);
 
-    send(kernel, 'setBudget(uint256,uint256)', [String(jobId), String(budgetBase)]);
-    send(usdc, 'approve(address,uint256)', [kernel, String(budgetBase)]);
-    send(kernel, 'fund(uint256,uint256)', [String(jobId), String(budgetBase)]);
+    sendD(kernel, 'setBudget(uint256,uint256)', [String(jobId), String(budgetBase)]);
+    sendD(usdc, 'approve(address,uint256)', [kernel, String(budgetBase)]);
+    sendD(kernel, 'fund(uint256,uint256)', [String(jobId), String(budgetBase)]);
 
-    // submit must come from the provider's own key (onchain NotProvider check)
-    const submit = sendAs(providerKey || privKey(), kernel, 'submit(uint256,bytes32)', [
-      String(jobId), deliverableHash,
-    ]);
-    const complete = send(kernel, 'complete(uint256,bytes32)', [
+    // submit must come from the provider's own key (onchain NotProvider
+    // check). Same key → continue the sequence; distinct key → own sequence.
+    const pKey = providerKey || deployerKey;
+    const submit = pKey === deployerKey
+      ? sendD(kernel, 'submit(uint256,bytes32)', [String(jobId), deliverableHash])
+      : makeSequencer(pKey)(kernel, 'submit(uint256,bytes32)', [String(jobId), deliverableHash]);
+    const complete = sendD(kernel, 'complete(uint256,bytes32)', [
       String(jobId), '0x' + '00'.repeat(31) + '64',
     ]);
 
