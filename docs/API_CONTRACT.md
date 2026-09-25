@@ -17,6 +17,7 @@ Base URL (dev): `http://localhost:8787`
   - `400` validation (missing/malformed fields)
   - `404` unknown space / request / job / participant
   - `409` illegal state transition (e.g. evaluate a `Funded` job, double vote)
+  - `401` authentication required — wallet session missing or expired
   - `422` policy denial — body carries the full `denialProof` (Sandbox renders this)
 - Receipts are real onchain settlements and carry `txHash`, `txHashes`, and
   `onchainJobId`; there is no `simulated` field. Failed settlement returns an
@@ -24,7 +25,18 @@ Base URL (dev): `http://localhost:8787`
 - Pagination: `?limit=50&cursor=<seq>` → `{ activity, nextCursor }`. Activity
   records carry monotonically increasing `seq` per space.
 
-## 2. Endpoints
+## 2. Authentication and Space access
+
+Wallet access is address-bound. The client requests a short-lived nonce, signs the exact message with its wallet, and exchanges the signature for an HttpOnly session cookie. Private keys and raw signatures are never sent to or stored by the server.
+
+- `GET /api/auth/session` → `{ authenticated, address, expiresAt }`
+- `GET /api/auth/challenge?address=` → `{ address, nonce, message, expiresAt }`
+- `POST /api/auth/session` `{ address, signature }` → session response plus `Set-Cookie`
+- `POST /api/auth/logout` → clears the session cookie
+- `POST /api/spaces/:id/invitations` `{ address, role?, displayName? }` → admin-only invite code
+- `POST /api/auth/invitations/redeem` `{ code }` → authenticated address becomes a Space member
+
+## 3. Endpoints
 
 ### Health
 
@@ -83,7 +95,7 @@ Base URL (dev): `http://localhost:8787`
   - envelope: `{ seq, type, at, spaceId, payload }`
   - `type` values mirror activity types: `SPACE_CREATED`, `SPACE_FUNDED`, `PARTICIPANT_ADDED`, `PARTICIPANT_REMOVED`, `REQUEST_CREATED`, `REQUEST_ACCEPTED`, `REQUEST_COMPLETED`, `REQUEST_BLOCKED`, `REQUEST_CANCELLED`, `WORK_CREATED`, `WORK_DENIED`, `WORK_SUBMITTED`, `WORK_COMPLETED`, `WORK_REJECTED`, `WORK_EXPIRED`, `WORK_ADJUDICATION_REQUESTED`, `WORK_ADJUDICATION_RESOLVED`, `PAYMENT_SETTLED`, `PAYMENT_DENIED`
 
-## 3. TypeScript shapes (mirrored in M5 SDK)
+## 4. TypeScript shapes (mirrored in M5 SDK)
 
 ```ts
 type JobStatus = 'Funded' | 'Submitted' | 'Completed' | 'Rejected' | 'Expired' | 'Adjudicating';
@@ -94,13 +106,13 @@ interface DenialProof { spaceId: string; actorId: string; requestedAmount: strin
 interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT' | 'POLICY_DENIAL'; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
 ```
 
-## 4. Seed & dev server
+## 5. Seed & dev server
 
 - `npm run dev --workspace=@microcosm/server` boots on `:8787` with CORS open for `http://localhost:3000`.
 - `npm run seed --workspace=@microcosm/server` (or `--seed` flag) boots a populated demo Space: founder + agent + counterparty, funded treasury, one request accepted, one escrowed job with submitted proof, one denial. No settled receipt is ever seeded (settlement is always real value) — run the live demo for the full loop. IDs are printed on boot; reboot re-seeds fresh.
 - Persistence (M4): `--data=<path>` (or `DATA_PATH`) enables atomic snapshots on every mutation; an existing snapshot restores on boot (seed is skipped). Live box: `/var/lib/microcosm/microcosm-data.json`.
 - UI agent runs against the live dev server. No fixture bundles.
 
-## 5. Conformance (proves interface equivalence, Slice 9)
+## 6. Conformance (proves interface equivalence, Slice 9)
 
 The same business loop — create Space → add participants → create/accept request → work → submit → evaluate → payment → activity — must pass through **MCP, REST, and SDK** with identical terminal states. `packages/server/test/conformance.test.js` executes the REST leg; MCP leg lives in `mcp/test/`; SDK leg in `packages/client/test/`. Any divergence is a P0 defect, not a documentation issue.

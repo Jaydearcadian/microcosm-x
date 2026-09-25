@@ -24,15 +24,18 @@ export interface Job { jobId: string; spaceId: string; client?: string; provider
 export interface Request { requestId: string; spaceId: string; title: string; instructions?: string; createdBy: string; assignee?: string | null; status: RequestStatus; createdAt?: string }
 export interface Receipt { receiptId: string; txHash: string; txHashes: Record<string, string>; onchainJobId: string; amount: string; asset: string; network: string; chainId: number; status: "SETTLED"; deliverableHash?: string }
 export interface Health { ok: boolean; network: string; chainId: number; time: string }
+export interface AuthSession { authenticated: boolean; address: string | null; expiresAt?: number | null }
+export interface AuthChallenge { address: string; nonce: string; message: string; expiresAt: number }
+export interface Invitation { code: string; spaceId: string; address: string; role: string; displayName: string; status: string; expiresAt: string }
 export interface DenialProof { spaceId: string; actorId: string; requestedAmount: string; reasons: string[]; proofHash: string }
 export interface Activity { seq: number; type: string; [key: string]: unknown }
-export interface ApiError { error: { code: "VALIDATION" | "NOT_FOUND" | "STATE_CONFLICT" | "POLICY_DENIAL"; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
+export interface ApiError { error: { code: "VALIDATION" | "NOT_FOUND" | "STATE_CONFLICT" | "POLICY_DENIAL" | "AUTH_REQUIRED"; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
 
 export const API_BASE = process.env.NEXT_PUBLIC_MICROCOSM_API ?? "";
 export const SEED_BOUNDS: Bounds = { spaceId: "", treasuryBalance: "4530.000000", spentToday: "470.000000", escrowed: "350.000000", remaining: "1180.000000", dailyBudget: "2000.00", maxPerTransaction: "500.00", denials: 1 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
+  const response = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) } });
   if (!response.ok) { const body = (await response.json().catch(() => null)) as ApiError | null; throw new Error(body?.error?.message ?? `${init?.method ?? "GET"} ${path} → ${response.status}`); }
   return (await response.json()) as T;
 }
@@ -40,12 +43,18 @@ const post = <T,>(path: string, body: unknown) => request<T>(path, { method: "PO
 const q = (value: string) => encodeURIComponent(value);
 
 export async function fetchHealth(signal?: AbortSignal): Promise<Health> { return request<Health>("/api/health", { signal }); }
-export async function fetchSpaces(signal?: AbortSignal): Promise<SpaceSummary[]> { return (await request<{ spaces: SpaceSummary[] }>(`/api/spaces`, { signal })).spaces; }
+export async function fetchAuthSession(signal?: AbortSignal): Promise<AuthSession> { return request<AuthSession>("/api/auth/session", { signal }); }
+export async function fetchAuthChallenge(address: string, signal?: AbortSignal): Promise<AuthChallenge> { return request<AuthChallenge>(`/api/auth/challenge?address=${q(address)}`, { signal }); }
+export async function createAuthSession(address: string, signature: string): Promise<AuthSession> { return post<AuthSession>("/api/auth/session", { address, signature }); }
+export async function revokeAuthSession(): Promise<AuthSession> { return post<AuthSession>("/api/auth/logout", {}); }
+export async function createSpaceInvitation(spaceId: string, body: { address: string; role?: string; displayName?: string }): Promise<Invitation> { return (await post<{ invitation: Invitation }>(`/api/spaces/${q(spaceId)}/invitations`, body)).invitation; }
+export async function redeemSpaceInvitation(code: string): Promise<{ space: Space; invitation: Invitation }> { return post("/api/auth/invitations/redeem", { code }); }
+export async function fetchSpaces(actorId?: string, signal?: AbortSignal): Promise<SpaceSummary[]> { const query = actorId ? `?actorId=${q(actorId)}` : ""; return (await request<{ spaces: SpaceSummary[] }>(`/api/spaces${query}`, { signal })).spaces; }
 export async function fetchSpace(spaceId: string, signal?: AbortSignal): Promise<Space> { return (await request<{ space: Space }>(`/api/spaces/${q(spaceId)}`, { signal })).space; }
 export async function fetchCapabilities(spaceId: string, actorId: string, signal?: AbortSignal): Promise<Capabilities> { return request<Capabilities>(`/api/spaces/${q(spaceId)}/capabilities?actorId=${q(actorId)}`, { signal }); }
 export async function fetchBoundsFor(spaceId: string, actorId: string, signal?: AbortSignal): Promise<Bounds> { return request<Bounds>(`/api/spaces/${q(spaceId)}/bounds?actorId=${q(actorId)}`, { signal }); }
 
-export async function fetchBounds(signal?: AbortSignal): Promise<Bounds> { const spaces = await fetchSpaces(signal); const spaceId = spaces[0]?.id; if (!spaceId) throw new Error("No seeded Space on the dev server"); return fetchBoundsFor(spaceId, "admin-01", signal); }
+export async function fetchBounds(signal?: AbortSignal): Promise<Bounds> { const spaces = await fetchSpaces(undefined, signal); const spaceId = spaces[0]?.id; if (!spaceId) throw new Error("No Space is available"); return fetchBoundsFor(spaceId, "admin-01", signal); }
 export async function fetchParticipants(spaceId: string, signal?: AbortSignal): Promise<Participant[]> { return (await request<{ participants: Participant[] }>(`/api/spaces/${q(spaceId)}/participants`, { signal })).participants; }
 export async function fetchJobs(spaceId: string, signal?: AbortSignal): Promise<Job[]> { return (await request<{ jobs: Job[] }>(`/api/spaces/${q(spaceId)}/work`, { signal })).jobs; }
 export async function fetchRequests(spaceId: string, signal?: AbortSignal): Promise<Request[]> { return (await request<{ requests: Request[] }>(`/api/spaces/${q(spaceId)}/requests`, { signal })).requests; }

@@ -23,12 +23,12 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | :--- | :--- | :---: | :--- |
 | **M0** | **Onchain Financial Kernel & Invariants** | `VERIFIED` | `make test-contracts` (36 Solidity tests pass) |
 | **M1** | **Space Policy Kernel & EIP-712 Attestation** | `VERIFIED` | `npm run test:policy` (13 tests pass, byte-for-byte fixture) |
-| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (23 tests pass, 24 tools verified) |
+| **M2** | **Model Context Protocol (MCP) Server** | `VERIFIED` | `npm run test:mcp` (25 tests pass, 24 tools verified) |
 | **M3** | **HTTP REST API & Server-Sent Events (SSE)** | `VERIFIED` | `npm run test:server` (M3-1…M3-6 pass: lifecycle, bounds, 422 denials, pagination, live SSE); contract frozen in `docs/API_CONTRACT.md` |
 | **M4** | **Persistent Storage Engine (Disk/SQLite)** | `VERIFIED` | `npm run test:server` (M4-1 round-trip + M4-2 SIGKILL survival PASS); atomic JSON snapshots, live box restores on restart |
-| **M5** | **Typed Client SDK & Curated Contract ABIs** | `IN PROGRESS` | `packages/client` test suite (Pending build) |
+| **M5** | **Typed Client SDK & Curated Contract ABIs** | `VERIFIED` | `npm --workspace=@microcosm/sdk test` (9/9 client, wizard, and ABI tests pass) |
 | **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `VERIFIED` | `make deploy-testnet` → 5/5 receipts `status true` on chain 1952, runtime bytecode matches compiled artifacts; all 5 sources `Pass - Verified` on OKLink |
-| **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | User handling full visual implementation |
+| **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | Public AWS deployment and Playwright QA (9/9) pass; RainbowKit session, invite UI, and real signed-session API QA are implemented; browser wallet acceptance remains |
 | **M8** | **3-Minute Demo Video & OKX Dev Day 2026 Submission** | `PLANNED` | Script ready in `forge/DEMO_SCRIPT.md` |
 | **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `PLANNED` | Phase 2 (Whitepaper Section 12) |
 | **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
@@ -48,7 +48,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 * **Contracts**: `SettlementRouter.sol`, `ClaimEscrow.sol`, `AgenticCommerce.sol`, `EnvelopeRegistry.sol`, `IAdjudicator.sol`.
 * **Invariants Enforced**: `INV-1` (Atomic Nonce Ordering), `INV-2` (Zero Custodial Risk), `INV-3` (Deliverable Proof Binding), `INV-A1` (EIP-712 Replay Defense), `INV-A2` (Adjudication Integrity).
 * **Evidence**: `make test-contracts` passes 36/36 Foundry tests with 0 failures across 5 suites.
-* **Limitations**: Tested on local EVM pre-flight; live testnet broadcast pending funded key.
+* **Limitations**: Local and testnet evidence are recorded separately; contract settlement is verified on X Layer testnet, while broader mainnet production hardening is not in scope.
 
 ---
 

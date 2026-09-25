@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "@rainbow-me/rainbowkit/styles.css";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 

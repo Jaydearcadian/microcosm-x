@@ -612,6 +612,9 @@ button {
 .work-card__actions button:hover { background: rgba(255,255,255,.05); }
 
 /* Wizard */
+.wizard-wallet { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.wizard-wallet > div { min-width: 190px; }
+.wizard-wallet button { min-height: 44px; }
 .wizard-grid { display: grid; grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); gap: 16px; }
 .wizard-steps, .wizard-panel { padding: 20px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface); }
 .wizard-step-list { display: grid; }
@@ -683,6 +686,10 @@ button {
 .app-rail__nav button:hover, .app-rail__nav button.is-active { border-color: var(--hairline); background: var(--surface); }
 .app-rail__nav button.is-active > span, .app-rail__nav button.is-active strong { color: var(--accent); }
 .app-rail__foot { display: grid; gap: 14px; margin-top: auto; padding: 16px 10px 0; border-top: 1px solid var(--hairline); }
+.app-rail__wallet { display: grid; gap: 8px; }
+.app-rail__wallet > div { width: 100%; }
+.app-rail__wallet button { width: 100%; }
+.app-rail__status--danger { color: var(--danger); }
 .app-rail__actor { display: grid; gap: 8px; color: var(--muted); font-family: var(--font-ui); font-size: 9px; letter-spacing: .1em; }
 .app-refresh { min-height: 40px; border: 1px solid var(--hairline); border-radius: 8px; color: var(--text); font-family: var(--font-ui); font-size: 10px; }
 .app-refresh:disabled { opacity: .5; }

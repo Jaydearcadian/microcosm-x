@@ -14,6 +14,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { defineChain, http } from "viem";
+import { WagmiProvider, createConfig, injected } from "wagmi";
+import { WalletSessionProvider } from "@/lib/wallet-session";
 
 /**
  * Motion primitives — the numbers in this file ARE the brief §3 formula.
@@ -31,8 +36,23 @@ import {
  */
 export const EASE_POWER2_OUT = [0.25, 1, 0.5, 1] as const;
 
+const xlayerTestnet = defineChain({
+  id: 1952,
+  name: "OKX X Layer Testnet",
+  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+  rpcUrls: { default: { http: ["https://testrpc.xlayer.tech"] } },
+  blockExplorers: { default: { name: "OKLink", url: "https://www.oklink.com/xlayer-testnet" } },
+});
+const rainbowConfig = createConfig({
+  chains: [xlayerTestnet],
+  connectors: [injected()],
+  transports: { [xlayerTestnet.id]: http() },
+  ssr: true,
+});
+const queryClient = new QueryClient();
+
 export function Providers({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <WagmiProvider config={rainbowConfig}><QueryClientProvider client={queryClient}><RainbowKitProvider><WalletSessionProvider>{children}</WalletSessionProvider></RainbowKitProvider></QueryClientProvider></WagmiProvider>;
 }
 
 export type HeadlineSegment = { text: string; accent?: boolean };

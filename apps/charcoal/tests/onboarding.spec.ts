@@ -5,6 +5,7 @@ test('landing CTA opens the onboarding route', async ({ page }) => {
   await page.getByRole('link', { name: 'Create your Space' }).click();
   await expect(page).toHaveURL(/\/app\/onboarding/);
   await expect(page.getByRole('heading', { name: 'Connect' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Connect Wallet/i }).first()).toBeVisible();
 });
 
 test('onboarding checks the real API and advances prechecks', async ({ page }) => {

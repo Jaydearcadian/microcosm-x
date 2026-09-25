@@ -9,5 +9,8 @@
     "dev": "node src/server.js --seed",
     "seed": "node src/seed.js",
     "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "viem": "^2.56.9"
   }
 }

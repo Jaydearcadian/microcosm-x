@@ -29,7 +29,7 @@ export function AuditStream({ embedded = false }: { embedded?: boolean } = {}) {
       setStreamState("waiting");
       return;
     }
-    const source = new EventSource(`${API_BASE}/api/spaces/${encodeURIComponent(spaceId)}/events?since=${nextCursor}`);
+    const source = new EventSource(`${API_BASE}/api/spaces/${encodeURIComponent(spaceId)}/events?since=${nextCursor}`, { withCredentials: true });
     esRef.current = source;
     source.onopen = () => setStreamState("live");
     source.onerror = () => setStreamState("reconnecting");

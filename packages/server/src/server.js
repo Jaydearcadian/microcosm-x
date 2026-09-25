@@ -11,6 +11,7 @@ import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { toBaseUnits, fromBaseUnits } from '../../policy-engine/src/index.js';
 import { buildDemoSpace } from './seed.js';
 import { save as saveSnapshot, load as loadSnapshot } from './persist.js';
+import { clearSessionCookie, createAuthStore, sessionCookie } from './auth.js';
 
 const TERMINAL_JOB = new Set(['Completed', 'Rejected', 'Expired']);
 const OPEN_JOB = new Set(['Funded', 'Submitted', 'Adjudicating']);
@@ -128,6 +129,7 @@ export function spaceBounds(store, spaceId) {
 }
 
 export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000' } = {}) {
+  const auth = createAuthStore();
   /** spaceId -> Set<http.ServerResponse> */
   const subscribers = new Map();
 
@@ -168,10 +170,11 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
       'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Last-Event-ID',
+      'Access-Control-Allow-Credentials': 'true',
     };
   }
 
-  return { store, subscribers, publish, mutate, checkpoint, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
+  return { store, auth, subscribers, publish, mutate, checkpoint, corsHeaders, spaceBounds: (id) => spaceBounds(store, id) };
 }
 
 export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore() } = {}) {
@@ -212,6 +215,12 @@ async function dispatch(app, req, res) {
   }
   const url = new URL(req.url, 'http://localhost');
   const query = Object.fromEntries(url.searchParams.entries());
+  const session = app.auth.getSession(req.headers.cookie);
+  const secureCookie = process.env.MICROCOSM_COOKIE_SECURE === '1' || req.headers['x-forwarded-proto'] === 'https';
+  const requireSession = () => {
+    if (!session) throw Object.assign(new Error('Wallet authentication is required'), { httpStatus: 401, httpCode: 'AUTH_REQUIRED' });
+    return session;
+  };
 
   const fail = (status, code, message, details) => {
     sendJson(res, status, apiError(status, code, message, details), headers);
@@ -263,6 +272,30 @@ async function dispatch(app, req, res) {
     const body = req.method === 'POST' ? await readBody(req) : {};
     const ok = (status, responseBody) => sendJson(res, status, responseBody, headers);
 
+    if (req.method === 'GET' && path === '/api/auth/session') {
+      return ok(200, { authenticated: Boolean(session), address: session?.address || null, expiresAt: session?.expiresAt || null });
+    }
+    if (req.method === 'GET' && path === '/api/auth/challenge') {
+      requireFields(query, ['address']);
+      return ok(200, app.auth.issueChallenge(query.address));
+    }
+    if (req.method === 'POST' && path === '/api/auth/session') {
+      requireFields(body, ['address', 'signature']);
+      const verified = await app.auth.verify(body.address, body.signature);
+      return sendJson(res, 200, { authenticated: true, address: verified.session.address, expiresAt: verified.session.expiresAt }, { ...headers, 'Set-Cookie': sessionCookie(verified.token, secureCookie) });
+    }
+    if (req.method === 'POST' && path === '/api/auth/logout') {
+      app.auth.revoke(req.headers.cookie);
+      return sendJson(res, 200, { authenticated: false }, { ...headers, 'Set-Cookie': clearSessionCookie(secureCookie) });
+    }
+    if (req.method === 'POST' && path === '/api/auth/invitations/redeem') {
+      const current = requireSession();
+      requireFields(body, ['code']);
+      const result = store.redeemInvitation({ code: body.code, address: current.address });
+      app.checkpoint();
+      return ok(200, result);
+    }
+
     const needSpace = (spaceId) => {
       const space = store.getSpace(spaceId);
       if (!space) throw Object.assign(new Error(`Space '${spaceId}' not found`), { httpStatus: 404, httpCode: 'NOT_FOUND' });
@@ -287,7 +320,9 @@ async function dispatch(app, req, res) {
       }
       // chainId/network are settable because settlement is chain-bound:
       // a Space must live on the chain it settles on (loud mismatch otherwise).
-      const space = store.createSpace({ name: body.name, description: body.description || '', actorId: body.actorId || 'founder-01', chainId: body.chainId !== undefined ? Number(body.chainId) : undefined, network: body.network });
+      const actorId = session?.address || body.actorId || 'founder-01';
+      const space = store.createSpace({ name: body.name, description: body.description || '', actorId, chainId: body.chainId !== undefined ? Number(body.chainId) : undefined, network: body.network });
+      if (session) store.bindMemberAddress(space.id, actorId, session.address);
       const created = store.getActivity(space.id);
       app.publish(space.id, created, 0);
       app.checkpoint();
@@ -323,6 +358,20 @@ async function dispatch(app, req, res) {
       try {
         const space = await app.mutate(spaceId, async () => store.fundSpace({ spaceId, amount: body.amount, actorId: body.actorId }));
         return ok(200, { space });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/invitations$/);
+    if (req.method === 'POST' && m) {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      requireFields(body, ['address']);
+      try {
+        const invitation = await app.mutate(spaceId, async () => store.createInvitation({ spaceId, inviterId: current.address, address: body.address, role: body.role || 'member', displayName: body.displayName }));
+        return ok(201, { invitation });
       } catch (err) {
         throwMapped(err);
       }

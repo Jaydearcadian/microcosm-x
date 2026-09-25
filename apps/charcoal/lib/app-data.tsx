@@ -5,6 +5,7 @@ import {
   fetchActivity, fetchBoundsFor, fetchCapabilities, fetchJobs, fetchParticipants, fetchRequests, fetchSpace, fetchSpaces,
   type Activity, type Bounds, type Capabilities, type Job, type Participant, type Request, type Space, type SpaceSummary,
 } from "@/lib/contract";
+import { useWalletSession } from "@/lib/wallet-session";
 
 interface AppData {
   spaces: SpaceSummary[]; space: Space | null; bounds: Bounds | null; capabilities: Capabilities | null;
@@ -33,11 +34,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [actorId, setActorId] = useState("admin-01");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { address, isAuthenticated } = useWalletSession();
+
+  useEffect(() => {
+    if (isAuthenticated && address) setActorId(address);
+  }, [address, isAuthenticated]);
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const list = await fetchSpaces();
+      const list = await fetchSpaces(isAuthenticated ? address || actorId : undefined);
       setSpaces(list);
       if (!list.length) {
         setSpaceId("");

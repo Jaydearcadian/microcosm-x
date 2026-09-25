@@ -23,10 +23,12 @@ export function snapshot(store) {
     jobs: [...store.jobs.entries()],
     participants: [...store.participants.entries()],
     requests: [...store.requests.entries()],
+    invitations: [...store.invitations.entries()],
     counters: {
       job: store._nextJobSeq,
       participant: store._nextParticipantSeq,
       request: store._nextRequestSeq,
+      invite: store._nextInviteSeq,
     },
   };
 }
@@ -58,9 +60,11 @@ export function load(store, filePath) {
   store.jobs = new Map(data.jobs || []);
   store.participants = new Map(data.participants || []);
   store.requests = new Map(data.requests || []);
+  store.invitations = new Map(data.invitations || []);
   store._nextJobSeq = data.counters?.job ?? 1;
   store._nextParticipantSeq = data.counters?.participant ?? 1;
   store._nextRequestSeq = data.counters?.request ?? 1;
+  store._nextInviteSeq = data.counters?.invite ?? 1;
   return true;
 }
 

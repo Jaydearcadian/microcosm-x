@@ -5,6 +5,12 @@ test('landing does not claim simulated hashes', async ({ page }) => {
   await expect(page.getByText('SIMULATED', { exact: true })).toHaveCount(0);
 });
 
+test('Space access requires an authenticated wallet', async ({ page }) => {
+  await page.goto('/app#command');
+  await expect(page.getByText('Connect a wallet to enter a Space.')).toBeVisible();
+});
+
+
 test('onboarding surfaces API failures instead of hanging', async ({ page }) => {
   await page.route('**/api/health', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'health unavailable' } }) }));
   await page.goto('/app/onboarding');
