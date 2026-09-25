@@ -62,6 +62,44 @@ test('M9-10: startIndexer reports reconciliation and projection state for an emp
   }
 });
 
+test('M9-10: the tail loop never runs concurrently with the catch-up', async () => {
+  const store = new SpaceStore();
+  const concurrent = { maxInFlight: 0, inFlight: 0 };
+  // 40 blocks of history with a 10-block window forces several catch-up passes
+  const client = {
+    getBlockNumber: async () => {
+      concurrent.inFlight += 1;
+      concurrent.maxInFlight = Math.max(concurrent.maxInFlight, concurrent.inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      concurrent.inFlight -= 1;
+      return 40n;
+    },
+    getLogs: async () => [],
+  };
+  const commits = [];
+  const handle = await startIndexer({
+    store,
+    chainId: 1952,
+    contractAddress: KERNEL,
+    fromBlock: 0,
+    client,
+    catchUpWindow: 10,
+    intervalMs: 1,
+    awaitFirstSync: true,
+    persist: async () => { commits.push(1); },
+  });
+  try {
+    const state = handle.initialState();
+    assert.ok(state.catchUp.windowsDone >= 4, `expected several committed windows, got ${state.catchUp.windowsDone}`);
+    assert.equal(concurrent.maxInFlight, 1, 'only one sync may touch the store at a time');
+    assert.ok(commits.length >= 4, 'each window commits its progress');
+    assert.equal(state.catchUp.complete, true);
+    assert.equal(state.reconciliation.status, 'RECONCILED');
+  } finally {
+    await handle.stop();
+  }
+});
+
 test('M9-10: the indexer route reports honestly when no chain is configured', async () => {
   const ctx = await start({ port: 0, store: new SpaceStore() });
   try {

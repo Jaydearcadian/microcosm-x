@@ -101,8 +101,15 @@ export async function startIndexer({
     persist,
   });
 
+  // A SpaceStore projection cannot be mutated by two syncs at once. Running the
+  // tail loop alongside the catch-up let the unbounded sync checkpoint a stale
+  // cursor and walk it backwards, so the loop stays idle until the catch-up
+  // releases it.
+  let catchingUp = true;
+
   const loop = new IndexerRunLoop({
     sync: async () => {
+      if (catchingUp) return;
       try {
         await indexer.sync();
       } catch (reason) {
@@ -111,6 +118,18 @@ export async function startIndexer({
     },
     intervalMs: Number(intervalMs),
   });
+
+  // A single unbounded sync only checkpoints when the whole pass finishes, so a
+  // 270k-block backfill never persisted progress and any interruption restarted
+  // from the deploy block. Catch up in bounded, committed windows instead.
+  const catchUp = {
+    active: false,
+    fromBlock: Number(fromBlock),
+    targetBlock: null,
+    windowBlocks: Number(catchUpWindow),
+    windowsDone: 0,
+    complete: false,
+  };
 
   const projections = () => [...store.jobs.values()].filter((job) => job?.source === "onchain");
 
@@ -140,33 +159,34 @@ export async function startIndexer({
       };
   }
 
-  // A single unbounded sync only checkpoints when the whole pass finishes, so a
-  // 270k-block backfill would never persist progress and any interruption would
-  // restart from zero. Catch up in bounded, committed windows instead.
-  const catchUp = { active: false, fromBlock: Number(fromBlock), targetBlock: null, windowBlocks: Number(catchUpWindow), windowsDone: 0, complete: false };
-
   async function commit() {
     if (persist) await persist(store);
   }
 
   async function catchUpLoop() {
-    if (catchUpWindow <= 0) return;
+    if (catchUpWindow <= 0) { catchingUp = false; return; }
     catchUp.active = true;
+    // A window containing no events writes no cursor, so window progress must be
+    // tracked locally. Deriving the next window from the cursor alone replays
+    // the same quiet range forever and never terminates.
+    let scannedTo = indexer.getCursor()?.blockNumber ?? Number(fromBlock);
     try {
       for (;;) {
         const head = Number(await indexer.client.getBlockNumber());
         catchUp.targetBlock = head;
-        const cursorBlock = indexer.getCursor()?.blockNumber ?? Number(fromBlock);
-        if (cursorBlock >= head) { catchUp.complete = true; break; }
-        const to = Math.min(cursorBlock + catchUp.windowBlocks, head);
-        await indexer.sync({ fromBlock: cursorBlock + 1, toBlock: to });
+        if (scannedTo >= head) { catchUp.complete = true; break; }
+        const to = Math.min(scannedTo + catchUp.windowBlocks, head);
+        await indexer.sync({ fromBlock: scannedTo + 1, toBlock: to });
         await commit();
+        const cursorBlock = indexer.getCursor()?.blockNumber;
+        scannedTo = typeof cursorBlock === 'number' && cursorBlock > scannedTo ? cursorBlock : to;
         catchUp.windowsDone += 1;
       }
     } catch (reason) {
       if (onError) onError(reason);
     } finally {
       catchUp.active = false;
+      catchingUp = false;
     }
   }
 
