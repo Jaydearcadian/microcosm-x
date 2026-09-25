@@ -1133,8 +1133,15 @@ export class SpaceStore {
       fundedAt: null,
       submittedAt: null,
       completedAt: null,
+      completionReason: null,
+      rejectedAt: null,
+      rejectedBy: null,
+      rejectionReason: null,
+      expiredAt: null,
       refunded: false,
       refundedAmount: null,
+      refundClient: null,
+      refundSourceLog: null,
       settlement: null,
       actionId: null,
       authHash: null,
@@ -1331,6 +1338,215 @@ export class SpaceStore {
     });
     this.activity.set(spaceId, entries);
     return { job: { ...job }, requested: true };
+  }
+
+  _getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const externalId = String(onchainJobId);
+    const onchainKey = `${chain}:${contract}:${externalId}`;
+    const job = [...this.jobs.values()].find((entry) => entry.onchainKey === onchainKey);
+    if (!job) throw new Error(`${eventName} references unknown indexed job '${onchainKey}'`);
+    if (job.spaceId !== spaceId) throw new Error(`Indexed job '${onchainKey}' belongs to Space '${job.spaceId}'`);
+    return { job, contract, chain, externalId, onchainKey };
+  }
+
+  _indexedSourceLog({ blockNumber, txHash, logIndex }) {
+    return { blockNumber: Number(blockNumber), txHash: String(txHash).toLowerCase(), logIndex: Number(logIndex) };
+  }
+
+  _sameIndexedSourceLog(left, right) {
+    return left?.blockNumber === right?.blockNumber && left?.txHash === right?.txHash && left?.logIndex === right?.logIndex;
+  }
+
+  _indexedActivity({ spaceId, job, contract, chain, externalId, onchainKey, sourceLog, timestamp, type, fromStatus, toStatus, ...metadata }) {
+    return {
+      type,
+      jobId: job.jobId,
+      spaceId,
+      source: 'onchain',
+      onchainJobId: externalId,
+      onchainKey,
+      chainId: chain,
+      contractAddress: contract,
+      ...metadata,
+      fromStatus,
+      toStatus,
+      blockNumber: sourceLog.blockNumber,
+      txHash: sourceLog.txHash,
+      logIndex: sourceLog.logIndex,
+      timestamp,
+    };
+  }
+
+  completeIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, reason, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'JobCompleted' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof reason !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(reason)) throw new Error('JobCompleted requires a bytes32 reason');
+    const normalizedReason = reason.toLowerCase();
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Completed' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.completionReason === normalizedReason) {
+      return { job: { ...job }, completed: false };
+    }
+    if (job.status !== 'Submitted' && job.status !== 'Adjudicating') {
+      throw new Error(`JobCompleted cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const fromStatus = job.status;
+    job.status = 'Completed';
+    job.completedAt = timestamp;
+    job.completionReason = normalizedReason;
+    job.feedback = normalizedReason;
+    job.statusHistory.push({ status: 'Completed', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_COMPLETED',
+      fromStatus,
+      toStatus: 'Completed',
+      reason: normalizedReason,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, completed: true };
+  }
+
+  rejectIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, rejector, reason, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'JobRejected' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof rejector !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(rejector)) throw new Error('JobRejected requires a valid rejector address');
+    if (typeof reason !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(reason)) throw new Error('JobRejected requires a bytes32 reason');
+    const normalizedRejector = rejector.toLowerCase();
+    const normalizedReason = reason.toLowerCase();
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Rejected' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.rejectedBy === normalizedRejector && job.rejectionReason === normalizedReason) {
+      return { job: { ...job }, rejected: false };
+    }
+    if (job.status !== 'Open' && job.status !== 'Funded' && job.status !== 'Submitted') {
+      throw new Error(`JobRejected cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const fromStatus = job.status;
+    job.status = 'Rejected';
+    job.rejectedBy = normalizedRejector;
+    job.rejectionReason = normalizedReason;
+    job.feedback = normalizedReason;
+    job.rejectedAt = timestamp;
+    job.statusHistory.push({ status: 'Rejected', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_REJECTED',
+      fromStatus,
+      toStatus: 'Rejected',
+      rejector: normalizedRejector,
+      reason: normalizedReason,
+      refundedAmount: job.refundedAmount,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, rejected: true };
+  }
+
+  expireIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'JobExpired' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.status === 'Expired' && this._sameIndexedSourceLog(job.sourceLog, sourceLog)) {
+      return { job: { ...job }, expired: false };
+    }
+    if (job.status !== 'Funded' && job.status !== 'Submitted' && job.status !== 'Adjudicating') {
+      throw new Error(`JobExpired cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const fromStatus = job.status;
+    job.status = 'Expired';
+    job.expiredAt = timestamp;
+    job.statusHistory.push({ status: 'Expired', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_EXPIRED',
+      fromStatus,
+      toStatus: 'Expired',
+      refundedAmount: job.refundedAmount,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, expired: true };
+  }
+
+  recordIndexedRefund({ spaceId, chainId, contractAddress, onchainJobId, client, amount, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'Refunded' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof client !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(client)) throw new Error('Refunded requires a valid client address');
+    if (typeof amount !== 'bigint' || amount <= 0n) throw new Error('Refunded requires a positive uint256 amount');
+    const normalizedClient = client.toLowerCase();
+    if (job.client && String(job.client).toLowerCase() !== normalizedClient) {
+      throw new Error(`Refunded client '${normalizedClient}' conflicts with indexed job client '${job.client}'`);
+    }
+    const refundedAmount = fromBaseUnits(amount);
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    if (job.refunded && this._sameIndexedSourceLog(job.refundSourceLog, sourceLog) && job.refundedAmount === refundedAmount && job.refundClient === normalizedClient) {
+      return { job: { ...job }, refunded: false };
+    }
+    if (job.refunded || job.status === 'Completed' || job.status === 'Rejected' || job.status === 'Expired') {
+      throw new Error(`Refunded conflicts with indexed job '${onchainKey}' in status '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    job.refunded = true;
+    job.refundedAmount = refundedAmount;
+    job.refundClient = normalizedClient;
+    job.refundSourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_REFUNDED',
+      fromStatus: job.status,
+      toStatus: job.status,
+      client: normalizedClient,
+      amount: refundedAmount,
+      refundedAmount,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, refunded: true };
   }
 
   /**

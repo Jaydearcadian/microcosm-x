@@ -17,6 +17,7 @@
     "event JobCompleted(uint256 indexed,bytes32)",
     "event JobRejected(uint256 indexed,address,bytes32)",
     "event JobExpired(uint256 indexed)",
+    "event Refunded(uint256 indexed,address indexed,uint256)",
     "event AdjudicationRequested(uint256 indexed,address indexed,bytes32)",
     "event AdjudicationResolved(uint256 indexed,address indexed,bool,bytes32)",
     "event AttestedJobSettlement(uint256 indexed,address indexed,uint256,uint256)"

@@ -6,12 +6,33 @@ const curatedAbis = require("../../packages/sdk/src/abis.json");
 const jobCreatedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCreated("));
 const jobFundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobFunded("));
 const jobSubmittedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobSubmitted("));
+const jobCompletedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCompleted("));
+const jobRejectedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobRejected("));
+const jobExpiredFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobExpired("));
+const refundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event Refunded("));
 const adjudicationRequestedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationRequested("));
-if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !adjudicationRequestedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
+if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !jobCompletedFragment || !jobRejectedFragment || !jobExpiredFragment || !refundedFragment || !adjudicationRequestedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
 export const JOB_CREATED_ABI = parseAbiItem(jobCreatedFragment);
 export const JOB_FUNDED_ABI = parseAbiItem(jobFundedFragment);
 export const JOB_SUBMITTED_ABI = parseAbiItem(jobSubmittedFragment);
+export const JOB_COMPLETED_ABI = parseAbiItem(jobCompletedFragment);
+export const JOB_REJECTED_ABI = parseAbiItem(jobRejectedFragment);
+export const JOB_EXPIRED_ABI = parseAbiItem(jobExpiredFragment);
+export const REFUNDED_ABI = parseAbiItem(refundedFragment);
 export const ADJUDICATION_REQUESTED_ABI = parseAbiItem(adjudicationRequestedFragment);
+
+const eventAbis = {
+  JobCreated: JOB_CREATED_ABI,
+  JobFunded: JOB_FUNDED_ABI,
+  JobSubmitted: JOB_SUBMITTED_ABI,
+  JobCompleted: JOB_COMPLETED_ABI,
+  JobRejected: JOB_REJECTED_ABI,
+  JobExpired: JOB_EXPIRED_ABI,
+  Refunded: REFUNDED_ABI,
+  AdjudicationRequested: ADJUDICATION_REQUESTED_ABI,
+};
+
+const indexedEventNames = new Set(Object.keys(eventAbis));
 
 function addressKey(value) {
   return String(value).toLowerCase();
@@ -33,6 +54,10 @@ function samePosition(a, b) {
   return a.blockNumber === b.blockNumber && a.txHash === b.txHash && a.logIndex === b.logIndex;
 }
 
+function conflictingPosition(a, b) {
+  return a.blockNumber === b.blockNumber && a.txHash !== b.txHash && a.logIndex === b.logIndex;
+}
+
 function orderedLogs(logs) {
   return [...logs].sort((a, b) => {
     const byBlock = Number(a.blockNumber) - Number(b.blockNumber);
@@ -43,22 +68,21 @@ function orderedLogs(logs) {
 
 function eventName(log) {
   if (log.eventName) {
-    if (log.eventName !== "JobCreated" && log.eventName !== "JobFunded" && log.eventName !== "JobSubmitted" && log.eventName !== "AdjudicationRequested") {
+    if (!indexedEventNames.has(log.eventName)) {
       throw new Error(`Unsupported indexed event '${log.eventName}'`);
     }
     return log.eventName;
   }
   if (log.data && log.topics) {
-    if (log.topics[0] === getEventSelector(JOB_CREATED_ABI)) return "JobCreated";
-    if (log.topics[0] === getEventSelector(JOB_FUNDED_ABI)) return "JobFunded";
-    if (log.topics[0] === getEventSelector(JOB_SUBMITTED_ABI)) return "JobSubmitted";
-    if (log.topics[0] === getEventSelector(ADJUDICATION_REQUESTED_ABI)) return "AdjudicationRequested";
+    for (const [name, abi] of Object.entries(eventAbis)) {
+      if (log.topics[0] === getEventSelector(abi)) return name;
+    }
   }
   throw new Error("Indexed log is missing a recognized event name or topic");
 }
 
 function eventArgs(log, name) {
-  const abi = name === "JobCreated" ? JOB_CREATED_ABI : name === "JobFunded" ? JOB_FUNDED_ABI : name === "JobSubmitted" ? JOB_SUBMITTED_ABI : ADJUDICATION_REQUESTED_ABI;
+  const abi = eventAbis[name];
   const args = log.data && log.topics
     ? decodeEventLog({ abi: [abi], data: log.data, topics: log.topics }).args
     : log.args;
@@ -75,6 +99,22 @@ function eventArgs(log, name) {
   if (name === "JobSubmitted") {
     const [jobId, deliverableHash] = args;
     return { jobId, deliverableHash };
+  }
+  if (name === "JobCompleted") {
+    const [jobId, reason] = args;
+    return { jobId, reason };
+  }
+  if (name === "JobRejected") {
+    const [jobId, rejector, reason] = args;
+    return { jobId, rejector, reason };
+  }
+  if (name === "JobExpired") {
+    const [jobId] = args;
+    return { jobId };
+  }
+  if (name === "Refunded") {
+    const [jobId, client, amount] = args;
+    return { jobId, client, amount };
   }
   const [jobId, adjudicator, caseId] = args;
   return { jobId, adjudicator, caseId };
@@ -130,15 +170,24 @@ export class JobCreatedIndexer {
 
     const logs = await this.client.getLogs({
       address: this.contractAddress,
-      events: [JOB_CREATED_ABI, JOB_FUNDED_ABI, JOB_SUBMITTED_ABI, ADJUDICATION_REQUESTED_ABI],
+      events: Object.values(eventAbis),
       fromBlock: BigInt(start),
       toBlock: BigInt(end),
     });
+    const canonicalLogs = orderedLogs(logs);
+    for (let index = 1; index < canonicalLogs.length; index += 1) {
+      if (conflictingPosition(logPosition(canonicalLogs[index - 1]), logPosition(canonicalLogs[index]))) {
+        throw new Error("Indexed logs contain conflicting positions in the canonical ordering");
+      }
+    }
     let processed = 0;
     let skipped = 0;
 
-    for (const log of orderedLogs(logs)) {
+    for (const log of canonicalLogs) {
       const position = logPosition(log);
+      if (cursor && conflictingPosition(position, cursor)) {
+        throw new Error("Indexed log conflicts with the persisted chainId:contract cursor");
+      }
       if (cursor && (position.blockNumber < cursor.blockNumber || (position.blockNumber === cursor.blockNumber && !samePosition(position, cursor) && position.logIndex <= cursor.logIndex))) {
         skipped += 1;
         continue;
@@ -172,6 +221,14 @@ export class JobCreatedIndexer {
         this.store.fundIndexedJob({ ...common, amount: args.amount });
       } else if (name === "JobSubmitted") {
         this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
+      } else if (name === "JobCompleted") {
+        this.store.completeIndexedJob({ ...common, reason: args.reason });
+      } else if (name === "JobRejected") {
+        this.store.rejectIndexedJob({ ...common, rejector: args.rejector, reason: args.reason });
+      } else if (name === "JobExpired") {
+        this.store.expireIndexedJob(common);
+      } else if (name === "Refunded") {
+        this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
       } else {
         this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
       }

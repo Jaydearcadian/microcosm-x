@@ -84,6 +84,46 @@ function adjudicationLog({ jobId = 7n, adjudicator = "0x555555555555555555555555
   };
 }
 
+function completedLog({ jobId = 7n, reason = `0x${"d".repeat(64)}`, blockNumber = 10, logIndex = 3, txDigit = "5" } = {}) {
+  return {
+    eventName: "JobCompleted",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, reason },
+  };
+}
+
+function rejectedLog({ jobId = 7n, rejector = "0x2222222222222222222222222222222222222222", reason = `0x${"e".repeat(64)}`, blockNumber = 10, logIndex = 2, txDigit = "6" } = {}) {
+  return {
+    eventName: "JobRejected",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, rejector, reason },
+  };
+}
+
+function expiredLog({ jobId = 7n, blockNumber = 10, logIndex = 2, txDigit = "7" } = {}) {
+  return {
+    eventName: "JobExpired",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId },
+  };
+}
+
+function refundedLog({ jobId = 7n, client = "0x1111111111111111111111111111111111111111", amount = 123_456_789n, blockNumber = 10, logIndex = 2, txDigit = "8" } = {}) {
+  return {
+    eventName: "Refunded",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, client, amount },
+  };
+}
+
 function addOpenIndexedJob(store, log = createdLog()) {
   return store.upsertIndexedJob({
     spaceId,
@@ -127,6 +167,68 @@ function addSubmittedIndexedJob(store, created = createdLog(), funded = fundedLo
     txHash: submitted.transactionHash,
     logIndex: submitted.logIndex,
   });
+}
+
+function addAdjudicatingIndexedJob(store, created = createdLog(), funded = fundedLog(), submitted = submittedLog(), requested = adjudicationLog()) {
+  addSubmittedIndexedJob(store, created, funded, submitted);
+  return store.requestAdjudicationIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: requested.args.jobId,
+    adjudicator: requested.args.adjudicator,
+    caseId: requested.args.caseId,
+    blockNumber: requested.blockNumber,
+    txHash: requested.transactionHash,
+    logIndex: requested.logIndex,
+  });
+}
+
+function eventInput(log, args) {
+  return {
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: log.args.jobId,
+    ...args,
+    blockNumber: log.blockNumber,
+    txHash: log.transactionHash,
+    logIndex: log.logIndex,
+  };
+}
+
+function directTerminalLogs() {
+  const rejectedRefund = refundedLog({ jobId: 11n, logIndex: 2 });
+  const rejected = rejectedLog({ jobId: 11n, logIndex: 3 });
+  const expiredRefund = refundedLog({ jobId: 12n, logIndex: 6 });
+  const expired = expiredLog({ jobId: 12n, logIndex: 7 });
+  const completed = completedLog({ jobId: 13n, logIndex: 11 });
+  const adjudicatedCompleted = completedLog({ jobId: 14n, logIndex: 16, reason: `0x${"f".repeat(64)}` });
+  return {
+    rejected,
+    expired,
+    completed,
+    adjudicatedCompleted,
+    logs: [
+      createdLog({ jobId: 11n, logIndex: 0 }),
+      fundedLog({ jobId: 11n, logIndex: 1 }),
+      rejectedRefund,
+      rejected,
+      createdLog({ jobId: 12n, logIndex: 4 }),
+      fundedLog({ jobId: 12n, logIndex: 5 }),
+      expiredRefund,
+      expired,
+      createdLog({ jobId: 13n, logIndex: 8 }),
+      fundedLog({ jobId: 13n, logIndex: 9 }),
+      submittedLog({ jobId: 13n, logIndex: 10 }),
+      completed,
+      createdLog({ jobId: 14n, logIndex: 12 }),
+      fundedLog({ jobId: 14n, logIndex: 13 }),
+      submittedLog({ jobId: 14n, logIndex: 14 }),
+      adjudicationLog({ jobId: 14n, logIndex: 15 }),
+      adjudicatedCompleted,
+    ],
+  };
 }
 
 test.before(async () => {
@@ -690,6 +792,264 @@ test("M9-5: AdjudicationRequested projection persists across restart", async () 
     assert.deepEqual(restartedJob.sourceLog, { blockNumber: 20, txHash: requested.transactionHash, logIndex: 7 });
     assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
     assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_REQUESTED").length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("M9-6: JobCompleted projects Submitted and Adjudicating with terminal metadata", async (t) => {
+  for (const [name, prepare] of [
+    ["Submitted", (store) => addSubmittedIndexedJob(store)],
+    ["Adjudicating", (store) => addAdjudicatingIndexedJob(store)],
+  ]) {
+    await t.test(name, () => {
+      const store = new SpaceStore();
+      const fromStatus = prepare(store).job.status;
+      const completed = completedLog();
+      const input = eventInput(completed, { reason: completed.args.reason });
+      const result = store.completeIndexedJob(input);
+      const activity = store.getActivity(spaceId).at(-1);
+
+      assert.equal(result.completed, true);
+      assert.equal(result.job.status, "Completed");
+      assert.equal(result.job.completionReason, completed.args.reason);
+      assert.equal(result.job.completedAt, result.job.statusHistory.at(-1).timestamp);
+      assert.deepEqual(result.job.statusHistory.at(-1), { status: "Completed", timestamp: result.job.completedAt });
+      assert.deepEqual(result.job.sourceLog, { blockNumber: completed.blockNumber, txHash: completed.transactionHash, logIndex: completed.logIndex });
+      assert.equal(result.job.settlement, null);
+      assert.equal(activity.type, "WORK_COMPLETED");
+      assert.equal(activity.fromStatus, fromStatus);
+      assert.equal(activity.toStatus, "Completed");
+      assert.equal(activity.reason, completed.args.reason);
+    });
+  }
+});
+
+test("M9-6: JobRejected projects Open, Funded, and Submitted with terminal metadata", async (t) => {
+  for (const [name, prepare] of [
+    ["Open", (store) => addOpenIndexedJob(store)],
+    ["Funded", (store) => addFundedIndexedJob(store)],
+    ["Submitted", (store) => addSubmittedIndexedJob(store)],
+  ]) {
+    await t.test(name, () => {
+      const store = new SpaceStore();
+      prepare(store);
+      const rejected = rejectedLog();
+      const result = store.rejectIndexedJob(eventInput(rejected, { rejector: rejected.args.rejector, reason: rejected.args.reason }));
+      const activity = store.getActivity(spaceId).at(-1);
+
+      assert.equal(result.rejected, true);
+      assert.equal(result.job.status, "Rejected");
+      assert.equal(result.job.rejectedBy, rejected.args.rejector);
+      assert.equal(result.job.rejectionReason, rejected.args.reason);
+      assert.equal(result.job.rejectedAt, result.job.statusHistory.at(-1).timestamp);
+      assert.deepEqual(result.job.sourceLog, { blockNumber: rejected.blockNumber, txHash: rejected.transactionHash, logIndex: rejected.logIndex });
+      assert.equal(activity.type, "WORK_REJECTED");
+      assert.equal(activity.fromStatus, name);
+      assert.equal(activity.toStatus, "Rejected");
+      assert.equal(activity.rejector, rejected.args.rejector);
+      assert.equal(activity.reason, rejected.args.reason);
+    });
+  }
+});
+
+test("M9-6: JobExpired projects Funded, Submitted, and Adjudicating with terminal metadata", async (t) => {
+  for (const [name, prepare] of [
+    ["Funded", (store) => addFundedIndexedJob(store)],
+    ["Submitted", (store) => addSubmittedIndexedJob(store)],
+    ["Adjudicating", (store) => addAdjudicatingIndexedJob(store)],
+  ]) {
+    await t.test(name, () => {
+      const store = new SpaceStore();
+      prepare(store);
+      const expired = expiredLog();
+      const result = store.expireIndexedJob(eventInput(expired, {}));
+      const activity = store.getActivity(spaceId).at(-1);
+
+      assert.equal(result.expired, true);
+      assert.equal(result.job.status, "Expired");
+      assert.equal(result.job.expiredAt, result.job.statusHistory.at(-1).timestamp);
+      assert.deepEqual(result.job.statusHistory.at(-1), { status: "Expired", timestamp: result.job.expiredAt });
+      assert.deepEqual(result.job.sourceLog, { blockNumber: expired.blockNumber, txHash: expired.transactionHash, logIndex: expired.logIndex });
+      assert.equal(activity.type, "WORK_EXPIRED");
+      assert.equal(activity.fromStatus, name);
+      assert.equal(activity.toStatus, "Expired");
+    });
+  }
+});
+
+test("M9-6: Refunded records evidence without transitioning status", () => {
+  const store = new SpaceStore();
+  addSubmittedIndexedJob(store);
+  const refunded = refundedLog();
+  const result = store.recordIndexedRefund(eventInput(refunded, { client: refunded.args.client, amount: refunded.args.amount }));
+  const activity = store.getActivity(spaceId).at(-1);
+
+  assert.equal(result.refunded, true);
+  assert.equal(result.job.status, "Submitted");
+  assert.equal(result.job.refunded, true);
+  assert.equal(result.job.refundedAmount, "123.456789");
+  assert.equal(result.job.refundClient, refunded.args.client);
+  assert.deepEqual(result.job.refundSourceLog, { blockNumber: refunded.blockNumber, txHash: refunded.transactionHash, logIndex: refunded.logIndex });
+  assert.equal(activity.type, "WORK_REFUNDED");
+  assert.equal(activity.fromStatus, "Submitted");
+  assert.equal(activity.toStatus, "Submitted");
+  assert.equal(activity.refundedAmount, "123.456789");
+  assert.deepEqual(result.job.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Submitted"]);
+});
+
+test("M9-6: terminal and refund projections have no Space financial side effects", () => {
+  const cases = [
+    ["completed", (store) => addSubmittedIndexedJob(store), (store, log) => store.completeIndexedJob(eventInput(log, { reason: log.args.reason }))],
+    ["rejected", (store) => addFundedIndexedJob(store), (store, log) => store.rejectIndexedJob(eventInput(log, { rejector: log.args.rejector, reason: log.args.reason }))],
+    ["expired", (store) => addFundedIndexedJob(store), (store, log) => store.expireIndexedJob(eventInput(log, {}))],
+    ["refunded", (store) => addSubmittedIndexedJob(store), (store, log) => store.recordIndexedRefund(eventInput(log, { client: log.args.client, amount: log.args.amount }))],
+  ];
+
+  for (const [name, prepare, project] of cases) {
+    const store = new SpaceStore();
+    prepare(store);
+    const spaceBefore = structuredClone(store.getSpace(spaceId));
+    const receiptsBefore = store.receipts.size;
+    store._liveSettle = async () => { throw new Error("local settlement must not run"); };
+    store._settleJob = async () => { throw new Error("job settlement must not run"); };
+    store._claimRefund = () => { throw new Error("local refund must not run"); };
+    const log = { completed: completedLog, rejected: rejectedLog, expired: expiredLog, refunded: refundedLog }[name]();
+
+    const { job } = project(store, log);
+
+    assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+    assert.equal(store.receipts.size, receiptsBefore);
+    assert.equal(job.settlement, null);
+  }
+});
+
+test("M9-6: identical direct replays are no-ops and conflicts fail loudly", () => {
+  const completedStore = new SpaceStore();
+  addSubmittedIndexedJob(completedStore);
+  const completed = completedLog();
+  const completedInput = eventInput(completed, { reason: completed.args.reason });
+  assert.equal(completedStore.completeIndexedJob(completedInput).completed, true);
+  assert.equal(completedStore.completeIndexedJob(completedInput).completed, false);
+  assert.throws(() => completedStore.completeIndexedJob({ ...completedInput, reason: `0x${"a".repeat(64)}` }), /from 'Completed'/);
+
+  const refundStore = new SpaceStore();
+  addSubmittedIndexedJob(refundStore);
+  const refunded = refundedLog();
+  const refundInput = eventInput(refunded, { client: refunded.args.client, amount: refunded.args.amount });
+  const rejected = rejectedLog();
+  assert.equal(refundStore.recordIndexedRefund(refundInput).refunded, true);
+  assert.equal(refundStore.recordIndexedRefund(refundInput).refunded, false);
+  assert.equal(refundStore.rejectIndexedJob(eventInput(rejected, { rejector: rejected.args.rejector, reason: rejected.args.reason })).rejected, true);
+  assert.equal(refundStore.recordIndexedRefund(refundInput).refunded, false);
+  assert.throws(() => refundStore.recordIndexedRefund({ ...refundInput, amount: 1n }), /conflicts/);
+  assert.equal(refundStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_REFUNDED").length, 1);
+  assert.equal(refundStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_REJECTED").length, 1);
+});
+
+test("M9-6: combined indexer orders same-block direct logs and Refunded before applicable terminals", async () => {
+  const store = new SpaceStore();
+  const fixture = directTerminalLogs();
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [...fixture.logs].reverse() };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const jobs = [...store.jobs.values()];
+  const rejected = jobs.find((job) => job.onchainJobId === "11");
+  const expired = jobs.find((job) => job.onchainJobId === "12");
+  const completed = jobs.find((job) => job.onchainJobId === "13");
+  const adjudicated = jobs.find((job) => job.onchainJobId === "14");
+  const activities = store.getActivity(spaceId);
+
+  assert.equal(result.processed, 17);
+  assert.equal(rejected.status, "Rejected");
+  assert.equal(rejected.refundedAmount, "123.456789");
+  assert.deepEqual(rejected.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Rejected"]);
+  assert.equal(expired.status, "Expired");
+  assert.equal(expired.refunded, true);
+  assert.deepEqual(expired.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Expired"]);
+  assert.equal(completed.status, "Completed");
+  assert.deepEqual(completed.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Submitted", "Completed"]);
+  assert.equal(adjudicated.status, "Completed");
+  assert.deepEqual(adjudicated.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Submitted", "Adjudicating", "Completed"]);
+  assert.deepEqual(activities.map((entry) => entry.type), [
+    "WORK_CREATED", "WORK_FUNDED", "WORK_REFUNDED", "WORK_REJECTED",
+    "WORK_CREATED", "WORK_FUNDED", "WORK_REFUNDED", "WORK_EXPIRED",
+    "WORK_CREATED", "WORK_FUNDED", "WORK_SUBMITTED", "WORK_COMPLETED",
+    "WORK_CREATED", "WORK_FUNDED", "WORK_SUBMITTED", "WORK_ADJUDICATION_REQUESTED", "WORK_COMPLETED",
+  ]);
+  assert.equal(activities.filter((entry) => entry.type === "WORK_REFUNDED").length, 2);
+  assert.equal(store.indexerCursors.size, 1);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: fixture.adjudicatedCompleted.transactionHash, logIndex: 16 });
+
+  const replay = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  assert.equal(replay.processed, 0);
+  assert.equal(replay.skipped, 17);
+  assert.equal(store.getActivity(spaceId).length, 17);
+});
+
+test("M9-6: invalid terminal, refund, and cursor ordering fails loudly", async () => {
+  const rejectedAfterCompletion = new SpaceStore();
+  addSubmittedIndexedJob(rejectedAfterCompletion);
+  const completedBeforeRejected = completedLog({ logIndex: 3 });
+  rejectedAfterCompletion.completeIndexedJob(eventInput(completedBeforeRejected, { reason: completedBeforeRejected.args.reason }));
+  const rejected = rejectedLog({ logIndex: 4 });
+  assert.throws(() => rejectedAfterCompletion.rejectIndexedJob(eventInput(rejected, { rejector: rejected.args.rejector, reason: rejected.args.reason })), /from 'Completed'/);
+
+  const expiredTooEarly = new SpaceStore();
+  addOpenIndexedJob(expiredTooEarly);
+  const expired = expiredLog({ logIndex: 1 });
+  assert.throws(() => expiredTooEarly.expireIndexedJob(eventInput(expired, {})), /from 'Open'/);
+
+  const completeTooEarly = new SpaceStore();
+  const funded = fundedLog({ logIndex: 1 });
+  const completed = completedLog({ logIndex: 2 });
+  const completeClient = { getBlockNumber: async () => 10n, getLogs: async () => [completed, funded, createdLog({ logIndex: 0 })] };
+  const completeIndexer = new JobCreatedIndexer({ store: completeTooEarly, chainId: 1952, contractAddress: indexedContract, client: completeClient });
+  await assert.rejects(completeIndexer.sync({ fromBlock: 0, toBlock: 10 }), /JobCompleted cannot transition .* from 'Funded'/);
+
+  const refundTooLate = new SpaceStore();
+  const lateRefund = refundedLog({ logIndex: 4 });
+  const lateLogs = [createdLog({ logIndex: 0 }), fundedLog({ logIndex: 1 }), submittedLog({ logIndex: 2 }), completedLog({ logIndex: 3 }), lateRefund];
+  const refundClient = { getBlockNumber: async () => 10n, getLogs: async () => lateLogs };
+  const refundIndexer = new JobCreatedIndexer({ store: refundTooLate, chainId: 1952, contractAddress: indexedContract, client: refundClient });
+  await assert.rejects(refundIndexer.sync({ fromBlock: 0, toBlock: 10 }), /Refunded conflicts/);
+
+  const cursorStore = new SpaceStore();
+  const cursorIndexer = new JobCreatedIndexer({ store: cursorStore, chainId: 1952, contractAddress: indexedContract, client: { getBlockNumber: async () => 10n, getLogs: async () => [] } });
+  cursorStore.indexerCursors.set(cursorIndexer.cursorKey, { blockNumber: 10, txHash: `0x${"9".repeat(64)}`, logIndex: 7 });
+  const conflictingClient = { getBlockNumber: async () => 10n, getLogs: async () => [createdLog({ logIndex: 7, txDigit: "8" })] };
+  const conflictingIndexer = new JobCreatedIndexer({ store: cursorStore, chainId: 1952, contractAddress: indexedContract, client: conflictingClient });
+  await assert.rejects(conflictingIndexer.sync({ fromBlock: 0, toBlock: 10 }), /conflicts with the persisted/);
+});
+
+test("M9-6: direct terminal and refund projections persist across restart", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "microcosm-m9-direct-"));
+  const snapshotPath = path.join(directory, "store.json");
+  try {
+    const fixture = directTerminalLogs();
+    const client = { getBlockNumber: async () => 10n, getLogs: async () => fixture.logs };
+    const store = new SpaceStore();
+    const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+
+    await indexer.sync({ fromBlock: 0, toBlock: 10 });
+    const cursor = indexer.getCursor();
+    const restartedStore = new SpaceStore();
+    assert.equal(load(restartedStore, snapshotPath), true);
+    const restarted = new JobCreatedIndexer({ store: restartedStore, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+    const replay = await restarted.sync({ fromBlock: 0, toBlock: 10 });
+    const jobs = [...restartedStore.jobs.values()];
+
+    assert.equal(replay.processed, 0);
+    assert.equal(replay.skipped, 17);
+    assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
+    assert.deepEqual(jobs.map((job) => job.status), ["Rejected", "Expired", "Completed", "Completed"]);
+    assert.deepEqual(jobs.map((job) => job.refunded), [true, true, false, false]);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_COMPLETED").length, 2);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_REJECTED").length, 1);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_EXPIRED").length, 1);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_REFUNDED").length, 2);
+    assert.equal(restartedStore.receipts.size, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
