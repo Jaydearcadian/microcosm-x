@@ -75,7 +75,7 @@ export function WordReveal({
 }) {
   let wordIndex = 0;
   return (
-    <Tag id={id} className={`display ${className}`} style={style}>
+    <Tag id={id} className={`display ${className}`} style={style} aria-label={segments.map((segment) => segment.text).join(" ")}>
       {segments.map((segment, s) => (
         <span
           key={s}

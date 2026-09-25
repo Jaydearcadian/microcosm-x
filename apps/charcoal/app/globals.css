@@ -177,7 +177,7 @@ button {
 
 @media (max-width: 900px) {
   .loop-nodes {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -710,4 +710,4 @@ button {
 .app-section--embedded .kanban-grid { min-width: 0; grid-template-columns: repeat(5, minmax(170px, 1fr)); }
 .app-section--embedded .wizard-grid, .app-section--embedded .audit-panel { margin-top: 0; }
 @media (max-width: 1100px) { .app-workspace { grid-template-columns: 210px minmax(0, 1fr); } .app-content { padding-inline: 20px; } .app-section--embedded .kanban-grid { min-width: 1000px; } }
-@media (max-width: 760px) { .app-workspace { display: block; } .app-rail { min-height: 0; padding: 100px 14px 14px; border-right: 0; border-bottom: 1px solid var(--hairline); } .app-rail__space { margin-bottom: 12px; } .app-rail__nav { display: flex; overflow-x: auto; padding-top: 0; } .app-rail__nav button { min-width: 132px; } .app-rail__foot { display: none; } .app-content { padding: 34px 16px 60px; } .app-view__header { flex-direction: column; } }
+@media (max-width: 760px) { .app-workspace { display: block; } .app-rail { min-height: 0; padding: 100px 14px 14px; border-right: 0; border-bottom: 1px solid var(--hairline); } .app-rail__space { margin-bottom: 12px; } .app-rail__nav { display: flex; overflow-x: auto; padding-top: 0; } .app-rail__nav button { min-width: 132px; } .app-rail__foot { display: grid; margin-top: 16px; padding: 14px 10px 0; } .app-content { padding: 34px 16px 60px; } .app-view__header { flex-direction: column; } }
