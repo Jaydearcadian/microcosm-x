@@ -64,6 +64,32 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: 'spaces_capability_manifest',
+    description: 'Read the deterministic, sanitized capability manifest for a Space.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string', description: 'The Space ID to inspect.' },
+      },
+      required: ['spaceId'],
+    },
+  },
+  {
+    name: 'payments_x402_validate',
+    description: 'Validate an x402 v2 PaymentRequired declaration offline against the selected accept and Space policy. Does not sign, settle, or mutate state.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string' },
+        paymentRequired: { type: 'object' },
+        selectedAcceptIndex: { type: 'integer', minimum: 0 },
+        actorId: { type: 'string' },
+        expectedAssetAddress: { type: 'string', pattern: '^0x[0-9a-fA-F]{40}$' },
+      },
+      required: ['spaceId', 'paymentRequired', 'selectedAcceptIndex', 'actorId', 'expectedAssetAddress'],
+    },
+  },
+  {
     name: 'payments_request',
     description: 'Request a disbursement from a Space treasury to a recipient. Checked against Space policy rules before settlement.',
     inputSchema: {
@@ -561,6 +587,34 @@ export async function handleToolCall(store, name, args) {
       } catch (err) {
         return {
           content: [{ type: 'text', text: `Error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'spaces_capability_manifest': {
+      try {
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ manifest: store.getCapabilityManifest(args.spaceId) }, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'payments_x402_validate': {
+      try {
+        const validation = await store.validateX402PaymentIntent(args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ validation }, null, 2) }],
+          ...(validation.valid ? {} : { isError: true }),
+        };
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `Execution error: ${err.message}` }],
           isError: true,
         };
       }

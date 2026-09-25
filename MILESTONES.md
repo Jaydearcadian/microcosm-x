@@ -35,7 +35,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `VERIFIED` | `make test`; governance EIP-712, 2-of-3, session spoofing, idempotency, persistence, and REST/MCP parity tests pass |
 | **M13** | **Native GenLayer Decentralized Internet Court** | `PLANNED` | Phase 3 (Whitepaper Section 11 & DEC-007) — kept as internal adjudication capability per rebaseline §19; not a product centerpiece (§20) |
-| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `PLANNED` | Phase 3 (Whitepaper Section 8 & 15) — integration mechanisms answering product questions inside the Space, not product surfaces (§21) |
+| **M14** | **Machine Payments & Protocol Standards (x402, MPP, AP2, A2A)** | `IN PROGRESS` | First slice: `npm run test:policy`, `npm run test:mcp`, `npm run test:server`, and `npm run test:sdk` cover deterministic sanitized capability manifests and offline x402 v2 validation; x402 settlement, HTTP 402, A2A, MPP, and AP2 remain unimplemented |
 | **M15** | **Multi-Tenant Enterprise Security & Fine-Grained Privacy** | `PLANNED` | Phase 4 (Whitepaper Section 20 & 21) |
 | **M16** | **Cross-Chain Settlement Rails (Circle CCTP / OKX Bridge)** | `PLANNED` | Phase 4 (Whitepaper Section 26) |
 
@@ -193,6 +193,10 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 * **Claim**: Autonomous agents operating within a Space can consume and monetize API services, data streams, and compute using HTTP 402-based machine payment protocols (x402, MPP) and agent protocols (AP2, A2A) under Space-bounded economic authority.
 * **Whitepaper Reference**: Section 15 (*Relationship to Emerging Agent Protocols*) & Section 8 (*Money*).
 * **Protocol Roles in Microcosm**:
+  * **M14 first slice — capability discovery and x402 validation**:
+    * `packages/policy-engine/src/capability-manifest.js` publishes the deterministic, sanitized `microcosm.space.capability-manifest/v1` manifest.
+    * `mcp/src/x402.js` validates only explicitly selected x402 v2 `PaymentRequired` declarations offline, with exact Space network and configured asset checks, atomic uint256 conversion, bounded timeout, and existing Space policy evaluation.
+    * MCP, REST, and SDK expose read-only manifest and x402 validation surfaces. No signing, settlement, facilitator, HTTP 402 route, A2A transport, MPP, or AP2 is included in this slice.
   * **`x402` (Crypto-Native HTTP 402 Pay-Per-Request)**:
     * *Outbound*: An agent hitting an x402-gated API requests an authorized payment intent from its Space. Microcosm evaluates policy, signs the EIP-712 challenge, settles USDC on OKX X Layer, and binds the HTTP receipt to the active Work Order.
     * *Inbound*: A Space can gate its own deliverables, data endpoints, or agentic services behind an x402 paywall, collecting USDC directly into the Space treasury.

@@ -108,6 +108,9 @@ export class SpaceClient {
   /** @returns {Promise<Bounds>} hero-dial binding */
   bounds(spaceId) { return this._req('GET', `/api/spaces/${spaceId}/bounds`); }
   capabilities(spaceId, actorId) { return this._req('GET', `/api/spaces/${spaceId}/capabilities`, undefined, { actorId }); }
+  getCapabilityManifest(spaceId) { return this._req('GET', `/api/spaces/${spaceId}/capability-manifest`); }
+  validateX402Payment(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/payments/x402/validate`, args); }
+  validateX402PaymentIntent(spaceId, args) { return this.validateX402Payment(spaceId, args); }
   fundSpace(spaceId, args) { return this._req('POST', `/api/spaces/${spaceId}/fund`, args); }
 
   // --- participants ---

@@ -10,6 +10,7 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "@x402/core": "2.27.0",
     "viem": "^2.56.9"
   }
 }

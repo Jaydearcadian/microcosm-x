@@ -1,8 +1,6 @@
-# Microcosm HTTP/SSE API Contract — v1 (FROZEN)
+# Microcosm HTTP/SSE API Contract — v2 (FROZEN)
 
-Status: frozen for UI-agent parallel build. Any change requires a version bump
-(`v2`) and a ledger entry — never silent drift. Semantic mirror of the MCP
-surface (`mcp/src/tools.js`): **transport must not change semantics.**
+Status: v2 is frozen for UI-agent parallel build. Existing capability and payment routes remain unchanged; M14 adds read-only capability discovery and offline x402 v2 validation. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
 
 Base URL (dev): `http://localhost:8787`
 
@@ -37,6 +35,7 @@ Base URL (dev): `http://localhost:8787`
 - `GET /api/spaces/:id/bounds?actorId=` → `{ spaceId, treasuryBalance, spentToday, escrowed, remaining, dailyBudget, maxPerTransaction, denials }`
   - **Hero dial binding.** `remaining = dailyBudget - spentToday - escrowed` (floored at 0). `denials` = count of denied attempts.
 - `GET /api/spaces/:id/capabilities?actorId=` → Space rules + treasury + actor role
+- `GET /api/spaces/:id/capability-manifest` → `200 { manifest }` with deterministic schema `microcosm.space.capability-manifest/v1`; includes only Space identity, network, chain, currency, capability IDs, and safe policy limits.
 - `POST /api/spaces/:id/fund` `{ amount, actorId }` → `200 { space }` (capitalise treasury)
 
 ### Participants
@@ -69,6 +68,13 @@ Base URL (dev): `http://localhost:8787`
 - `POST /api/spaces/:id/work/:jobId/evaluate` `{ evaluatorId, approved, feedback? }` → `200 { job, receipt? | gaiaRefund? }`
 - `POST /api/spaces/:id/work/:jobId/request-verdict` `{ actorId }` → `200 { job, case }` (`case` = `{ caseId, deliverableHash, evidenceUri, rubricHash }`)
 - `POST /api/spaces/:id/work/:jobId/post-verdict` `{ adjudicatorId, approved, reason? }` → `200 { job, receipt? | gaiaRefund? }`
+
+### M14 read-only discovery and x402 validation
+
+- `POST /api/spaces/:id/payments/x402/validate` `{ paymentRequired, selectedAcceptIndex, actorId, expectedAssetAddress }` → `200 { validation }`.
+- Only x402 version 2 is accepted. The selected accept index is mandatory; the first option is never selected implicitly.
+- The validator checks `network === "eip155:<space.chainId>"`, the exact explicitly configured asset address, non-zero `payTo`, positive uint256 atomic `amount`, and bounded `maxTimeoutSeconds` (`1..3600`). The amount is converted to six-decimal decimal text without floating point and then checked against Space policy.
+- The response is validation only: no signing, settlement, RPC, receipt, or Space mutation. The existing `/payments` route is unchanged.
 
 ### Payments (bounded disbursement)
 

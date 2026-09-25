@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig } from '../../packages/policy-engine/src/index.js';
+import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest } from '../../packages/policy-engine/src/index.js';
+import { validateX402PaymentIntent as validateX402PaymentIntentPure } from './x402.js';
 
 /**
  * In-memory Space store providing state continuity across MCP and API calls.
@@ -120,6 +121,15 @@ export class SpaceStore {
         allowedCounterparties: space.rules.allowedCounterparties,
       },
     };
+  }
+
+  getCapabilityManifest(spaceId) {
+    return createCapabilityManifest(this._getSpaceOrThrow(spaceId));
+  }
+
+  async validateX402PaymentIntent(args) {
+    const space = this._getSpaceOrThrow(args.spaceId);
+    return validateX402PaymentIntentPure({ ...args, space });
   }
 
   /**

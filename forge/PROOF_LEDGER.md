@@ -46,11 +46,18 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M9-9** | Onchain Indexer | Optional viem WebSocket transport, HTTP and injected clients, explicit persisted reconciliation state, sanitized error visibility, and a non-overlapping polling run loop preserve sync API compatibility | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-9` transport/state/run-loop PASS) + `npm --workspace=@microcosm/mcp-server test` (86/86) | 2026-09-25 |
 | **M9-10** | Onchain Indexer | Persisted block hashes detect reorgs after restart, restore a canonical safe checkpoint, rewind orphaned projections, and replay canonical logs while supporting legacy snapshots without `blockHash` | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-9` reorg and legacy-cursor PASS; 61/61) + `make test` (153/153) | 2026-09-25 |
 | **M12-1** | Governance | High-value direct payments require an explicit durable M-of-N EIP-712 approval queue; signer identity is authenticated, policy is re-evaluated before execution, and settlement is one-time | `VERIFIED` | `node --test packages/policy-engine/test/governance.test.js mcp/test/governance.test.js packages/server/test/governance.test.js packages/server/test/governance-persistence.test.js` (M12-1…M12-6 PASS) + `make test` | 2026-09-25 |
+| **M14-1** | Protocol Standards | Deterministic sanitized Space capability manifests and pure offline x402 v2 PaymentRequired validation are exposed consistently through policy, MCP, REST, and SDK without signing, settlement, RPC, or mutation | `VERIFIED` | `node --test packages/policy-engine/test/capability-manifest.test.js mcp/test/x402.test.js packages/server/test/x402.test.js packages/sdk/test/x402.test.js` (M14-POLICY-1, M14-MCP-1…3, M14-SERVER-1…2, M14-SDK-1 PASS) + `make test` (36 contract, 16 policy, 91 MCP, 13 server, 10 SDK tests passed) | 2026-09-25 |
 
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-25: M14 first slice — capability manifest and offline x402 v2 validation (M14-1)
+
+* **Commands**: `node --test packages/policy-engine/test/capability-manifest.test.js mcp/test/x402.test.js packages/server/test/x402.test.js packages/sdk/test/x402.test.js`; `make test`; `node scripts/verify-proof-ledger.mjs`.
+* **Output**: deterministic manifest redaction and stable capability IDs passed; x402 v2 required an explicit accept selection, exact chain and configured asset, non-zero payTo, bounded timeout, and exact uint256-to-six-decimal conversion; cap, daily budget, and allowlist denials passed across policy, MCP, REST, and SDK; Space state and RPC side effects remained zero. The full gate passed 36 contract, 16 policy, 91 MCP, 13 server, and 10 SDK tests with 0 failures.
+* **Status**: `VERIFIED` for the read-only M14 slice. Signing, settlement, facilitator, HTTP 402 route, A2A transport, MPP, and AP2 remain unimplemented.
 
 ### 2026-09-25: M12 offchain threshold governance (M12-1)
 * **Commands**: `node --test packages/policy-engine/test/governance.test.js mcp/test/governance.test.js packages/server/test/governance.test.js packages/server/test/governance-persistence.test.js`; `make test`; `node scripts/verify-proof-ledger.mjs`.

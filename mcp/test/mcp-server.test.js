@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { SpaceStore } from '../src/space-store.js';
 import { handleToolCall, TOOL_DEFINITIONS } from '../src/tools.js';
 
-test('MCP-TOOLS: Tool definitions list 31 Space operations (core + Work lifecycle + court verdicts + participants + requests + governance)', () => {
-  assert.equal(TOOL_DEFINITIONS.length, 31);
+test('MCP-TOOLS: Tool definitions list 33 Space operations (core + Work lifecycle + court verdicts + participants + requests + governance + M14 read-only validation)', () => {
+  assert.equal(TOOL_DEFINITIONS.length, 33);
   const toolNames = TOOL_DEFINITIONS.map((t) => t.name);
   assert.ok(toolNames.includes('spaces_list'));
   assert.ok(toolNames.includes('spaces_capabilities'));

@@ -1,9 +1,6 @@
-# Microcosm HTTP/SSE API Contract — v1 (FROZEN) + v1.1 Governance Extension
+# Microcosm HTTP/SSE API Contract — v2 (FROZEN) + Governance and M14 Extensions
 
-Status: v1 remains frozen for UI-agent parallel build. The additive M12
-governance extension is versioned separately; any v1 change requires a version
-bump (`v2`) and a ledger entry — never silent drift. Semantic mirror of the MCP
-surface (`mcp/src/tools.js`): **transport must not change semantics.**
+Status: v2 is frozen for UI-agent parallel build. The existing capability and payment routes remain unchanged; M12 governance and M14 read-only capability discovery/x402 validation are additive extensions. Any v2 change requires a version bump (`v3`) and a ledger entry — never silent drift. Semantic mirror of the MCP surface (`mcp/src/tools.js`): **transport must not change semantics.**
 
 Base URL (dev): `http://localhost:8787`
 
@@ -51,6 +48,7 @@ Wallet access is address-bound. The client requests a short-lived nonce, signs t
 - `GET /api/spaces/:id/bounds?actorId=` → `{ spaceId, treasuryBalance, spentToday, escrowed, remaining, dailyBudget, maxPerTransaction, denials }`
   - **Hero dial binding.** `remaining = dailyBudget - spentToday - escrowed` (floored at 0). `denials` = count of denied attempts.
 - `GET /api/spaces/:id/capabilities?actorId=` → Space rules + treasury + actor role
+- `GET /api/spaces/:id/capability-manifest` → `200 { manifest }` with deterministic schema `microcosm.space.capability-manifest/v1`; includes only Space identity, network, chain, currency, capability IDs, and safe policy limits.
 - `POST /api/spaces/:id/fund` `{ amount, actorId }` → `200 { space }` (capitalise treasury)
 
 ### Participants
@@ -83,6 +81,14 @@ Wallet access is address-bound. The client requests a short-lived nonce, signs t
 - `POST /api/spaces/:id/work/:jobId/evaluate` `{ evaluatorId, approved, feedback? }` → `200 { job, receipt? | gaiaRefund? }`
 - `POST /api/spaces/:id/work/:jobId/request-verdict` `{ actorId }` → `200 { job, case }` (`case` = `{ caseId, deliverableHash, evidenceUri, rubricHash }`)
 - `POST /api/spaces/:id/work/:jobId/post-verdict` `{ adjudicatorId, approved, reason? }` → `200 { job, receipt? | gaiaRefund? }`
+
+### M14 read-only discovery and x402 validation
+
+- `POST /api/spaces/:id/payments/x402/validate` `{ paymentRequired, selectedAcceptIndex, actorId, expectedAssetAddress }` → `200 { validation }` with protocol and policy checks only; no signing, settlement, RPC, or Space mutation.
+- `paymentRequired` must be x402 version 2. `selectedAcceptIndex` is mandatory and selects exactly one `accepts` entry; the first entry is never selected implicitly.
+- Validation requires `network === "eip155:<space.chainId>"`, the exact explicitly configured `expectedAssetAddress`, a non-zero EVM `payTo`, a positive uint256 atomic `amount`, and `maxTimeoutSeconds` in the bounded range `1..3600`.
+- The atomic amount is converted to a six-decimal decimal string without floating point and evaluated through the existing Space policy, including transaction cap, daily budget, and counterparty allowlist.
+- The existing `/payments` route is unchanged. The M14 route never returns a receipt, signature, settlement status, or protocol-specific Space fields.
 
 ### Payments (bounded disbursement)
 
@@ -138,6 +144,8 @@ interface DenialProof { spaceId: string; actorId: string; requestedAmount: strin
 interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT' | 'POLICY_DENIAL' | 'FORBIDDEN'; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
 interface GovernanceConfig { enabled: true; threshold: number; signerAllowlist: string[] }
 interface GovernanceRequest { requestId: string; spaceId: string; recipient: string; amount: string; asset: string; memo: string; deadline: string; policyHash: string; digest: string; status: 'PENDING' | 'APPROVED' | 'EXECUTING' | 'EXECUTED'; approvals: Array<{ signerAddress: string; signature: string; approvedAt: string }> }
+interface CapabilityManifest { schema: 'microcosm.space.capability-manifest/v1'; space: { id: string; name: string; network: string; chainId: number; currency: string }; capabilities: { payment: { id: 'payment' }; work: { id: 'work' }; request: { id: 'request' }; court: { id: 'court' } }; policy: { maxPerTransaction: string | null; dailyBudget: string | null; allowlist: { type: 'counterparties'; enabled: boolean } } }
+interface X402Validation { valid: boolean; protocolValid: boolean; policyAllowed: boolean; reasons: string[]; selectedAcceptIndex: number | null; selectedAccept: { network: string; asset: string; payTo: string; amount: string; amountDecimal: string | null; maxTimeoutSeconds: number } | null }
 ```
 
 ## 5. Seed & dev server

@@ -350,6 +350,20 @@ async function dispatch(app, req, res) {
         throwMapped(err);
       }
     }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/capability-manifest$/);
+    if (req.method === 'GET' && m) {
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      return ok(200, { manifest: store.getCapabilityManifest(spaceId) });
+    }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/payments\/x402\/validate$/);
+    if (req.method === 'POST' && m) {
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      requireFields(body, ['paymentRequired', 'selectedAcceptIndex', 'actorId', 'expectedAssetAddress']);
+      const validation = await store.validateX402PaymentIntent({ spaceId, ...body });
+      return ok(200, { validation });
+    }
     m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/config$/);
     if (m && req.method === 'POST') {
       const current = requireSession();
