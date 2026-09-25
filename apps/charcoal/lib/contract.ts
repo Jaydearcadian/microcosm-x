@@ -202,3 +202,41 @@ export interface IndexerStatus {
 export async function fetchIndexerStatus(spaceId: string, signal?: AbortSignal): Promise<IndexerStatus> {
   return (await request<{ indexer: IndexerStatus }>(`/api/spaces/${q(spaceId)}/indexer`, { signal })).indexer;
 }
+
+// ---- M7 Boundary Sandbox: run a real scenario and report what actually happened ----
+export type SandboxOutcome =
+  | { allowed: true; status: number; job: Job; spaceBalance: string }
+  | { allowed: false; status: number; code: string; message: string; reasons: string[]; denialProof: DenialProof | null };
+
+/**
+ * Creates (or refuses) a work order without throwing, so the sandbox can show a
+ * judge the real API verdict — including the DenialProof — rather than a
+ * prettified simulation.
+ */
+export async function probeWorkOrder(spaceId: string, body: {
+  actorId: string; provider: string; evaluator: string; description: string; budget: string; deadline: string;
+}): Promise<SandboxOutcome> {
+  const response = await fetch(`${API_BASE}/api/spaces/${q(spaceId)}/work`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | ({ status: string; job: Job; spaceBalance: string } & ApiError)
+    | ApiError
+    | null;
+  if (response.ok) {
+    const ok = payload as { status: string; job: Job; spaceBalance: string };
+    return { allowed: true, status: response.status, job: ok.job, spaceBalance: ok.spaceBalance };
+  }
+  const failure = payload as ApiError;
+  return {
+    allowed: false,
+    status: response.status,
+    code: failure?.error?.code ?? "UNKNOWN",
+    message: failure?.error?.message ?? `POST /work returned ${response.status}`,
+    reasons: failure?.error?.details?.reasons ?? [],
+    denialProof: failure?.error?.details?.denialProof ?? null,
+  };
+}

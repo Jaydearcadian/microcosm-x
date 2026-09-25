@@ -9,11 +9,12 @@ import { WorkView } from "@/components/app/WorkView";
 import { GovernanceView } from "@/components/app/GovernanceView";
 import { DelegationView } from "@/components/app/DelegationView";
 import { AgentView } from "@/components/app/AgentView";
+import { SandboxView } from "@/components/app/SandboxView";
 import { OnboardingView } from "@/components/app/OnboardingView";
 import { AuditView } from "@/components/app/AuditView";
 import { InviteRedeem } from "@/components/app/InviteRedeem";
 
-const VIEWS: AppView[] = ["command", "work", "governance", "delegation", "agent", "onboarding", "audit"];
+const VIEWS: AppView[] = ["command", "work", "governance", "delegation", "agent", "sandbox", "onboarding", "audit"];
 
 function viewFromHash(): AppView {
   if (typeof window === "undefined") return "command";
@@ -35,5 +36,5 @@ export function AppWorkspace({ accessCode = "" }: { accessCode?: string } = {}) 
     const path = next === "onboarding" ? "/app/onboarding" : "/app";
     window.history.replaceState(null, "", `${path}#${next}`);
   };
-  return <AppDataProvider><AppShell active={view} onChange={changeView}>{pathname === "/app/access" ? <InviteRedeem code={accessCode} /> : view === "command" ? <CommandView /> : view === "work" ? <WorkView /> : view === "governance" ? <GovernanceView /> : view === "delegation" ? <DelegationView /> : view === "agent" ? <AgentView /> : view === "onboarding" ? <OnboardingView /> : <AuditView />}</AppShell></AppDataProvider>;
+  return <AppDataProvider><AppShell active={view} onChange={changeView}>{pathname === "/app/access" ? <InviteRedeem code={accessCode} /> : view === "command" ? <CommandView /> : view === "work" ? <WorkView /> : view === "governance" ? <GovernanceView /> : view === "delegation" ? <DelegationView /> : view === "agent" ? <AgentView /> : view === "sandbox" ? <SandboxView /> : view === "onboarding" ? <OnboardingView /> : <AuditView />}</AppShell></AppDataProvider>;
 }

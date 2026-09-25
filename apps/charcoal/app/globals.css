@@ -773,3 +773,22 @@ button {
 .indexer-jobs li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border: 1px solid var(--hairline); border-radius: 9px; font-size: 13px; }
 .indexer-jobs em { font-style: normal; font-family: var(--font-ui); font-size: 11px; letter-spacing: .12em; color: var(--accent); }
 @media (max-width: 1100px) { .indexer-readout { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- M7 boundary sandbox ---------- */
+.sandbox-grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sandbox-card__title { margin-top: 14px; font-family: var(--display); font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+.sandbox-card__intent { margin-top: 8px; font-size: 14px; }
+.sandbox-card__invariant { display: grid; gap: 4px; margin-top: 14px; padding: 11px 13px; border: 1px solid var(--hairline); border-radius: 10px; font-size: 13px; color: var(--text); }
+.sandbox-card__invariant span { font-family: var(--font-ui); font-size: 10px; letter-spacing: .18em; color: var(--faint); text-transform: uppercase; }
+.sandbox-card .wizard-actions { margin-top: 16px; align-items: center; justify-content: space-between; }
+.sandbox-verdict { margin-top: 16px; }
+.sandbox-checks { display: grid; gap: 8px; margin-top: 18px; }
+.sandbox-checks li { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 14px; border: 1px solid var(--hairline); border-radius: 10px; }
+.sandbox-checks li > span { font-family: var(--font-ui); font-size: 10px; letter-spacing: .16em; }
+.sandbox-checks li > span.is-pass { color: var(--accent); }
+.sandbox-checks li > span.is-fail { color: var(--danger); }
+.sandbox-checks li strong { font-size: 14px; font-weight: 500; }
+.sandbox-checks li em { font-style: normal; color: var(--muted); font-family: var(--font-ui); font-size: 12px; text-align: right; }
+.sandbox-proof { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--hairline); border-radius: 12px; }
+.sandbox-proof p { margin: 8px 0 12px; font-size: 15px; }
+@media (max-width: 1100px) { .sandbox-grid { grid-template-columns: minmax(0, 1fr); } .sandbox-checks li { grid-template-columns: 58px minmax(0, 1fr); } .sandbox-checks li em { grid-column: 2; text-align: left; } }
