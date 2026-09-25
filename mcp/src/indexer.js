@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import { createPublicClient, decodeEventLog, getEventSelector, http, parseAbiItem, webSocket } from "viem";
+import { IndexedTermsNotApplicableError } from "./space-store.js";
 
 const require = createRequire(import.meta.url);
 const curatedAbis = require("../../packages/sdk/src/abis.json");
@@ -356,6 +357,10 @@ export class JobCreatedIndexer {
       }
       let processed = 0;
       let skipped = 0;
+      // Terms events that name a job past Open are legal history, not a
+      // corrupt projection. They are recorded here with their reason so the
+      // operator can audit them, and the cursor still advances past them.
+      const inapplicable = [];
 
       for (const log of canonicalLogs) {
         const position = logPosition(log);
@@ -394,43 +399,58 @@ export class JobCreatedIndexer {
           txHash: position.txHash,
           logIndex: position.logIndex,
         };
-        if (name === "JobCreated") {
-          this.store.upsertIndexedJob({
-            ...common,
-            client: args.client,
-            provider: args.provider,
-            evaluator: args.evaluator,
-            description: args.description,
-            expiredAt: args.expiredAt,
+        try {
+          if (name === "JobCreated") {
+            this.store.upsertIndexedJob({
+              ...common,
+              client: args.client,
+              provider: args.provider,
+              evaluator: args.evaluator,
+              description: args.description,
+              expiredAt: args.expiredAt,
+            });
+          } else if (name === "ProviderSet") {
+            this.store.setProviderIndexedJob({ ...common, provider: args.provider });
+          } else if (name === "BudgetSet") {
+            this.store.setBudgetIndexedJob({ ...common, amount: args.amount });
+          } else if (name === "AdjudicatorSet") {
+            this.store.setAdjudicatorIndexedJob({ ...common, adjudicator: args.adjudicator });
+          } else if (name === "RubricSet") {
+            this.store.setRubricIndexedJob({ ...common, rubricHash: args.rubricHash });
+          } else if (name === "EvidenceAttached") {
+            this.store.recordIndexedEvidenceAttached({ ...common, deliverableHash: args.deliverableHash });
+          } else if (name === "JobFunded") {
+            this.store.fundIndexedJob({ ...common, amount: args.amount });
+          } else if (name === "JobSubmitted") {
+            this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
+          } else if (name === "JobCompleted") {
+            this.store.completeIndexedJob({ ...common, reason: args.reason });
+          } else if (name === "JobRejected") {
+            this.store.rejectIndexedJob({ ...common, rejector: args.rejector, reason: args.reason });
+          } else if (name === "JobExpired") {
+            this.store.expireIndexedJob(common);
+          } else if (name === "Refunded") {
+            this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
+          } else if (name === "AdjudicationRequested") {
+            this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
+          } else if (name === "AdjudicationResolved") {
+            this.store.resolveAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, approve: args.approve, reason: args.reason });
+          } else {
+            this.store.recordIndexedAttestedSettlement({ ...common, provider: args.provider, amount: args.amount, nonce: args.nonce });
+          }
+        } catch (reason) {
+          // Only a terms event landing on a non-Open job is tolerated here.
+          // Any other failure is an integrity error and aborts the sync so
+          // the cursor never advances past unapplied state.
+          if (!(reason instanceof IndexedTermsNotApplicableError)) throw reason;
+          inapplicable.push({
+            event: name,
+            onchainJobId: String(args.jobId ?? ""),
+            fromStatus: reason.fromStatus,
+            blockNumber: position.blockNumber,
+            txHash: position.txHash,
+            logIndex: position.logIndex,
           });
-        } else if (name === "ProviderSet") {
-          this.store.setProviderIndexedJob({ ...common, provider: args.provider });
-        } else if (name === "BudgetSet") {
-          this.store.setBudgetIndexedJob({ ...common, amount: args.amount });
-        } else if (name === "AdjudicatorSet") {
-          this.store.setAdjudicatorIndexedJob({ ...common, adjudicator: args.adjudicator });
-        } else if (name === "RubricSet") {
-          this.store.setRubricIndexedJob({ ...common, rubricHash: args.rubricHash });
-        } else if (name === "EvidenceAttached") {
-          this.store.recordIndexedEvidenceAttached({ ...common, deliverableHash: args.deliverableHash });
-        } else if (name === "JobFunded") {
-          this.store.fundIndexedJob({ ...common, amount: args.amount });
-        } else if (name === "JobSubmitted") {
-          this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
-        } else if (name === "JobCompleted") {
-          this.store.completeIndexedJob({ ...common, reason: args.reason });
-        } else if (name === "JobRejected") {
-          this.store.rejectIndexedJob({ ...common, rejector: args.rejector, reason: args.reason });
-        } else if (name === "JobExpired") {
-          this.store.expireIndexedJob(common);
-        } else if (name === "Refunded") {
-          this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
-        } else if (name === "AdjudicationRequested") {
-          this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
-        } else if (name === "AdjudicationResolved") {
-          this.store.resolveAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, approve: args.approve, reason: args.reason });
-        } else {
-          this.store.recordIndexedAttestedSettlement({ ...common, provider: args.provider, amount: args.amount, nonce: args.nonce });
         }
         this.store.indexerCursors.set(this.cursorKey, position);
         this.captureReorgSnapshot(position);
@@ -445,6 +465,7 @@ export class JobCreatedIndexer {
         toBlock: end,
         processed,
         skipped,
+        inapplicable,
         cursor: this.getCursor(),
         reorg,
       };

@@ -122,6 +122,10 @@ export async function startIndexer({
   // A single unbounded sync only checkpoints when the whole pass finishes, so a
   // 270k-block backfill never persisted progress and any interruption restarted
   // from the deploy block. Catch up in bounded, committed windows instead.
+  // Terms events that named an already-terminal job on the last sync. Kept so
+  // the operator can audit why a log was not applied instead of guessing.
+  let inapplicableTerms = [];
+
   const catchUp = {
     active: false,
     fromBlock: Number(fromBlock),
@@ -149,6 +153,8 @@ export async function startIndexer({
         reconciliation,
         reorgDepth: indexer.reorgDepth,
         catchUp: { ...catchUp },
+        inapplicableTermsCount: inapplicableTerms.length,
+        inapplicableTerms,
         projectionCount: jobs.length,
         projectedJobs: jobs.map((job) => ({
           jobId: job.jobId,
@@ -170,13 +176,37 @@ export async function startIndexer({
     // tracked locally. Deriving the next window from the cursor alone replays
     // the same quiet range forever and never terminates.
     let scannedTo = indexer.getCursor()?.blockNumber ?? Number(fromBlock);
+
+    // A cursor can end up behind the projections it produced, for example when
+    // a deployment rewinds fromBlock or a stale state file is restored. Replaying
+    // from there collides with jobs already in states the replayed logs can no
+    // longer reach, which wedged the X Layer backfill on a job projected
+    // Rejected from a block ahead of the cursor: every window failed the same
+    // way and history could never advance. When the cursor is inconsistent with
+    // its own derived state, drop that state and rebuild from the deploy block
+    // so the canonical log order is the only thing that shapes the projection.
+    const projected = store.indexedProjectionRange({ spaceId, chainId, contractAddress });
+    if (projected.count > 0 && projected.maxBlock > scannedTo) {
+      const rewindPrune = store.pruneIndexedProjections({
+        spaceId,
+        chainId,
+        contractAddress,
+        fromBlock: Number(fromBlock),
+      });
+      store.indexerCursors.delete(indexer.cursorKey);
+      scannedTo = Number(fromBlock);
+      const note = `[indexer] cursor ${indexer.getCursor()?.blockNumber ?? 'none'} lagged projections built from block ${projected.maxBlock}; dropped ${rewindPrune.jobs} projection(s) and ${rewindPrune.activity} activity entr(ies) and rebuilding from block ${fromBlock}`;
+      if (onError) onError(new Error(note));
+      else console.warn(note);
+    }
     try {
       for (;;) {
         const head = Number(await indexer.client.getBlockNumber());
         catchUp.targetBlock = head;
         if (scannedTo >= head) { catchUp.complete = true; break; }
         const to = Math.min(scannedTo + catchUp.windowBlocks, head);
-        await indexer.sync({ fromBlock: scannedTo + 1, toBlock: to });
+        const result = await indexer.sync({ fromBlock: scannedTo + 1, toBlock: to });
+        if (result?.inapplicable?.length) inapplicableTerms = result.inapplicable;
         await commit();
         const cursorBlock = indexer.getCursor()?.blockNumber;
         scannedTo = typeof cursorBlock === 'number' && cursorBlock > scannedTo ? cursorBlock : to;

@@ -16,6 +16,29 @@ function sameAddress(a, b) {
   return a.toLowerCase() === b.toLowerCase();
 }
 
+/**
+ * A terms event (ProviderSet, BudgetSet, AdjudicatorSet, RubricSet,
+ * EvidenceAttached) that names a job which is no longer Open.
+ *
+ * These are legal on chain and routinely land after the job already reached a
+ * terminal state, so they describe a fact about history rather than a corrupt
+ * projection. The store refuses to mutate the job, which is the invariant that
+ * matters, but it flags the refusal so the indexer can record the event as
+ * inapplicable and keep advancing. Lifecycle transition errors ("cannot
+ * transition indexed job") are deliberately NOT this type: a job completing out
+ * of order is a real integrity failure and must still abort the sync.
+ */
+export class IndexedTermsNotApplicableError extends Error {
+  constructor({ eventName, onchainKey, fromStatus }) {
+    super(`${eventName} cannot update indexed job '${onchainKey}' from '${fromStatus}'`);
+    this.name = 'IndexedTermsNotApplicableError';
+    this.eventName = eventName;
+    this.onchainKey = onchainKey;
+    this.fromStatus = fromStatus;
+    this.inapplicableTermsEvent = true;
+  }
+}
+
 export class SpaceStore {
   constructor({ settlement = null, x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null, seed = true } = {}) {
     this.settlement = settlement;
@@ -1365,7 +1388,7 @@ export class SpaceStore {
     if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && sameAddress(job.provider, normalizedProvider)) {
       return { job: { ...job }, providerSet: false };
     }
-    if (job.status !== 'Open') throw new Error(`ProviderSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status !== 'Open') throw new IndexedTermsNotApplicableError({ eventName: 'ProviderSet', onchainKey, fromStatus: job.status });
     if (job.provider && !sameAddress(job.provider, '0x0000000000000000000000000000000000000000')) throw new Error(`ProviderSet conflicts with indexed job provider '${job.provider}'`);
 
     const timestamp = new Date().toISOString();
@@ -1400,7 +1423,7 @@ export class SpaceStore {
       return { job: { ...job }, budgetSet: false };
     }
     if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog)) throw new Error(`BudgetSet conflicts with indexed job budget '${job.budget}'`);
-    if (job.status !== 'Open') throw new Error(`BudgetSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status !== 'Open') throw new IndexedTermsNotApplicableError({ eventName: 'BudgetSet', onchainKey, fromStatus: job.status });
 
     const timestamp = new Date().toISOString();
     job.budget = budget;
@@ -1434,7 +1457,7 @@ export class SpaceStore {
     if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.adjudicator === normalizedAdjudicator) {
       return { job: { ...job }, adjudicatorSet: false };
     }
-    if (job.status !== 'Open') throw new Error(`AdjudicatorSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status !== 'Open') throw new IndexedTermsNotApplicableError({ eventName: 'AdjudicatorSet', onchainKey, fromStatus: job.status });
     if (job.adjudicator && !sameAddress(job.adjudicator, normalizedAdjudicator)) throw new Error(`AdjudicatorSet conflicts with indexed job adjudicator '${job.adjudicator}'`);
 
     const timestamp = new Date().toISOString();
@@ -1469,7 +1492,7 @@ export class SpaceStore {
     if (job.status === 'Open' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.rubricHash === normalizedRubricHash) {
       return { job: { ...job }, rubricSet: false };
     }
-    if (job.status !== 'Open') throw new Error(`RubricSet cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status !== 'Open') throw new IndexedTermsNotApplicableError({ eventName: 'RubricSet', onchainKey, fromStatus: job.status });
     if (job.rubricHash && job.rubricHash !== normalizedRubricHash) throw new Error(`RubricSet conflicts with indexed job rubric '${job.rubricHash}'`);
 
     const timestamp = new Date().toISOString();
@@ -1499,7 +1522,7 @@ export class SpaceStore {
     const { job, contract, chain, externalId, onchainKey } = indexed;
     if (typeof deliverableHash !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(deliverableHash)) throw new Error('EvidenceAttached requires a bytes32 deliverable hash');
     const normalizedDeliverableHash = deliverableHash.toLowerCase();
-    if (job.status !== 'Funded' && job.status !== 'Submitted') throw new Error(`EvidenceAttached cannot update indexed job '${onchainKey}' from '${job.status}'`);
+    if (job.status !== 'Funded' && job.status !== 'Submitted') throw new IndexedTermsNotApplicableError({ eventName: 'EvidenceAttached', onchainKey, fromStatus: job.status });
     if (job.status === 'Submitted' && job.deliverableHash !== normalizedDeliverableHash) throw new Error(`EvidenceAttached hash conflicts with indexed job deliverable '${job.deliverableHash}'`);
     const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
     if (job.evidenceAttached) {
@@ -1695,6 +1718,79 @@ export class SpaceStore {
     });
     this.activity.set(spaceId, entries);
     return { job: { ...job }, requested: true };
+  }
+
+  /**
+   * Drops indexed projections derived from logs at or after `fromBlock`.
+   *
+   * Replaying history from an earlier block is only sound when the projections
+   * built from the logs being replayed are discarded first. A cursor rewind
+   * that keeps them strands jobs in states the replayed logs can no longer
+   * reach: job 5 on X Layer was projected Rejected from block 41645865 while
+   * the cursor still sat at 41645475, so every restart replaying that range
+   * failed with "cannot transition ... from 'Rejected'" and the historical
+   * backfill could never advance past one block range.
+   *
+   * Returns what was removed so the caller can report it rather than silently
+   * discarding derived state.
+   */
+  /**
+   * Reports the block range the current indexed projections were built from.
+   *
+   * A cursor that sits behind `maxBlock` is inconsistent with its own derived
+   * state: those projections were produced by logs this indexer is about to read
+   * again, so replaying from the cursor collides with them. Callers use this to
+   * detect the condition and rebuild instead of stalling.
+   */
+  indexedProjectionRange({ spaceId, chainId, contractAddress }) {
+    this._getSpaceOrThrow(spaceId);
+    const prefix = `${Number(chainId)}:${String(contractAddress).toLowerCase()}:`;
+    let minBlock = null;
+    let maxBlock = null;
+    let count = 0;
+    for (const job of this.jobs.values()) {
+      if (typeof job?.onchainKey !== 'string' || !job.onchainKey.startsWith(prefix)) continue;
+      const block = job.sourceLog?.blockNumber;
+      if (!Number.isFinite(block)) continue;
+      count += 1;
+      if (minBlock === null || block < minBlock) minBlock = block;
+      if (maxBlock === null || block > maxBlock) maxBlock = block;
+    }
+    return { minBlock, maxBlock, count };
+  }
+
+  pruneIndexedProjections({ spaceId, chainId, contractAddress, fromBlock }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const floor = Number(fromBlock);
+    if (!Number.isInteger(floor) || floor < 0) throw new Error(`pruneIndexedProjections requires a non-negative block, got '${fromBlock}'`);
+    const prefix = `${chain}:${contract}:`;
+
+    const dropped = new Set();
+    for (const [jobId, job] of [...this.jobs.entries()]) {
+      if (typeof job?.onchainKey !== 'string' || !job.onchainKey.startsWith(prefix)) continue;
+      const block = job.sourceLog?.blockNumber;
+      if (!Number.isFinite(block) || block < floor) continue;
+      dropped.add(jobId);
+    }
+    for (const jobId of dropped) this.jobs.delete(jobId);
+
+    let droppedActivity = 0;
+    for (const [spaceKey, entries] of this.activity.entries()) {
+      if (!Array.isArray(entries)) continue;
+      const kept = entries.filter((entry) => {
+        if (entry?.source !== 'onchain') return true;
+        if (typeof entry.onchainKey !== 'string' || !entry.onchainKey.startsWith(prefix)) return true;
+        const block = entry.blockNumber;
+        if (!Number.isFinite(block) || block < floor) return true;
+        droppedActivity += 1;
+        return false;
+      });
+      this.activity.set(spaceKey, kept);
+    }
+
+    return { jobs: dropped.size, activity: droppedActivity, fromBlock: floor };
   }
 
   _getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName }) {

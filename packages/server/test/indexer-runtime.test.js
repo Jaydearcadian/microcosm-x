@@ -141,3 +141,65 @@ test('M9-10: the indexer route reports a wired chain', async () => {
     ctx.server.close();
   }
 });
+
+test('M9-12: the runtime rebuilds when the cursor lags its own projections', async () => {
+  // The live X Layer wedge. The persisted state had a job projected Rejected
+  // from block 41645865 while the cursor sat at 41645475, so every catch-up
+  // window replayed JobFunded onto a terminal job and threw. startIndexer must
+  // detect the inconsistency, drop the derived state, and replay the range
+  // cleanly instead of stalling.
+  const store = new SpaceStore();
+  const makeLog = (blockNumber, logIndex, eventName, args) => ({ eventName, blockNumber, logIndex, args });
+  const logs = [
+    makeLog(10, 0, 'JobCreated', {
+      jobId: 7n,
+      client: '0x1111111111111111111111111111111111111111',
+      evaluator: '0x2222222222222222222222222222222222222222',
+      provider: '0x3333333333333333333333333333333333333333',
+      description: 'rewind regression',
+      expiredAt: 2_000_000_000n,
+    }),
+    makeLog(30, 0, 'JobFunded', { jobId: 7n, amount: 1_000_000_000_000_000_000n }),
+    makeLog(40, 0, 'JobRejected', { jobId: 7n, rejector: '0x2222222222222222222222222222222222222222', reason: `0x${'e'.repeat(64)}` }),
+  ];
+  const client = {
+    getBlockNumber: async () => 50n,
+    getLogs: async ({ fromBlock, toBlock }) => logs.filter(
+      (log) => Number(log.blockNumber) >= Number(fromBlock) && Number(log.blockNumber) <= Number(toBlock),
+    ),
+  };
+
+  // first pass projects the job and checkpoints a cursor at 40
+  const first = await startIndexer({
+    store, chainId: 1952, contractAddress: KERNEL, spaceId: 'space-procurement-001', fromBlock: 0, client, awaitFirstSync: true,
+  });
+  const projected = first.state();
+  const cursorKey = first.cursorKey;
+  await first.stop();
+  assert.equal(projected.projectionCount, 1);
+  assert.equal(projected.projectedJobs[0].status, 'Rejected');
+
+  // rewind the cursor the way a restored state file or a moved fromBlock does,
+  // leaving the projection from block 40 in place
+  store.indexerCursors.set(cursorKey, { blockNumber: 20, txHash: `0x${'a'.repeat(64)}`, logIndex: 0 });
+  assert.ok(store.indexedProjectionRange({ spaceId: 'space-procurement-001', chainId: 1952, contractAddress: KERNEL }).maxBlock > 20);
+
+  // the runtime must self-heal rather than throw on every window
+  const errors = [];
+  const second = await startIndexer({
+    store, chainId: 1952, contractAddress: KERNEL, spaceId: 'space-procurement-001', fromBlock: 0, client,
+    awaitFirstSync: true, onError: (reason) => errors.push(String(reason?.message ?? reason)),
+  });
+  const healed = second.initialState();
+  await second.stop();
+
+  assert.ok(
+    errors.some((message) => /lagged projections/.test(message)),
+    `expected a rebuild notice, got ${JSON.stringify(errors)}`,
+  );
+  assert.equal(healed.reconciliation.status, 'RECONCILED');
+  assert.equal(healed.reconciliation.error, null);
+  assert.equal(healed.projectionCount, 1);
+  assert.equal(healed.projectedJobs[0].status, 'Rejected');
+  assert.ok(healed.cursor.blockNumber >= 40, `cursor reached the end of history, got ${healed.cursor.blockNumber}`);
+});

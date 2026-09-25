@@ -1825,3 +1825,106 @@ test("M9-10: a checksummed provider address in a later log is not a conflict", a
     /conflicts with indexed job provider/,
   );
 });
+
+test("M9-11: a terms event naming a terminal job is recorded as inapplicable and the cursor still advances", async () => {
+  // Live history contains jobs that were rejected and then had their budget set
+  // again. That log is legal on chain, so the store must refuse to mutate the
+  // terminal job, but the indexer must record it and move on. Throwing here
+  // wedged the backfill on one block range forever.
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 0 });
+  const funded = fundedLog({ logIndex: 1 });
+  const rejected = rejectedLog({ logIndex: 2 });
+  const late = budgetSetLog({ logIndex: 3 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [created, funded, rejected, late] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+
+  assert.equal([...store.jobs.values()][0].status, "Rejected");
+  assert.equal(result.inapplicable.length, 1);
+  assert.deepEqual(result.inapplicable[0], {
+    event: "BudgetSet",
+    onchainJobId: String(late.args.jobId),
+    fromStatus: "Rejected",
+    blockNumber: late.blockNumber,
+    txHash: late.transactionHash,
+    logIndex: 3,
+  });
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: late.transactionHash, logIndex: 3 });
+  assert.equal(indexer.getReconciliationState().status, "RECONCILED");
+  assert.equal(indexer.getReconciliationState().error, null);
+});
+
+test("M9-11: an out-of-order lifecycle transition still aborts the sync", async () => {
+  // The tolerance above is scoped to terms events on purpose. A lifecycle
+  // event that cannot apply to the current status is an integrity failure and
+  // must never advance the cursor past unapplied state.
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 0 });
+  const completed = completedLog({ logIndex: 1 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [created, completed] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  await assert.rejects(indexer.sync({ fromBlock: 0, toBlock: 10 }), /cannot transition indexed job .* from 'Open'/);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: created.transactionHash, logIndex: 0 });
+  assert.equal(indexer.getReconciliationState().status, "RECONCILING");
+});
+
+test("M9-12: projections built from blocks ahead of the cursor are detected as inconsistent", async () => {
+  // Reproduces the live wedge. Chain order was JobCreated(10), JobFunded(30),
+  // JobRejected(40). A first pass projected the job Rejected from block 40,
+  // then the cursor was rewound to 20, which is the state the X Layer
+  // deployment was in: cursor 41645475 with job 5 projected from block
+  // 41645865. Replaying JobFunded onto that stale terminal state collides, so
+  // history could never advance. The runtime must be able to see the condition
+  // and rebuild rather than stalling on it.
+  const store = new SpaceStore();
+  const created = createdLog({ blockNumber: 10, logIndex: 0 });
+  const funded = fundedLog({ blockNumber: 30, logIndex: 0 });
+  const rejected = rejectedLog({ blockNumber: 40, logIndex: 0 });
+  const client = {
+    getBlockNumber: async () => 50n,
+    getLogs: async ({ fromBlock, toBlock }) => [created, funded, rejected].filter(
+      (log) => Number(log.blockNumber) >= Number(fromBlock) && Number(log.blockNumber) <= Number(toBlock),
+    ),
+  };
+  const selector = { spaceId, chainId: 1952, contractAddress: indexedContract };
+  const key = `${1952}:${indexedContract}:${created.args.jobId}`;
+  const onchainJobs = () => [...store.jobs.values()].filter((job) => job.onchainKey === key);
+
+  await new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client })
+    .sync({ fromBlock: 0, toBlock: 40 });
+  assert.equal(onchainJobs()[0].status, "Rejected");
+  assert.equal(onchainJobs()[0].sourceLog.blockNumber, 40);
+  assert.deepEqual(store.indexedProjectionRange(selector), { minBlock: 40, maxBlock: 40, count: 1 });
+
+  // rewind the cursor to 20, leaving the block-40 projection in place
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+  store.indexerCursors.set(indexer.cursorKey, { blockNumber: 20, txHash: created.transactionHash, logIndex: 0 });
+
+  // the projection range is what makes the staleness visible
+  const stale = store.indexedProjectionRange(selector);
+  assert.ok(stale.maxBlock > 20);
+
+  // without a rebuild the replay collides with the stale terminal state
+  await assert.rejects(indexer.sync({ fromBlock: 21, toBlock: 50 }), /JobFunded cannot transition indexed job .* from 'Rejected'/);
+
+  // rebuilding from the deploy block clears the derived state
+  const pruned = store.pruneIndexedProjections({ ...selector, fromBlock: 0 });
+  assert.equal(pruned.jobs, 1);
+  assert.ok(pruned.activity > 0);
+  assert.equal(onchainJobs().length, 0);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.source === "onchain").length, 0);
+  assert.deepEqual(store.indexedProjectionRange(selector), { minBlock: null, maxBlock: null, count: 0 });
+
+  // the cursor has to go with the derived state: a cursor left at block 40 would
+  // make the replay skip JobCreated(10) and the job could never be rebuilt
+  store.indexerCursors.delete(indexer.cursorKey);
+
+  // and the full replay rebuilds the same terminal state from canonical order
+  const replay = await indexer.sync({ fromBlock: 0, toBlock: 50 });
+  assert.equal(replay.inapplicable.length, 0);
+  assert.equal(onchainJobs()[0].status, "Rejected");
+  assert.equal(onchainJobs()[0].sourceLog.blockNumber, 40);
+});
