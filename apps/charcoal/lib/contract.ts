@@ -24,6 +24,20 @@ export interface Job { jobId: string; spaceId: string; client?: string; provider
 export interface Request { requestId: string; spaceId: string; title: string; instructions?: string; createdBy: string; assignee?: string | null; status: RequestStatus; createdAt?: string }
 export interface Receipt { receiptId: string; txHash: string; txHashes: Record<string, string>; onchainJobId: string; amount: string; asset: string; network: string; chainId: number; status: "SETTLED"; deliverableHash?: string }
 export interface Health { ok: boolean; network: string; chainId: number; time: string }
+export interface GovernanceConfig { enabled: boolean; threshold: number; signerAllowlist: string[] }
+export interface GovernanceApproval { signerAddress: string; signature?: string; approvedAt?: string }
+export interface GovernanceRequest {
+  requestId: string; spaceId: string; requesterAddress: string; recipient: string; amount: string;
+  asset: string; memo: string; deadline: string; chainId: number; digest: string;
+  approvals: GovernanceApproval[]; status: string; createdAt: string; executedAt: string | null;
+  receipt: { txHash?: string; receiptId?: string; amount?: string; asset?: string; network?: string; chainId?: number } | null;
+}
+export interface Eip712TypedData {
+  types: Record<string, Array<{ name: string; type: string }>>;
+  domain: Record<string, unknown>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
 export interface AuthSession { authenticated: boolean; address: string | null; expiresAt?: number | null }
 export interface AuthChallenge { address: string; nonce: string; message: string; expiresAt: number }
 export interface Invitation { code: string; spaceId: string; address: string; role: string; displayName: string; status: string; expiresAt: string }
@@ -69,3 +83,24 @@ export async function evaluateJob(spaceId: string, jobId: string, evaluatorId: s
 export async function postVerdict(spaceId: string, jobId: string, adjudicatorId: string, approved: boolean, reason?: string): Promise<{ job: Job; receipt?: Receipt; gaiaRefund?: string }> { return post(`/api/spaces/${q(spaceId)}/work/${q(jobId)}/post-verdict`, { adjudicatorId, approved, reason }); }
 export async function requestVerdict(spaceId: string, jobId: string, actorId: string): Promise<{ job: Job; case: { caseId: string; deliverableHash: string; evidenceUri?: string; rubricHash?: string } }> { return post(`/api/spaces/${q(spaceId)}/work/${q(jobId)}/request-verdict`, { actorId }); }
 export function okLinkTxUrl(txHash: string): string { return `https://www.oklink.com/xlayer-testnet/tx/${txHash}`; }
+
+// ---- M12 threshold governance ----
+export async function fetchGovernanceConfig(spaceId: string, signal?: AbortSignal): Promise<GovernanceConfig> {
+  return (await request<{ governance: GovernanceConfig }>(`/api/spaces/${q(spaceId)}/governance/payments`, { signal })).governance;
+}
+export async function configureGovernance(spaceId: string, body: { threshold: number; signerAllowlist: string[]; enabled?: boolean }): Promise<GovernanceConfig> {
+  return (await post<{ governance: GovernanceConfig }>(`/api/spaces/${q(spaceId)}/governance/config`, body)).governance;
+}
+export async function createGovernancePayment(spaceId: string, body: { recipient: string; amount: string; deadline: string; memo?: string }): Promise<{ request: GovernanceRequest; typedData: Eip712TypedData }> {
+  return post(`/api/spaces/${q(spaceId)}/governance/payments`, body);
+}
+export async function fetchGovernanceRequests(spaceId: string, status?: string, signal?: AbortSignal): Promise<GovernanceRequest[]> {
+  const query = status ? `?status=${q(status)}` : "";
+  return (await request<{ requests: GovernanceRequest[] }>(`/api/spaces/${q(spaceId)}/governance/requests${query}`, { signal })).requests;
+}
+export async function signGovernanceRequest(spaceId: string, requestId: string, signature: string): Promise<GovernanceRequest> {
+  return (await post<{ request: GovernanceRequest }>(`/api/spaces/${q(spaceId)}/governance/requests/${q(requestId)}/sign`, { signature })).request;
+}
+export async function executeGovernanceRequest(spaceId: string, requestId: string): Promise<{ status: string; request: GovernanceRequest; receipt?: GovernanceRequest["receipt"]; spaceBalance: string }> {
+  return post(`/api/spaces/${q(spaceId)}/governance/requests/${q(requestId)}/execute`, {});
+}
