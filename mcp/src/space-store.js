@@ -1272,6 +1272,67 @@ export class SpaceStore {
     return { job: { ...job }, submitted: true };
   }
 
+  requestAdjudicationIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, adjudicator, caseId, blockNumber, txHash, logIndex }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const externalId = String(onchainJobId);
+    const onchainKey = `${chain}:${contract}:${externalId}`;
+    const job = [...this.jobs.values()].find((entry) => entry.onchainKey === onchainKey);
+    if (!job) throw new Error(`AdjudicationRequested references unknown indexed job '${onchainKey}'`);
+    if (job.spaceId !== spaceId) throw new Error(`Indexed job '${onchainKey}' belongs to Space '${job.spaceId}'`);
+    if (typeof adjudicator !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(adjudicator)) throw new Error('AdjudicationRequested requires a valid adjudicator address');
+    if (typeof caseId !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(caseId)) throw new Error('AdjudicationRequested requires a bytes32 caseId');
+    const normalizedAdjudicator = adjudicator.toLowerCase();
+    const normalizedCaseId = caseId.toLowerCase();
+    const sourceLog = { blockNumber: Number(blockNumber), txHash: String(txHash).toLowerCase(), logIndex: Number(logIndex) };
+    const sameSourceLog = job.sourceLog && job.sourceLog.blockNumber === sourceLog.blockNumber && job.sourceLog.txHash === sourceLog.txHash && job.sourceLog.logIndex === sourceLog.logIndex;
+    if (job.status === 'Adjudicating' && sameSourceLog && job.adjudicator === normalizedAdjudicator && job.adjudication?.caseId === normalizedCaseId) {
+      return { job: { ...job }, requested: false };
+    }
+    if (job.status !== 'Submitted') {
+      throw new Error(`AdjudicationRequested cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    job.status = 'Adjudicating';
+    job.adjudicator = normalizedAdjudicator;
+    job.adjudication = {
+      caseId: normalizedCaseId,
+      requestedAt: timestamp,
+      deliverableHash: job.deliverableHash,
+      evidenceUri: job.evidenceUri,
+      rubricHash: job.rubricHash,
+    };
+    job.statusHistory.push({ status: 'Adjudicating', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push({
+      type: 'WORK_ADJUDICATION_REQUESTED',
+      jobId: job.jobId,
+      spaceId,
+      source: 'onchain',
+      onchainJobId: externalId,
+      onchainKey,
+      chainId: chain,
+      contractAddress: contract,
+      adjudicator: normalizedAdjudicator,
+      caseId: normalizedCaseId,
+      deliverableHash: job.deliverableHash,
+      evidenceUri: job.evidenceUri,
+      rubricHash: job.rubricHash,
+      fromStatus: 'Submitted',
+      toStatus: 'Adjudicating',
+      blockNumber: sourceLog.blockNumber,
+      txHash: sourceLog.txHash,
+      logIndex: sourceLog.logIndex,
+      timestamp,
+    });
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, requested: true };
+  }
+
   /**
    * Read a Work Order by ID (applies lazy expiry first).
    */

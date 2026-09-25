@@ -6,10 +6,12 @@ const curatedAbis = require("../../packages/sdk/src/abis.json");
 const jobCreatedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobCreated("));
 const jobFundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobFunded("));
 const jobSubmittedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobSubmitted("));
-if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
+const adjudicationRequestedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationRequested("));
+if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !adjudicationRequestedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
 export const JOB_CREATED_ABI = parseAbiItem(jobCreatedFragment);
 export const JOB_FUNDED_ABI = parseAbiItem(jobFundedFragment);
 export const JOB_SUBMITTED_ABI = parseAbiItem(jobSubmittedFragment);
+export const ADJUDICATION_REQUESTED_ABI = parseAbiItem(adjudicationRequestedFragment);
 
 function addressKey(value) {
   return String(value).toLowerCase();
@@ -41,7 +43,7 @@ function orderedLogs(logs) {
 
 function eventName(log) {
   if (log.eventName) {
-    if (log.eventName !== "JobCreated" && log.eventName !== "JobFunded" && log.eventName !== "JobSubmitted") {
+    if (log.eventName !== "JobCreated" && log.eventName !== "JobFunded" && log.eventName !== "JobSubmitted" && log.eventName !== "AdjudicationRequested") {
       throw new Error(`Unsupported indexed event '${log.eventName}'`);
     }
     return log.eventName;
@@ -50,12 +52,13 @@ function eventName(log) {
     if (log.topics[0] === getEventSelector(JOB_CREATED_ABI)) return "JobCreated";
     if (log.topics[0] === getEventSelector(JOB_FUNDED_ABI)) return "JobFunded";
     if (log.topics[0] === getEventSelector(JOB_SUBMITTED_ABI)) return "JobSubmitted";
+    if (log.topics[0] === getEventSelector(ADJUDICATION_REQUESTED_ABI)) return "AdjudicationRequested";
   }
   throw new Error("Indexed log is missing a recognized event name or topic");
 }
 
 function eventArgs(log, name) {
-  const abi = name === "JobCreated" ? JOB_CREATED_ABI : name === "JobFunded" ? JOB_FUNDED_ABI : JOB_SUBMITTED_ABI;
+  const abi = name === "JobCreated" ? JOB_CREATED_ABI : name === "JobFunded" ? JOB_FUNDED_ABI : name === "JobSubmitted" ? JOB_SUBMITTED_ABI : ADJUDICATION_REQUESTED_ABI;
   const args = log.data && log.topics
     ? decodeEventLog({ abi: [abi], data: log.data, topics: log.topics }).args
     : log.args;
@@ -69,8 +72,12 @@ function eventArgs(log, name) {
     const [jobId, amount] = args;
     return { jobId, amount };
   }
-  const [jobId, deliverableHash] = args;
-  return { jobId, deliverableHash };
+  if (name === "JobSubmitted") {
+    const [jobId, deliverableHash] = args;
+    return { jobId, deliverableHash };
+  }
+  const [jobId, adjudicator, caseId] = args;
+  return { jobId, adjudicator, caseId };
 }
 
 export class JobCreatedIndexer {
@@ -123,7 +130,7 @@ export class JobCreatedIndexer {
 
     const logs = await this.client.getLogs({
       address: this.contractAddress,
-      events: [JOB_CREATED_ABI, JOB_FUNDED_ABI, JOB_SUBMITTED_ABI],
+      events: [JOB_CREATED_ABI, JOB_FUNDED_ABI, JOB_SUBMITTED_ABI, ADJUDICATION_REQUESTED_ABI],
       fromBlock: BigInt(start),
       toBlock: BigInt(end),
     });
@@ -163,8 +170,10 @@ export class JobCreatedIndexer {
         });
       } else if (name === "JobFunded") {
         this.store.fundIndexedJob({ ...common, amount: args.amount });
-      } else {
+      } else if (name === "JobSubmitted") {
         this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
+      } else {
+        this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
       }
       this.store.indexerCursors.set(this.cursorKey, position);
       await this.checkpoint();

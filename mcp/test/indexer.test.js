@@ -74,6 +74,16 @@ function submittedLog({ jobId = 7n, deliverableHash = `0x${"a".repeat(64)}`, blo
   };
 }
 
+function adjudicationLog({ jobId = 7n, adjudicator = "0x5555555555555555555555555555555555555555", caseId = `0x${"c".repeat(64)}`, blockNumber = 10, logIndex = 3, txDigit = "4" } = {}) {
+  return {
+    eventName: "AdjudicationRequested",
+    blockNumber,
+    transactionHash: `0x${txDigit.repeat(64)}`,
+    logIndex,
+    args: { jobId, adjudicator, caseId },
+  };
+}
+
 function addOpenIndexedJob(store, log = createdLog()) {
   return store.upsertIndexedJob({
     spaceId,
@@ -102,6 +112,20 @@ function addFundedIndexedJob(store, created = createdLog(), funded = fundedLog()
     blockNumber: funded.blockNumber,
     txHash: funded.transactionHash,
     logIndex: funded.logIndex,
+  });
+}
+
+function addSubmittedIndexedJob(store, created = createdLog(), funded = fundedLog(), submitted = submittedLog()) {
+  addFundedIndexedJob(store, created, funded);
+  return store.submitIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: submitted.args.jobId,
+    deliverableHash: submitted.args.deliverableHash,
+    blockNumber: submitted.blockNumber,
+    txHash: submitted.transactionHash,
+    logIndex: submitted.logIndex,
   });
 }
 
@@ -516,6 +540,156 @@ test("M9-4: JobSubmitted projection persists across restart", async () => {
     assert.deepEqual(restartedJob.sourceLog, { blockNumber: 20, txHash: submitted.transactionHash, logIndex: 6 });
     assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
     assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_SUBMITTED").length, 1);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("M9-5: AdjudicationRequested transitions Submitted to Adjudicating and records its source log", () => {
+  const store = new SpaceStore();
+  const requested = adjudicationLog();
+  addSubmittedIndexedJob(store);
+
+  const result = store.requestAdjudicationIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: requested.args.jobId,
+    adjudicator: requested.args.adjudicator,
+    caseId: requested.args.caseId,
+    blockNumber: requested.blockNumber,
+    txHash: requested.transactionHash,
+    logIndex: requested.logIndex,
+  });
+
+  assert.equal(result.requested, true);
+  assert.equal(result.job.status, "Adjudicating");
+  assert.equal(result.job.adjudicator, requested.args.adjudicator);
+  assert.equal(result.job.adjudication.caseId, requested.args.caseId);
+  assert.equal(result.job.adjudication.deliverableHash, submittedLog().args.deliverableHash);
+  assert.deepEqual(result.job.statusHistory.map((entry) => entry.status), ["Open", "Funded", "Submitted", "Adjudicating"]);
+  assert.deepEqual(result.job.sourceLog, { blockNumber: 10, txHash: requested.transactionHash, logIndex: 3 });
+  const activity = store.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_REQUESTED");
+  assert.equal(activity.length, 1);
+  assert.equal(activity[0].adjudicator, requested.args.adjudicator);
+  assert.equal(activity[0].caseId, requested.args.caseId);
+  assert.equal(activity[0].fromStatus, "Submitted");
+  assert.equal(activity[0].toStatus, "Adjudicating");
+});
+
+test("M9-5: AdjudicationRequested has no Space financial side effects", () => {
+  const store = new SpaceStore();
+  const requested = adjudicationLog();
+  addSubmittedIndexedJob(store);
+  const spaceBefore = structuredClone(store.getSpace(spaceId));
+  const receiptsBefore = store.receipts.size;
+  store.requestVerdict = () => { throw new Error("requestVerdict must not run"); };
+  store._settleJob = async () => { throw new Error("settlement must not run"); };
+  store._claimRefund = () => { throw new Error("refund must not run"); };
+
+  const { job } = store.requestAdjudicationIndexedJob({
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: requested.args.jobId,
+    adjudicator: requested.args.adjudicator,
+    caseId: requested.args.caseId,
+    blockNumber: requested.blockNumber,
+    txHash: requested.transactionHash,
+    logIndex: requested.logIndex,
+  });
+
+  assert.deepEqual(store.getSpace(spaceId), spaceBefore);
+  assert.equal(store.receipts.size, receiptsBefore);
+  assert.equal(job.budget, "123.456789");
+  assert.equal(job.escrowedAmount, "123.456789");
+  assert.equal(job.refunded, false);
+  assert.equal(job.refundedAmount, null);
+  assert.equal(job.settlement, null);
+});
+
+test("M9-5: AdjudicationRequested replay is idempotent and conflicts loudly", () => {
+  const store = new SpaceStore();
+  const requested = adjudicationLog();
+  addSubmittedIndexedJob(store);
+  const input = {
+    spaceId,
+    chainId: 1952,
+    contractAddress: indexedContract,
+    onchainJobId: requested.args.jobId,
+    adjudicator: requested.args.adjudicator,
+    caseId: requested.args.caseId,
+    blockNumber: requested.blockNumber,
+    txHash: requested.transactionHash,
+    logIndex: requested.logIndex,
+  };
+
+  assert.equal(store.requestAdjudicationIndexedJob(input).requested, true);
+  assert.equal(store.requestAdjudicationIndexedJob(input).requested, false);
+  assert.throws(() => store.requestAdjudicationIndexedJob({ ...input, caseId: `0x${"d".repeat(64)}` }), /from 'Adjudicating'/);
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_REQUESTED").length, 1);
+});
+
+test("M9-5: combined indexer applies AdjudicationRequested in same-block canonical order", async () => {
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 3 });
+  const funded = fundedLog({ logIndex: 4 });
+  const submitted = submittedLog({ logIndex: 5 });
+  const requested = adjudicationLog({ logIndex: 6 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [requested, submitted, funded, created] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const result = await indexer.sync({ fromBlock: 0, toBlock: 10 });
+  const job = [...store.jobs.values()][0];
+
+  assert.equal(result.processed, 4);
+  assert.equal(job.status, "Adjudicating");
+  assert.equal(job.adjudication.caseId, requested.args.caseId);
+  assert.deepEqual(store.getActivity(spaceId).slice(-4).map((entry) => entry.type), ["WORK_CREATED", "WORK_FUNDED", "WORK_SUBMITTED", "WORK_ADJUDICATION_REQUESTED"]);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: requested.transactionHash, logIndex: 6 });
+});
+
+test("M9-5: AdjudicationRequested before JobSubmitted fails loudly", async () => {
+  const store = new SpaceStore();
+  const created = createdLog({ logIndex: 0 });
+  const requested = adjudicationLog({ logIndex: 1 });
+  const client = { getBlockNumber: async () => 10n, getLogs: async () => [created, requested] };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  await assert.rejects(indexer.sync({ fromBlock: 0, toBlock: 10 }), /from 'Open'/);
+  assert.equal([...store.jobs.values()][0].status, "Open");
+  assert.equal(store.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_REQUESTED").length, 0);
+  assert.deepEqual(indexer.getCursor(), { blockNumber: 10, txHash: created.transactionHash, logIndex: 0 });
+});
+
+test("M9-5: AdjudicationRequested projection persists across restart", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "microcosm-m9-adjudication-"));
+  const snapshotPath = path.join(directory, "store.json");
+  try {
+    const created = createdLog({ blockNumber: 20, logIndex: 4 });
+    const funded = fundedLog({ blockNumber: 20, logIndex: 5 });
+    const submitted = submittedLog({ blockNumber: 20, logIndex: 6 });
+    const requested = adjudicationLog({ blockNumber: 20, logIndex: 7 });
+    const client = { getBlockNumber: async () => 20n, getLogs: async () => [created, funded, submitted, requested] };
+    const store = new SpaceStore();
+    const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+
+    await indexer.sync({ fromBlock: 0, toBlock: 20 });
+    const cursor = indexer.getCursor();
+    const restartedStore = new SpaceStore();
+    assert.equal(load(restartedStore, snapshotPath), true);
+    const restarted = new JobCreatedIndexer({ store: restartedStore, chainId: 1952, contractAddress: indexedContract, client, dataPath: snapshotPath });
+    const replay = await restarted.sync({ fromBlock: 0, toBlock: 20 });
+    const restartedJob = [...restartedStore.jobs.values()][0];
+
+    assert.equal(replay.processed, 0);
+    assert.equal(replay.skipped, 4);
+    assert.equal(restartedJob.status, "Adjudicating");
+    assert.equal(restartedJob.adjudicator, requested.args.adjudicator);
+    assert.equal(restartedJob.adjudication.caseId, requested.args.caseId);
+    assert.deepEqual(restartedJob.sourceLog, { blockNumber: 20, txHash: requested.transactionHash, logIndex: 7 });
+    assert.deepEqual(restartedStore.indexerCursors.get(restarted.cursorKey), cursor);
+    assert.equal(restartedStore.getActivity(spaceId).filter((entry) => entry.type === "WORK_ADJUDICATION_REQUESTED").length, 1);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
