@@ -59,3 +59,6 @@ microcosm-data.json.*
 # HyperFrames working snapshots (regenerate with: npx hyperframes snapshot)
 videos/*/snapshots*/
 videos/*/dist/
+
+# Demo Foundry local toolchain venv and render workspace
+.demo-foundry/
