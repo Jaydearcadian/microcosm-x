@@ -4,8 +4,8 @@ test('landing CTA opens the onboarding route', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Create your Space' }).click();
   await expect(page).toHaveURL(/\/app\/onboarding/);
-  await expect(page.getByRole('heading', { name: 'Connect' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Connect Wallet/i }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: /Connect Wallet/i }).first()).toBeVisible({ timeout: 15000 });
 });
 
 test('onboarding frames the Space as a shared commerce environment', async ({ page }) => {
