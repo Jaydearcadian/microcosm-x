@@ -18,9 +18,10 @@ Base URL (dev): `http://localhost:8787`
   - `404` unknown space / request / job / participant
   - `409` illegal state transition (e.g. evaluate a `Funded` job, double vote)
   - `422` policy denial — body carries the full `denialProof` (Sandbox renders this)
-- Receipts always carry `simulated: boolean`. `false` = real tx hash from the
-  chain; `true` = announced fallback. The UI must render the flag (CON-06).
-- Pagination: `?limit=50&cursor=<seq>` → `{ items, nextCursor }`. Activity
+- Receipts are real onchain settlements and carry `txHash`, `txHashes`, and
+  `onchainJobId`; there is no `simulated` field. Failed settlement returns an
+  error and leaves Space books unchanged.
+- Pagination: `?limit=50&cursor=<seq>` → `{ activity, nextCursor }`. Activity
   records carry monotonically increasing `seq` per space.
 
 ## 2. Endpoints
@@ -41,7 +42,7 @@ Base URL (dev): `http://localhost:8787`
 
 ### Participants
 
-- `GET /api/spaces/:id/participants?kind=&status=` → `{ participants: [{ id, kind, displayName, address, status }] }`
+- `GET /api/spaces/:id/participants?kind=&status=` → `{ participants: [{ participantId, kind, displayName, address, status }] }`
   - `kind`: `human | agent | service | organization | counterparty`
 - `POST /api/spaces/:id/participants` `{ kind, displayName, address?, actorId? }` → `201 { participant }`
 - `POST /api/spaces/:id/participants/:pid/deactivate` `{ actorId }` → `200 { participant }`
@@ -62,7 +63,7 @@ Base URL (dev): `http://localhost:8787`
 ### Work (escrow → proof → settle/refund)
 
 - `GET /api/spaces/:id/work` → `{ jobs: [{ jobId, status, budget, escrowedAmount, provider, evaluator, deliverableHash, ... }] }`
-- `POST /api/spaces/:id/work` `{ actorId, provider, evaluator, adjudicator?, rubricHash?, description, budget, deadline, requestId? }` → `201 { job, escrowedAmount, remainingBalance }`
+- `POST /api/spaces/:id/work` `{ actorId, provider, evaluator, adjudicator?, rubricHash?, description, budget, deadline, requestId? }` → `201 { status, job, request?, spaceBalance }`
   - statuses: `Funded → Submitted → Completed | Rejected | Expired | Adjudicating`
 - `GET /api/spaces/:id/work/:jobId` → `{ job }`
 - `POST /api/spaces/:id/work/:jobId/submit` `{ actorId, deliverableHash, evidenceUri? }` → `200 { job }`
@@ -72,7 +73,7 @@ Base URL (dev): `http://localhost:8787`
 
 ### Payments (bounded disbursement)
 
-- `POST /api/spaces/:id/payments` `{ actorId, recipient, amount, memo? }` → `200 { receipt, remainingBalance }` or `422 { denialProof, reasons }`
+- `POST /api/spaces/:id/payments` `{ actorId, recipient, amount, memo? }` → `200 { status, receipt, spaceBalance }` or `422 { error: { code: "POLICY_DENIAL", details: { denialProof, reasons } } }`
 
 ### Activity & live stream
 
@@ -88,7 +89,7 @@ Base URL (dev): `http://localhost:8787`
 type JobStatus = 'Funded' | 'Submitted' | 'Completed' | 'Rejected' | 'Expired' | 'Adjudicating';
 type RequestStatus = 'Open' | 'Assigned' | 'InProgress' | 'Completed' | 'Blocked' | 'Cancelled';
 interface Bounds { spaceId: string; treasuryBalance: string; spentToday: string; escrowed: string; remaining: string; dailyBudget: string; maxPerTransaction: string; denials: number; }
-interface Receipt { receiptId: string; txHash: string; amount: string; asset: string; network: string; chainId: number; status: 'SETTLED'; simulated: boolean; deliverableHash?: string; }
+interface Receipt { receiptId: string; txHash: string; txHashes: Record<string, string>; onchainJobId: string; amount: string; asset: string; network: string; chainId: number; status: 'SETTLED'; deliverableHash?: string; }
 interface DenialProof { spaceId: string; actorId: string; requestedAmount: string; reasons: string[]; proofHash: string; }
 interface ApiError { error: { code: 'VALIDATION' | 'NOT_FOUND' | 'STATE_CONFLICT' | 'POLICY_DENIAL'; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
 ```

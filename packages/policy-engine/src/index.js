@@ -56,7 +56,7 @@ export function evaluateSpacePayment(space, request) {
   // 1. Verify Space membership and actor role. actorId may be the member id
   // or the member name (displayName) — both identify a Space member.
   const member = (space.members || []).find(
-    (m) => m.id === request.actorId || m.name === request.actorId
+    (m) => m.id === request.actorId || m.name === request.actorId || m.address === request.actorId
   );
   if (!member) {
     reasons.push(`Actor '${request.actorId}' is not an authorized member of Space '${space.id}'`);

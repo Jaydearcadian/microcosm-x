@@ -91,7 +91,7 @@ async function main() {
   // Step 2: Add people + add agent
   console.log('\n[STEP 2] Founder adds people and the procurement agent as participants...');
   for (const p of [
-    { kind: 'Human', displayName: 'Finance Lead' },
+    { kind: 'Human', displayName: 'Finance Lead', address: deployerAddress() },
     { kind: 'Counterparty', displayName: 'CloudCompute Corp', address: VENDOR_ADDRESS, externalRef: 'crm:suppliers/4417' },
     { kind: 'Agent', displayName: 'Procurement Agent' },
   ]) {

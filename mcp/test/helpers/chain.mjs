@@ -16,7 +16,7 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdtempSync, openSync, closeSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -243,43 +243,63 @@ function applyChainEnv(booted) {
 }
 
 async function bootLocalChain(port, rpc) {
-  const child = spawn('anvil', ['--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
-  // Drain stderr continuously: an undisposed pipe fills (~64KB) and then
-  // FREEZES the node process mid-suite. This was the LIVE-6 wedging bug.
-  child.stderr.resume();
-  let banner = '';
+  const logDir = mkdtempSync(path.join('/tmp', 'microcosm-anvil-'));
+  const stdoutPath = path.join(logDir, 'stdout.log');
+  const stderrPath = path.join(logDir, 'stderr.log');
+  let child;
+
+  try {
+    const stdoutFd = openSync(stdoutPath, 'w');
+    const stderrFd = openSync(stderrPath, 'w');
+    child = spawn('anvil', ['--port', String(port)], { stdio: ['ignore', stdoutFd, stderrFd] });
+    closeSync(stdoutFd);
+    closeSync(stderrFd);
+  } catch (err) {
+    rmSync(logDir, { recursive: true, force: true });
+    throw err;
+  }
+
+  let settled = false;
   const bannerReady = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('chain harness: anvil banner timeout')), 30000);
-    child.stdout.on('data', (c) => {
-      banner += c.toString();
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(interval);
+      reject(err);
+    };
+    const check = () => {
+      let banner = '';
+      try {
+        banner = readFileSync(stdoutPath, 'utf8');
+      } catch {
+        return;
+      }
       if (/Listening on/i.test(banner)) {
-        clearTimeout(timer);
+        settled = true;
+        clearInterval(interval);
         resolve();
       }
-    });
-    child.on('error', (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    child.on('exit', (code) => {
-      if (!/Listening on/i.test(banner)) {
-        clearTimeout(timer);
-        reject(new Error(`chain harness: anvil exited early (code ${code}): ${banner.slice(-500)}`));
+    };
+    const onExit = (code) => {
+      let banner = '';
+      try {
+        banner = readFileSync(stdoutPath, 'utf8');
+      } catch {
+        banner = '';
       }
-    });
+      fail(new Error(`chain harness: anvil exited early (code ${code}): ${banner.slice(-500)}`));
+    };
+    const interval = setInterval(check, 100);
+    child.once('error', fail);
+    child.once('exit', onExit);
+    check();
   });
+
   try {
     await bannerReady;
     await waitForRpc(rpc);
+    const banner = readFileSync(stdoutPath, 'utf8');
     const { accounts, keys } = parseAnvilBanner(banner);
-    // Detach the banner listener and resume as a pure drain: keeping
-    // `banner += chunk` alive turns every log line into an O(n) copy of a
-    // multi-megabyte string, starving the harness event loop until anvil's
-    // own 64KB pipe fills and the node freezes deaf-but-alive. resume()
-    // without listeners discards at O(1).
-    child.stdout.removeAllListeners('data');
-    child.stdout.resume();
-    banner = '';
     if (!/^0x[0-9a-fA-F]{64}$/.test(keys[0]) || !/^0x[0-9a-fA-F]{64}$/.test(keys[1])) {
       throw new Error('chain harness: parsed anvil keys are malformed — refusing to continue');
     }
@@ -288,7 +308,6 @@ async function bootLocalChain(port, rpc) {
     const deployer = accounts[0];
     const provider = accounts[1];
     const deployed = deployKernel(rpc, deployerKey);
-    // Fund the triangle: deployer (client/evaluator/treasury) + provider.
     mintUsdc(rpc, deployed.MockERC20, deployerKey, deployer, 10_000_000_000000n);
     mintUsdc(rpc, deployed.MockERC20, deployerKey, provider, 1_000_000_000000n);
     return {
@@ -298,9 +317,14 @@ async function bootLocalChain(port, rpc) {
       contracts: { AgenticCommerce: deployed.AgenticCommerce, MockERC20: deployed.MockERC20 },
       keys: { deployer: deployerKey, provider: providerKey },
       addrs: { deployer, provider },
+      cleanup: async () => {
+        child.kill('SIGKILL');
+        rmSync(logDir, { recursive: true, force: true });
+      },
     };
   } catch (err) {
     child.kill('SIGKILL');
+    rmSync(logDir, { recursive: true, force: true });
     throw err;
   }
 }

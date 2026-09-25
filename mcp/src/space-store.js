@@ -775,9 +775,10 @@ export class SpaceStore {
   async _settleJob(space, job, fromStatus, decidedBy, feedback) {
     // Resolve Space member ids to wallet addresses for the onchain
     // evaluator binding (the chain needs addresses, not display ids).
-    const evaluatorAddr = (space.members || []).find((mb) => mb.id === job.evaluator || mb.id === job.client)?.address
-      || (space.members || []).flatMap((mb) => mb.address || [])[0]
-      || job.evaluator;
+    const evaluatorMember = (space.members || []).find(
+      (mb) => mb.id === job.evaluator || mb.name === job.evaluator || mb.address === job.evaluator || mb.id === job.client
+    );
+    const evaluatorAddr = evaluatorMember?.address || job.evaluator;
     let live;
     try {
       live = await this._liveSettle({
@@ -1245,7 +1246,7 @@ export class SpaceStore {
       joinedAt: now,
     };
     this.participants.set(participant.participantId, participant);
-    (space.members || []).push({ id: participant.displayName, name: participant.displayName, role: participant.role });
+    (space.members || []).push({ id: participant.displayName, name: participant.displayName, role: participant.role, address: participant.address || null });
     this.activity.get(spaceId).push({
       type: 'PARTICIPANT_ADDED',
       participantId: participant.participantId,

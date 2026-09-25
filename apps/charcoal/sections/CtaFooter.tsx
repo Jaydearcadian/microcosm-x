@@ -32,12 +32,7 @@ export function CtaFooter() {
             ]}
           />
           <div style={{ display: "flex", gap: 16, marginTop: 32, flexWrap: "wrap", alignItems: "center" }}>
-            <PillButton
-              variant="primary"
-              disabled
-              disabledReason="Wizard ships with M7 — destination pending"
-              revealDelay={0.5}
-            >
+            <PillButton href="/app/onboarding" variant="primary" revealDelay={0.5}>
               Create your Space
             </PillButton>
             <PillButton href="/docs/API_CONTRACT.md" variant="ghost" revealDelay={0.6}>

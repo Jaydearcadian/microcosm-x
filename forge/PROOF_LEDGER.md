@@ -18,7 +18,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **MCP-2** | MCP Agent | Agent payment request exceeding rule is rejected with `isError: true` and denial proof | `VERIFIED` | `npm run test:mcp` (`MCP-3` PASS) | 2026-09-19 |
 | **WORK-1** | Work Lifecycle | Work creation escrows budget from Space balance (`Open` → `Funded`) | `VERIFIED` | `npm run test:mcp` (`WORK-1` PASS) | 2026-09-19 |
 | **WORK-2** | Work Lifecycle | Provider submits deliverable hash (`Funded` → `Submitted`) with evidence URI | `VERIFIED` | `npm run test:mcp` (`WORK-2` PASS) | 2026-09-19 |
-| **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`, payment settles (escrow accounting and receipt are real; the onchain transfer is simulated — `receipt.simulated === true`) | `VERIFIED` | `npm run test:mcp` (`WORK-3` PASS) | 2026-09-21 |
+| **WORK-3** | Work Lifecycle | Evaluator approves → `Completed`; settlement runs on the configured EVM and receipts contain real transaction hashes with no simulated fallback | `VERIFIED` | `npm run test:mcp` (`LIVE-2` PASS) | 2026-09-25 |
 | **WORK-4** | Gaia Exception | Evaluator rejects → `Rejected`, Gaia refund returns 100% to Space ($0 lost); expiry → `Expired` with full refund; no payout without deliverable proof | `VERIFIED` | `npm run test:mcp` (`WORK-4`, `WORK-5`, `WORK-6` PASS) | 2026-09-19 |
 | **WORK-7** | Policy Boundary | Concurrent Work Order escrows count against the daily budget at creation (no collective daily-cap breach); Gaia refunds restore daily headroom | `VERIFIED` | `npm run test:mcp` (`WORK-7` PASS) | 2026-09-19 |
 | **ATTEST-1** | X Layer | Valid EIP-712 attestation (Microcosm domain, chain-bound) settles payment and releases job escrow | `VERIFIED` | `contracts/test/Attestation.t.sol` (`testValidAttestationSettlesPayment`, `testCommerceAttestedSettlementReleasesEscrow` PASS) | 2026-09-19 |
@@ -33,11 +33,24 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M4** | Persistence | Atomic snapshot driver: every mutation checkpoints to disk; SIGKILL + reboot restores spaces, jobs, requests, counters; corrupt snapshots refuse to boot | `VERIFIED` | `npm run test:server` (`M4-1`, `M4-2` PASS) + live box restart restores 2 spaces from snapshot | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (80 tests passed, 0 failed) | 2026-09-24 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (91 tests passed, 0 failed) | 2026-09-25 |
+| **AGENTIC-1** | Agent / E2E | Tool-using agent completes Request → Work → proof → evaluation → real testnet settlement and trace | `VERIFIED` | `node scripts/agentic-testnet-e2e.mjs`; 14 MCP calls; tx `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`; receipt status `1` at block `41861915` | 2026-09-25 |
 
 ---
 
 ## Log of Executed Evidence
+
+### 2026-09-25: Testnet tool-using agent acceptance (AGENTIC-1)
+* **Command**: `node scripts/agentic-testnet-e2e.mjs` with `XLAYER_RPC_URL=https://testrpc.xlayer.tech`, `XLAYER_CHAIN_ID=1952`, and the deployer key loaded from the local key handoff.
+* **Output**: 14 MCP tool calls; Space → roster → Request → receive → Work → submit → evaluate → complete → policy denial → trace; $1.00 Work Order settled.
+* **Transaction**: `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`; independent `cast receipt` confirmed `status 1` at block `41861915` on chain `1952`.
+* **Status**: `VERIFIED` for the testnet tool-driven agent loop. The deployer also acted as provider because no separate provider key was supplied; the run proves real MCP execution and settlement, not distinct-provider signing.
+
+### 2026-09-25: Backend live-settlement harness and REST identity continuity (MCP-1/2, WORK-3, M3, SUITE-1)
+* **Commands**: `node --test mcp/test/live-settlement.test.js`; `npm --workspace=@microcosm/server test`; `make test`; `node scripts/verify-proof-ledger.mjs`
+* **Output**: live MCP settlement 6/6, REST conformance 8/8, full gate 91 passed and 0 failed, proof-ledger verifier 26/26 verified.
+* **Fixes**: Anvil output is file-backed so synchronous Forge/Cast calls cannot fill a child pipe; participant wallet addresses are retained in Space member records; policy and settlement resolve member identity by id, name, or address; evaluator resolution never substitutes an unrelated participant.
+* **Status**: `VERIFIED` for the executed local evidence. Testnet agentic E2E remains a separate claim and requires a key-bearing environment.
 
 ### 2026-09-24: M3 REST + SSE server, frozen API contract, UI agent brief (M3, SUITE-1)
 * **Command**: `make test` (incl. new `make test-server`)

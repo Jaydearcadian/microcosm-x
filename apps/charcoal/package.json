@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
-    "start": "next start --port 3000"
+    "start": "next start --port 3000",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "motion": "^12.23.0",
@@ -15,6 +16,7 @@
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20.17.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

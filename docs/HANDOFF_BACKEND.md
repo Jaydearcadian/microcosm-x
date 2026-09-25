@@ -16,18 +16,16 @@ Net USDC loss: zero (self-transfers + refunds; gas only).
 
 ## 2. Scoreboard (evidence-backed only)
 
-- Contracts (foundry): 36/36 green (local + EC2).
+- Contracts (foundry): 36/36 green.
 - MCP offline: 19/19 green, provably chain-free.
-- MCP live (anvil): 5/6 — LIVE-1..5 move REAL USDC (distinct provider-key
-  submit proven). LIVE-6 fails: 6th consecutive settle hangs one RPC call
-  ~45s. Root cause narrowed (see §5), fix written, NOT yet verified.
-- SDK client (5) + ABI drift (3): green locally.
-- Server conformance (live), wizard live test, demo testnet re-run: WRITTEN,
-  NOT yet executed green (see §4 for order).
-- EC2 hosted API (`:8791`, systemd): serving a STALE pre-refactor build.
-  Redeploy LAST, after green.
+- MCP live (local EVM harness): 6/6 green; LIVE-1..6 execute real signed settlement transactions with no simulated receipts.
+- SDK client + ABI drift + wizard: 9/9 green.
+- Server conformance + persistence: 8/8 green.
+- Testnet agentic E2E: 14 MCP tool calls, $1 Work settlement, policy denial, and evidence trace verified on chain 1952.
+- EC2 hosted API (`:8791`, systemd): still serving a stale pre-refactor build; redeploy remains pending.
 - Testnet spend so far: ~$352 moved to self + gas. Balances last checked:
   ~0.198 OKB, ~5B mock USDC at deployer `0x066cFaf02c08D4D2df5FaB2F93bf1B5dB1292367`.
+- Latest agentic testnet settlement: `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`, receipt status `1`, block `41861915`.
 
 ## 3. Do next, in this order
 

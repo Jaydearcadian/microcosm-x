@@ -39,8 +39,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     try {
       const list = await fetchSpaces();
       setSpaces(list);
+      if (!list.length) {
+        setSpaceId("");
+        setSpace(null); setBounds(null); setCapabilities(null); setParticipants([]); setJobs([]); setRequests([]); setActivity([]); setNextCursor(0);
+        return;
+      }
       const candidates = list.filter((item) => !spaceId || item.id === spaceId);
-      if (!candidates.length) throw new Error("No seeded Space is available on the API.");
+      if (!candidates.length) throw new Error("The selected Space is no longer available.");
       const jobCounts = await Promise.all(candidates.map(async (item) => ({ item, jobs: await fetchJobs(item.id) })));
       const selected = jobCounts.find(({ jobs }) => jobs.length > 0)?.item ?? candidates[0];
       setSpaceId(selected.id);
