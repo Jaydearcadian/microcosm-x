@@ -28,7 +28,7 @@ export interface DenialProof { spaceId: string; actorId: string; requestedAmount
 export interface Activity { seq: number; type: string; [key: string]: unknown }
 export interface ApiError { error: { code: "VALIDATION" | "NOT_FOUND" | "STATE_CONFLICT" | "POLICY_DENIAL"; message: string; details?: { denialProof?: DenialProof; reasons?: string[] } } }
 
-export const API_BASE = process.env.NEXT_PUBLIC_MICROCOSM_API ?? "http://52.40.133.66:8791";
+export const API_BASE = process.env.NEXT_PUBLIC_MICROCOSM_API ?? "";
 export const SEED_BOUNDS: Bounds = { spaceId: "", treasuryBalance: "4530.000000", spentToday: "470.000000", escrowed: "350.000000", remaining: "1180.000000", dailyBudget: "2000.00", maxPerTransaction: "500.00", denials: 1 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

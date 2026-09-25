@@ -185,7 +185,7 @@ export function Hero() {
                   {item.type}
                 </span>
                 <span>{item.detail}</span>
-                {item.hash && <HashChip hash={item.hash} simulated />}
+                {item.hash && <HashChip hash={item.hash} kind="proof" />}
               </span>
             </PillReveal>
           ))}

@@ -24,7 +24,7 @@ export function Provenance() {
           <BodyReveal
             className="muted"
             lines={[
-              "Activity records carry a monotonically increasing seq per Space. Settlement receipts bind tx hash to deliverable hash. Simulated hashes say so; real ones link to OKLink.",
+              "Activity records carry a monotonically increasing seq per Space. Settlement receipts bind tx hash to deliverable hash. Onchain hashes link to OKLink; proof hashes stay labeled as proof.",
             ]}
           />
           <div
@@ -53,13 +53,13 @@ export function Provenance() {
             </span>
             <HashChip
               hash="0x9ab4105b5c0a4b1e2f6d3c8a7e5f0b1c2d3e4f5a"
-              simulated
               label="SettlementRouter"
+              kind="contract"
             />
             <HashChip
               hash="0xc4d29e7f1a8b3c6d5e0f2a4b6c8d0e1f2a3b4c5d"
-              simulated
               label="AgenticCommerce"
+              kind="contract"
             />
           </div>
         </div>

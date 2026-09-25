@@ -106,7 +106,7 @@ export function Rules() {
             </ul>
             <p className="font-ui muted" style={{ fontSize: 12 }}>{RULE_DENIAL.impact}</p>
             <div style={{ marginTop: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <HashChip hash={RULE_DENIAL.proofHash} simulated label="denialProof" />
+              <HashChip hash={RULE_DENIAL.proofHash} label="denialProof" kind="proof" />
             </div>
           </div>
         </CardRise>

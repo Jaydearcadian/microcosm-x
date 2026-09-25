@@ -95,7 +95,7 @@ function buildColumn(step: (typeof KANBAN_STEPS)[number]) {
           <span className="muted" style={{ fontSize: 12 }}>
             {job.note}
           </span>
-          {job.hash && <HashChip hash={job.hash} simulated />}
+          {job.hash && <HashChip hash={job.hash} kind="proof" />}
         </div>
       ))}
     </div>

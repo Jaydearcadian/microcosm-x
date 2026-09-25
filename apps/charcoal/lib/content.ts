@@ -1,7 +1,7 @@
 /**
  * Static copy deck + evidence for sections 2–6 (brief §4). Static until the
- * brief says otherwise (§6). Every hash here is SIMULATED and must render the
- * simulated flag (CON-06) — never presented as onchain.
+ * brief says otherwise (§6). Landing examples are illustrative; live app
+ * receipts are rendered from the API and linked only when they are onchain.
  */
 
 export const LOOP_NODES = [
