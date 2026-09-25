@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { createPublicClient, decodeEventLog, http } from "viem";
 import { SpaceStore } from "../src/space-store.js";
-import { JOB_CREATED_ABI, JobCreatedIndexer } from "../src/indexer.js";
+import { IndexerRunLoop, JOB_CREATED_ABI, JobCreatedIndexer } from "../src/indexer.js";
 import { ensureChain } from "./helpers/chain.mjs";
 import { load, save } from "../../packages/server/src/persist.js";
 
@@ -1634,4 +1634,148 @@ test("M9-8: metadata/evidence projection persists across restart and remains sid
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("M9-9: indexer selects HTTP, WebSocket, and injected transports", () => {
+  const store = new SpaceStore();
+  const httpIndexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, rpcUrl: "https://rpc.example.test" });
+  const socketIndexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, rpcUrl: "https://rpc.example.test", transport: "websocket" });
+  const explicitSocketIndexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, rpcUrl: "wss://rpc.example.test" });
+  const injected = { getBlockNumber: async () => 0n };
+  const injectedIndexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, rpcUrl: "wss://rpc.example.test", client: injected });
+
+  assert.equal(httpIndexer.transportType, "http");
+  assert.equal(httpIndexer.client.transport.type, "http");
+  assert.equal(socketIndexer.transportType, "websocket");
+  assert.equal(socketIndexer.client.transport.type, "webSocket");
+  assert.equal(explicitSocketIndexer.transportType, "websocket");
+  assert.equal(injectedIndexer.transportType, "injected");
+  assert.equal(injectedIndexer.client, injected);
+});
+
+test("M9-9: reconciliation exposes safe failure state and recovers on the next sync", async () => {
+  let release;
+  let fail = true;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const store = new SpaceStore();
+  const client = {
+    getBlockNumber: async () => 10n,
+    getLogs: async () => {
+      if (fail) {
+        fail = false;
+        throw new Error("RPC failed at wss://user:password@rpc.example.test/?api_key=do-not-leak token=private-value");
+      }
+      await blocked;
+      return [];
+    },
+  };
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client });
+
+  const pending = indexer.sync();
+  assert.equal(indexer.getReconciliationState().status, "RECONCILING");
+  assert.equal(indexer.getReconciliationState().error, null);
+  await assert.rejects(pending, /RPC failed/);
+  const failed = indexer.getReconciliationState();
+  assert.equal(failed.status, "RECONCILING");
+  assert.equal(failed.error.name, "Error");
+  assert.doesNotMatch(JSON.stringify(failed), /password|do-not-leak|private-value|user:/);
+  assert.match(failed.error.message, /\[redacted endpoint\]/);
+
+  const recovered = indexer.sync();
+  release();
+  await recovered;
+  assert.deepEqual(indexer.getReconciliationState(), { status: "RECONCILED", error: null });
+});
+
+test("M9-9: polling run loop starts once, serializes sync, and stops cleanly", async () => {
+  let release;
+  let calls = 0;
+  let active = 0;
+  let maximumActive = 0;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const worker = new IndexerRunLoop({
+    intervalMs: 60_000,
+    sync: async () => {
+      calls += 1;
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await blocked;
+      active -= 1;
+    },
+  });
+
+  worker.start();
+  worker.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  assert.equal(maximumActive, 1);
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(calls, 1);
+  await worker.stop();
+  assert.equal(calls, 1);
+  assert.equal(worker.mode, "polling");
+});
+
+test("M9-9: restart-safe reorg rewinds orphaned events before canonical replay", async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "microcosm-m9-reorg-"));
+  const snapshotPath = path.join(directory, "store.json");
+  const blockNine = `0x${"9".repeat(64)}`;
+  const originalBlockTen = `0x${"a".repeat(64)}`;
+  const canonicalBlockTen = `0x${"b".repeat(64)}`;
+  const created = { ...createdLog({ blockNumber: 9, logIndex: 0 }), blockHash: blockNine };
+  const funded = { ...fundedLog({ blockNumber: 10, logIndex: 0 }), blockHash: originalBlockTen };
+  try {
+    const originalStore = new SpaceStore();
+    const originalClient = { getBlockNumber: async () => 10n, getLogs: async () => [created, funded] };
+    const original = new JobCreatedIndexer({ store: originalStore, chainId: 1952, contractAddress: indexedContract, client: originalClient, dataPath: snapshotPath, reorgDepth: 1 });
+    const first = await original.sync();
+    assert.equal(first.processed, 2);
+    assert.equal(original.getCursor().blockHash, originalBlockTen);
+    assert.equal([...originalStore.jobs.values()][0].status, "Funded");
+
+    const restartedStore = new SpaceStore();
+    assert.equal(load(restartedStore, snapshotPath), true);
+    const canonicalLogs = [{ ...created, blockHash: blockNine }];
+    const restartedClient = {
+      getBlockNumber: async () => 10n,
+      getBlock: async ({ blockNumber }) => ({ number: blockNumber, hash: blockNumber === 9n ? blockNine : canonicalBlockTen }),
+      getLogs: async ({ fromBlock }) => {
+        assert.equal(fromBlock, 9n);
+        return canonicalLogs;
+      },
+    };
+    const restarted = new JobCreatedIndexer({ store: restartedStore, chainId: 1952, contractAddress: indexedContract, client: restartedClient, dataPath: snapshotPath, reorgDepth: 1 });
+    const replay = await restarted.sync();
+    const job = [...restartedStore.jobs.values()][0];
+
+    assert.equal(replay.reorg.detected, true);
+    assert.equal(replay.reorg.safeBlock, 9);
+    assert.equal(replay.reorg.canonicalBlockHash, canonicalBlockTen);
+    assert.equal(replay.processed, 0);
+    assert.equal(replay.skipped, 1);
+    assert.equal(job.status, "Open");
+    assert.equal(job.budget, "0.000000");
+    assert.deepEqual(restartedStore.getActivity(spaceId).map((entry) => entry.type), ["WORK_CREATED"]);
+    assert.deepEqual(restarted.getCursor(), { blockNumber: 9, txHash: created.transactionHash, logIndex: 0, blockHash: blockNine });
+    assert.deepEqual(restarted.getReconciliationState(), { status: "RECONCILED", error: null });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("M9-9: snapshots without blockHash retain cursor semantics", async () => {
+  const store = new SpaceStore();
+  const created = createdLog({ blockNumber: 9, logIndex: 0 });
+  const funded = fundedLog({ blockNumber: 10, logIndex: 0 });
+  const indexer = new JobCreatedIndexer({ store, chainId: 1952, contractAddress: indexedContract, client: { getBlockNumber: async () => 10n, getLogs: async () => [created, funded] }, reorgDepth: 1 });
+
+  const first = await indexer.sync();
+  const replay = await indexer.sync();
+
+  assert.equal(first.processed, 2);
+  assert.equal(replay.processed, 0);
+  assert.equal(replay.skipped, 2);
+  assert.equal(indexer.getCursor().blockHash, undefined);
+  assert.deepEqual(indexer.getReconciliationState(), { status: "RECONCILED", error: null });
 });

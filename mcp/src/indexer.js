@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { createPublicClient, decodeEventLog, getEventSelector, http, parseAbiItem } from "viem";
+import { createPublicClient, decodeEventLog, getEventSelector, http, parseAbiItem, webSocket } from "viem";
 
 const require = createRequire(import.meta.url);
 const curatedAbis = require("../../packages/sdk/src/abis.json");
@@ -64,11 +64,38 @@ export function indexerCursorKey(chainId, contractAddress) {
 }
 
 function logPosition(log) {
-  return {
+  const position = {
     blockNumber: Number(log.blockNumber),
     txHash: String(log.transactionHash || log.txHash).toLowerCase(),
     logIndex: Number(log.logIndex),
   };
+  if (log.blockHash) position.blockHash = String(log.blockHash).toLowerCase();
+  return position;
+}
+
+function normalizeTransport(transport) {
+  const value = String(transport || "http").toLowerCase();
+  if (["http", "https"].includes(value)) return "http";
+  if (["ws", "wss", "websocket"].includes(value)) return "websocket";
+  throw new Error("JobCreatedIndexer transport must be http or websocket");
+}
+
+function websocketEndpoint(rpcUrl, webSocketUrl) {
+  const endpoint = String(webSocketUrl || rpcUrl || "");
+  if (!endpoint) throw new Error("JobCreatedIndexer WebSocket transport requires a URL");
+  return endpoint.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
+}
+
+function publicError(error) {
+  const name = typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9]*$/.test(error.name) ? error.name : "Error";
+  const message = String(error?.message || "Reconciliation failed")
+    .replace(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi, "[redacted endpoint]")
+    .replace(/((?:api[-_]?key|access[-_]?token|token|secret|password|authorization)\s*[:=]\s*)[^\s,;]+/gi, "$1[redacted]");
+  return { name, message: message.slice(0, 1000) };
+}
+
+function cloneValue(value) {
+  return structuredClone(value);
 }
 
 function samePosition(a, b) {
@@ -170,32 +197,60 @@ function eventArgs(log, name) {
 }
 
 export class JobCreatedIndexer {
-  constructor({ store, chainId, contractAddress, rpcUrl, client, spaceId = "space-procurement-001", fromBlock = 0, dataPath = null, persist = null }) {
+  constructor({ store, chainId, contractAddress, rpcUrl, webSocketUrl = null, transport = null, client, spaceId = "space-procurement-001", fromBlock = 0, reorgDepth = 8, dataPath = null, persist = null }) {
     if (!store) throw new Error("JobCreatedIndexer requires a SpaceStore");
     if (!Number.isInteger(Number(chainId))) throw new Error("JobCreatedIndexer requires an integer chainId");
     if (!/^0x[0-9a-fA-F]{40}$/.test(String(contractAddress || ""))) throw new Error("JobCreatedIndexer requires a contract address");
+    if (!Number.isInteger(Number(reorgDepth)) || Number(reorgDepth) < 1) throw new Error("JobCreatedIndexer requires a positive reorgDepth");
     this.store = store;
     this.chainId = Number(chainId);
     this.contractAddress = addressKey(contractAddress);
     this.spaceId = spaceId;
     this.fromBlock = Number(fromBlock);
+    this.reorgDepth = Number(reorgDepth);
     this.dataPath = dataPath;
     this.persist = persist;
     this.cursorKey = indexerCursorKey(this.chainId, this.contractAddress);
-    this.client = client || createPublicClient({
+    const selectedTransport = transport === null || transport === undefined
+      ? normalizeTransport(/^wss?:/i.test(String(rpcUrl || "")) ? "websocket" : "http")
+      : normalizeTransport(transport);
+    this.transportType = client ? "injected" : selectedTransport;
+    this.client = client || this.createClient({ rpcUrl, webSocketUrl, transport: selectedTransport });
+    const savedState = this.store.indexerReconciliations?.get(this.cursorKey);
+    this.reconciliation = savedState ? cloneValue(savedState) : { status: "RECONCILED", error: null };
+  }
+
+  createClient({ rpcUrl, webSocketUrl, transport }) {
+    const endpoint = transport === "websocket" ? websocketEndpoint(rpcUrl, webSocketUrl) : String(rpcUrl || "");
+    if (!endpoint) throw new Error("JobCreatedIndexer requires an RPC URL");
+    const defaultRpcUrls = { http: [endpoint] };
+    if (transport === "websocket") {
+      defaultRpcUrls.http = [String(rpcUrl || endpoint).replace(/^ws:/i, "http:").replace(/^wss:/i, "https:")];
+      defaultRpcUrls.webSocket = [endpoint];
+    }
+    return createPublicClient({
       chain: {
         id: this.chainId,
         name: `chain-${this.chainId}`,
         nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-        rpcUrls: { default: { http: [rpcUrl] } },
+        rpcUrls: { default: defaultRpcUrls },
       },
-      transport: http(rpcUrl),
+      transport: transport === "websocket" ? webSocket(endpoint) : http(endpoint),
     });
   }
 
   getCursor() {
     const cursor = this.store.indexerCursors.get(this.cursorKey);
     return cursor ? { ...cursor } : null;
+  }
+
+  getReconciliationState() {
+    return cloneValue(this.reconciliation);
+  }
+
+  setReconciliationState(status, error = null) {
+    this.reconciliation = { status, error: error ? publicError(error) : null };
+    if (this.store.indexerReconciliations) this.store.indexerReconciliations.set(this.cursorKey, cloneValue(this.reconciliation));
   }
 
   async checkpoint() {
@@ -209,108 +264,251 @@ export class JobCreatedIndexer {
     }
   }
 
+  isIndexedProjection(value) {
+    return value?.source === "onchain" && Number(value.chainId) === this.chainId && addressKey(value.contractAddress || "") === this.contractAddress;
+  }
+
+  captureReorgSnapshot(position) {
+    const jobs = [...this.store.jobs.entries()]
+      .filter(([, job]) => this.isIndexedProjection(job))
+      .map(([jobId, job]) => [jobId, cloneValue(job)]);
+    const activity = [];
+    for (const [spaceId, entries] of this.store.activity.entries()) {
+      entries.forEach((entry, index) => {
+        if (this.isIndexedProjection(entry)) activity.push({ spaceId, index, entry: cloneValue(entry) });
+      });
+    }
+    const snapshots = this.store.indexerReorgSnapshots.get(this.cursorKey) || [];
+    const snapshot = { blockNumber: position.blockNumber, blockHash: position.blockHash, cursor: this.getCursor(), jobs, activity };
+    const retained = snapshots.filter((entry) => entry.blockNumber < position.blockNumber);
+    retained.push(snapshot);
+    this.store.indexerReorgSnapshots.set(this.cursorKey, retained.filter((entry) => entry.blockNumber >= Math.max(0, position.blockNumber - this.reorgDepth)));
+  }
+
+  restoreReorgSnapshot(snapshot) {
+    for (const [jobId, job] of this.store.jobs.entries()) {
+      if (this.isIndexedProjection(job)) this.store.jobs.delete(jobId);
+    }
+    for (const [spaceId, entries] of this.store.activity.entries()) {
+      this.store.activity.set(spaceId, entries.filter((entry) => !this.isIndexedProjection(entry)));
+    }
+    if (!snapshot) {
+      this.store.indexerCursors.delete(this.cursorKey);
+      this.store.indexerReorgSnapshots.set(this.cursorKey, []);
+      return;
+    }
+    for (const [jobId, job] of snapshot.jobs) this.store.jobs.set(jobId, cloneValue(job));
+    for (const record of snapshot.activity) {
+      const entries = this.store.activity.get(record.spaceId) || [];
+      entries[record.index] = cloneValue(record.entry);
+      this.store.activity.set(record.spaceId, entries);
+    }
+    this.store.indexerCursors.set(this.cursorKey, cloneValue(snapshot.cursor));
+    this.store.indexerReorgSnapshots.set(this.cursorKey, cloneValue((this.store.indexerReorgSnapshots.get(this.cursorKey) || []).filter((entry) => entry.blockNumber <= snapshot.blockNumber)));
+  }
+
+  async detectReorg(cursor, endBlock) {
+    if (!cursor?.blockHash || endBlock < cursor.blockNumber || typeof this.client.getBlock !== "function") return null;
+    const block = await this.client.getBlock({ blockNumber: BigInt(cursor.blockNumber) });
+    if (!block?.hash || String(block.hash).toLowerCase() === cursor.blockHash) return null;
+    const safeBlock = Math.max(this.fromBlock, cursor.blockNumber - this.reorgDepth);
+    const candidates = (this.store.indexerReorgSnapshots.get(this.cursorKey) || [])
+      .filter((entry) => entry.blockNumber <= safeBlock)
+      .toReversed();
+    let snapshot = null;
+    for (const candidate of candidates) {
+      const safeBlockRecord = await this.client.getBlock({ blockNumber: BigInt(candidate.blockNumber) });
+      if (safeBlockRecord?.hash && String(safeBlockRecord.hash).toLowerCase() === candidate.blockHash) {
+        snapshot = candidate;
+        break;
+      }
+    }
+    this.restoreReorgSnapshot(snapshot);
+    return { detected: true, safeBlock, replayFromBlock: snapshot ? safeBlock : this.fromBlock, previousBlockNumber: cursor.blockNumber, canonicalBlockHash: String(block.hash).toLowerCase() };
+  }
+
   async sync({ fromBlock, toBlock } = {}) {
-    const cursor = this.getCursor();
-    const start = fromBlock === undefined ? cursor?.blockNumber ?? this.fromBlock : Number(fromBlock);
-    const end = toBlock === undefined ? Number(await this.client.getBlockNumber()) : Number(toBlock);
-    if (!Number.isInteger(start) || start < 0 || !Number.isInteger(end) || end < start) {
-      throw new Error("Invalid JobCreated indexer block range");
-    }
-
-    const logs = await this.client.getLogs({
-      address: this.contractAddress,
-      events: Object.values(eventAbis),
-      fromBlock: BigInt(start),
-      toBlock: BigInt(end),
-    });
-    const canonicalLogs = orderedLogs(logs);
-    for (let index = 1; index < canonicalLogs.length; index += 1) {
-      if (conflictingPosition(logPosition(canonicalLogs[index - 1]), logPosition(canonicalLogs[index]))) {
-        throw new Error("Indexed logs contain conflicting positions in the canonical ordering");
-      }
-    }
-    let processed = 0;
-    let skipped = 0;
-
-    for (const log of canonicalLogs) {
-      const position = logPosition(log);
-      if (cursor && conflictingPosition(position, cursor)) {
-        throw new Error("Indexed log conflicts with the persisted chainId:contract cursor");
-      }
-      if (cursor && (position.blockNumber < cursor.blockNumber || (position.blockNumber === cursor.blockNumber && !samePosition(position, cursor) && position.logIndex <= cursor.logIndex))) {
-        skipped += 1;
-        continue;
-      }
-      if (cursor && samePosition(position, cursor)) {
-        skipped += 1;
-        continue;
-      }
-
-      const name = eventName(log);
-      const args = eventArgs(log, name);
-      const common = {
-        spaceId: this.spaceId,
-        chainId: this.chainId,
-        contractAddress: this.contractAddress,
-        onchainJobId: args.jobId,
-        blockNumber: position.blockNumber,
-        txHash: position.txHash,
-        logIndex: position.logIndex,
-      };
-      if (name === "JobCreated") {
-        this.store.upsertIndexedJob({
-          ...common,
-          client: args.client,
-          provider: args.provider,
-          evaluator: args.evaluator,
-          description: args.description,
-          expiredAt: args.expiredAt,
-        });
-      } else if (name === "ProviderSet") {
-        this.store.setProviderIndexedJob({ ...common, provider: args.provider });
-      } else if (name === "BudgetSet") {
-        this.store.setBudgetIndexedJob({ ...common, amount: args.amount });
-      } else if (name === "AdjudicatorSet") {
-        this.store.setAdjudicatorIndexedJob({ ...common, adjudicator: args.adjudicator });
-      } else if (name === "RubricSet") {
-        this.store.setRubricIndexedJob({ ...common, rubricHash: args.rubricHash });
-      } else if (name === "EvidenceAttached") {
-        this.store.recordIndexedEvidenceAttached({ ...common, deliverableHash: args.deliverableHash });
-      } else if (name === "JobFunded") {
-        this.store.fundIndexedJob({ ...common, amount: args.amount });
-      } else if (name === "JobSubmitted") {
-        this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
-      } else if (name === "JobCompleted") {
-        this.store.completeIndexedJob({ ...common, reason: args.reason });
-      } else if (name === "JobRejected") {
-        this.store.rejectIndexedJob({ ...common, rejector: args.rejector, reason: args.reason });
-      } else if (name === "JobExpired") {
-        this.store.expireIndexedJob(common);
-      } else if (name === "Refunded") {
-        this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
-      } else if (name === "AdjudicationRequested") {
-        this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
-      } else if (name === "AdjudicationResolved") {
-        this.store.resolveAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, approve: args.approve, reason: args.reason });
-      } else {
-        this.store.recordIndexedAttestedSettlement({ ...common, provider: args.provider, amount: args.amount, nonce: args.nonce });
-      }
-      this.store.indexerCursors.set(this.cursorKey, position);
+    this.setReconciliationState("RECONCILING");
+    try {
       await this.checkpoint();
-      processed += 1;
-    }
+      const persistedCursor = this.getCursor();
+      const end = toBlock === undefined ? Number(await this.client.getBlockNumber()) : Number(toBlock);
+      const reorg = fromBlock === undefined ? await this.detectReorg(persistedCursor, end) : null;
+      const cursor = this.getCursor();
+      const start = fromBlock === undefined ? reorg?.replayFromBlock ?? cursor?.blockNumber ?? this.fromBlock : Number(fromBlock);
+      if (!Number.isInteger(start) || start < 0 || !Number.isInteger(end) || end < start) {
+        throw new Error("Invalid JobCreated indexer block range");
+      }
 
-    return {
-      fromBlock: start,
-      toBlock: end,
-      processed,
-      skipped,
-      cursor: this.getCursor(),
-    };
+      const logs = await this.client.getLogs({
+        address: this.contractAddress,
+        events: Object.values(eventAbis),
+        fromBlock: BigInt(start),
+        toBlock: BigInt(end),
+      });
+      const canonicalLogs = orderedLogs(logs);
+      for (let index = 1; index < canonicalLogs.length; index += 1) {
+        if (conflictingPosition(logPosition(canonicalLogs[index - 1]), logPosition(canonicalLogs[index]))) {
+          throw new Error("Indexed logs contain conflicting positions in the canonical ordering");
+        }
+      }
+      let processed = 0;
+      let skipped = 0;
+
+      for (const log of canonicalLogs) {
+        const position = logPosition(log);
+        if (reorg && position.blockNumber <= reorg.safeBlock) {
+          this.store.indexerCursors.set(this.cursorKey, position);
+          this.captureReorgSnapshot(position);
+          skipped += 1;
+          continue;
+        }
+        const replaying = Boolean(reorg);
+        if (!replaying && cursor && conflictingPosition(position, cursor)) {
+          throw new Error("Indexed log conflicts with the persisted chainId:contract cursor");
+        }
+        if (!replaying && cursor && (position.blockNumber < cursor.blockNumber || (position.blockNumber === cursor.blockNumber && !samePosition(position, cursor) && position.logIndex <= cursor.logIndex))) {
+          skipped += 1;
+          continue;
+        }
+        if (!replaying && cursor && samePosition(position, cursor)) {
+          if (!cursor.blockHash && position.blockHash) {
+            this.store.indexerCursors.set(this.cursorKey, position);
+            this.captureReorgSnapshot(position);
+            await this.checkpoint();
+          }
+          skipped += 1;
+          continue;
+        }
+
+        const name = eventName(log);
+        const args = eventArgs(log, name);
+        const common = {
+          spaceId: this.spaceId,
+          chainId: this.chainId,
+          contractAddress: this.contractAddress,
+          onchainJobId: args.jobId,
+          blockNumber: position.blockNumber,
+          txHash: position.txHash,
+          logIndex: position.logIndex,
+        };
+        if (name === "JobCreated") {
+          this.store.upsertIndexedJob({
+            ...common,
+            client: args.client,
+            provider: args.provider,
+            evaluator: args.evaluator,
+            description: args.description,
+            expiredAt: args.expiredAt,
+          });
+        } else if (name === "ProviderSet") {
+          this.store.setProviderIndexedJob({ ...common, provider: args.provider });
+        } else if (name === "BudgetSet") {
+          this.store.setBudgetIndexedJob({ ...common, amount: args.amount });
+        } else if (name === "AdjudicatorSet") {
+          this.store.setAdjudicatorIndexedJob({ ...common, adjudicator: args.adjudicator });
+        } else if (name === "RubricSet") {
+          this.store.setRubricIndexedJob({ ...common, rubricHash: args.rubricHash });
+        } else if (name === "EvidenceAttached") {
+          this.store.recordIndexedEvidenceAttached({ ...common, deliverableHash: args.deliverableHash });
+        } else if (name === "JobFunded") {
+          this.store.fundIndexedJob({ ...common, amount: args.amount });
+        } else if (name === "JobSubmitted") {
+          this.store.submitIndexedJob({ ...common, deliverableHash: args.deliverableHash });
+        } else if (name === "JobCompleted") {
+          this.store.completeIndexedJob({ ...common, reason: args.reason });
+        } else if (name === "JobRejected") {
+          this.store.rejectIndexedJob({ ...common, rejector: args.rejector, reason: args.reason });
+        } else if (name === "JobExpired") {
+          this.store.expireIndexedJob(common);
+        } else if (name === "Refunded") {
+          this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
+        } else if (name === "AdjudicationRequested") {
+          this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
+        } else if (name === "AdjudicationResolved") {
+          this.store.resolveAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, approve: args.approve, reason: args.reason });
+        } else {
+          this.store.recordIndexedAttestedSettlement({ ...common, provider: args.provider, amount: args.amount, nonce: args.nonce });
+        }
+        this.store.indexerCursors.set(this.cursorKey, position);
+        this.captureReorgSnapshot(position);
+        await this.checkpoint();
+        processed += 1;
+      }
+
+      this.setReconciliationState("RECONCILED");
+      await this.checkpoint();
+      return {
+        fromBlock: start,
+        toBlock: end,
+        processed,
+        skipped,
+        cursor: this.getCursor(),
+        reorg,
+      };
+    } catch (error) {
+      this.setReconciliationState("RECONCILING", error);
+      try {
+        await this.checkpoint();
+      } catch {}
+      throw error;
+    }
   }
 
   runOnce(options) {
     return this.sync(options);
+  }
+}
+
+export class IndexerRunLoop {
+  constructor({ sync, intervalMs = 1000 }) {
+    if (typeof sync !== "function") throw new Error("IndexerRunLoop requires a sync function");
+    if (!Number.isInteger(intervalMs) || intervalMs < 0) throw new Error("IndexerRunLoop requires a non-negative intervalMs");
+    this.sync = sync;
+    this.intervalMs = intervalMs;
+    this.mode = "polling";
+    this.stopped = true;
+    this.loopPromise = null;
+    this.wake = null;
+  }
+
+  start() {
+    if (!this.loopPromise) {
+      this.stopped = false;
+      this.loopPromise = this.runLoop();
+    }
+    return this;
+  }
+
+  async stop() {
+    this.stopped = true;
+    if (this.wake) this.wake();
+    const loopPromise = this.loopPromise;
+    if (loopPromise) await loopPromise;
+    if (this.loopPromise === loopPromise) this.loopPromise = null;
+  }
+
+  async runLoop() {
+    while (!this.stopped) {
+      try {
+        await this.sync();
+      } catch {
+        if (this.stopped) break;
+      }
+      if (!this.stopped && this.intervalMs > 0) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            this.wake = null;
+            resolve();
+          }, this.intervalMs);
+          timer.unref?.();
+          this.wake = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+        });
+      }
+    }
   }
 }
 

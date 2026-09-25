@@ -30,7 +30,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `VERIFIED` | `make deploy-testnet` → 5/5 receipts `status true` on chain 1952, runtime bytecode matches compiled artifacts; all 5 sources `Pass - Verified` on OKLink |
 | **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | Public AWS deployment and Playwright QA (10/10) pass; RainbowKit session, bearer invite link redemption UI, and real signed-session API QA are implemented; browser wallet acceptance remains |
 | **M8** | **3-Minute Demo Video & OKX Dev Day 2026 Submission** | `PLANNED` | Script ready in `forge/DEMO_SCRIPT.md` |
-| **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `IN PROGRESS` | `node --test mcp/test/indexer.test.js` (56/56) covers `JobCreated`, `ProviderSet`, `BudgetSet`, `AdjudicatorSet`, `RubricSet`, `EvidenceAttached`, `JobFunded`, `JobSubmitted`, `AdjudicationRequested`, `AdjudicationResolved`, `AttestedJobSettlement`, `JobCompleted`, `JobRejected`, `JobExpired`, and `Refunded` with one canonical persisted cursor; WebSocket transport and reorg handling remain |
+| **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `VERIFIED` | `node --test mcp/test/indexer.test.js` (61/61) covers all indexed lifecycle events, HTTP/WebSocket/injected transports, explicit reconciliation recovery, non-overlapping polling, legacy cursor compatibility, and restart-safe reorg rewind; `make test` passes 153/153 |
 | **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `PLANNED` | Phase 3 (Whitepaper Section 5.1) |
@@ -139,13 +139,14 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 # Track 2: The Full Commerce OS Roadmap (Whitepaper v0.1 Scope)
 
 ### Milestone M9: Real-Time Onchain Event Indexer & Reconciliation Worker
-* **Claim**: The system automatically detects and ingests onchain contract events on OKX X Layer, eliminating polling and reconciling `UNKNOWN` or `PENDING` states into canonical economic truth.
+* **Claim**: The system automatically polls and ingests canonical onchain contract events over HTTP or WebSocket transport, reconciling `UNKNOWN` or `PENDING` states without claiming push subscription.
 * **Whitepaper Reference**: Section 12 (*State and Finality*) & Section 16 (*System Architecture*).
 * **Behavior**:
-  * Background worker maintains WebSocket connection to OKX X Layer RPC.
+  * Background worker polls serially over an optional WebSocket transport or HTTP, with injected clients preserved for tests.
   * Ingests `JobCreated`, `ProviderSet`, `BudgetSet`, `AdjudicatorSet`, `RubricSet`, `EvidenceAttached`, `JobFunded`, `JobSubmitted`, `AdjudicationRequested`, `AdjudicationResolved`, `AttestedJobSettlement`, `JobCompleted`, `JobRejected`, `JobExpired`, and `Refunded`.
-  * Implements explicit `RECONCILING → RECONCILED` state transitions when network or RPC dropouts occur.
-  * M9 state-only evidence: `node --test mcp/test/indexer.test.js` passes 56/56, including metadata/evidence events, canonical same-block ordering, conflict detection, replay idempotence, no financial side effects, and restart persistence.
+  * Implements explicit `RECONCILING → RECONCILED` state transitions when network or RPC dropouts occur, with sanitized failure visibility.
+  * Detects reorgs from persisted block hashes, restores a hash-verified safe checkpoint, and replays canonical logs after restart.
+  * M9 reliability evidence: `node --test mcp/test/indexer.test.js` passes 61/61; the full `make test` gate passes 153/153.
 
 ---
 

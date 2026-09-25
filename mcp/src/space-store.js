@@ -21,6 +21,8 @@ export class SpaceStore {
     /** @type {Map<string, object>} Space invitations keyed by invite code */
     this.invitations = new Map();
     this.indexerCursors = new Map();
+    this.indexerReconciliations = new Map();
+    this.indexerReorgSnapshots = new Map();
     this._nextJobSeq = 1;
     this._nextParticipantSeq = 1;
     this._nextRequestSeq = 1;
