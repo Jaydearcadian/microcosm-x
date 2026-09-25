@@ -6,7 +6,8 @@
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
 * **Repository**: https://github.com/Jaydearcadian/microcosm-x
 * **Live Demo Video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4 (2:00, 1920x1080, follows `forge/DEMO_SCRIPT.md`; shot list in `forge/DEMO_SHOT_LIST.md`)
-* **Live App**: https://reputation-university-abstract-gotta.trycloudflare.com/app (Command Center, Work, Governance, Delegation, Agent, Onboarding, Audit)
+* **Live App**: https://charcoal-brown.vercel.app/app (production, Vercel) — eight surfaces: Command, Work, Governance, Delegation, Agent, Sandbox, Onboarding, Audit
+* **Failover App**: https://reputation-university-abstract-gotta.trycloudflare.com/app (self-hosted on the submission host)
 * **Status**: Complete & Verified — 185 tests (36 Solidity, 20 policy, 95 MCP, 23 server, 11 SDK), 41 Playwright end-to-end, 41 verified proof claims across 8 gates
 
 ---
@@ -105,3 +106,52 @@ npm run demo
 * **Policy Engine Tests (`npm run test:policy`)**: 13 deterministic boundary, EIP-712 hashing, and unit tests passing.
 * **MCP Server Tests (`npm run test:mcp`)**: 14 end-to-end tool execution, Work lifecycle, daily-budget regression, and Internet Court adjudication tests passing.
 * **Proof Ledger (`make verify`)**: 23/23 claims verified green.
+
+---
+
+## Ready to lodge
+
+Everything below is verified and needs no further work. The only remaining step is the
+portal submission itself, which requires the DevDay account.
+
+* **Repository**: https://github.com/Jaydearcadian/microcosm-x
+* **Demo video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4
+* **Live app**: https://charcoal-brown.vercel.app/app
+* **Track**: Build a Company (Agentic Wallet Tooling, Onchain Services, Payment / MCP Services)
+* **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer
+
+Fields to paste:
+
+| Field | Value |
+| :--- | :--- |
+| Project name | Microcosm |
+| Track | Build a Company |
+| One-line pitch | Give agents budgets, not bank accounts. |
+| Repository | https://github.com/Jaydearcadian/microcosm-x |
+| Demo video | the mp4 above (2:00, 1920x1080) |
+| Live app | https://charcoal-brown.vercel.app/app |
+| Chain | OKX X Layer Testnet, chain id 1952 |
+| Settlement proof | `0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556`, receipt status 1, block 41894186 |
+| Test counts | 185 unit/integration, 41 Playwright end-to-end |
+| Proof ledger | 41 claims across 8 gates, `node scripts/verify-proof-ledger.mjs` |
+
+### What a judge can verify unauthenticated
+
+1. Open the live app and run **Sandbox → Request above the per-transaction cap**. It calls the
+   live API, is refused with a signed DenialProof, and reports treasury moved `$0.00`,
+   escrow moved `$0.00`, no Work Order created.
+2. Open **Agent** and press *Try over the cap*: a real x402 v2 payload is refused with
+   `Exceeds Space per-transaction cap: requested 900.00 USDC, max permitted is 500.00`.
+3. Open **Audit**: the chain indexer reports its cursor, reconciliation state, transport, and
+   the onchain work orders it has projected from OKX X Layer.
+4. Run `node scripts/verify-proof-ledger.mjs` and `make test`.
+
+### Claims deliberately not made
+
+* Real x402 facilitator settlement is not configured; the API refuses with `UNSUPPORTED_SETTLEMENT`
+  rather than returning a fabricated receipt.
+* Literal external browser wallet extension acceptance is unverified; the credential-free
+  injected EIP-1193 session flow is what the suite covers.
+* Delegated settlement by an attenuated agent is out of scope and unclaimed.
+* The Self-hosted failover app and the API run on one EC2 host; the Vercel deployment is a
+  stateless client and server-side proxy in front of that API.
