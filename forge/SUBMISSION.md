@@ -5,8 +5,9 @@
 * **Track**: Build a Company (Agentic Wallet Tooling, Onchain Services, Payment / MCP Services)
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
 * **Repository**: https://github.com/Jaydearcadian/microcosm-x
-* **Live Demo Video**: [Demo Walkthrough Video (Follows forge/DEMO_SCRIPT.md)]
-* **Status**: Complete & Verified (63 tests passing across contracts, policy runtime, and MCP server)
+* **Live Demo Video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4 (2:00, 1920x1080, follows `forge/DEMO_SCRIPT.md`; shot list in `forge/DEMO_SHOT_LIST.md`)
+* **Live App**: https://reputation-university-abstract-gotta.trycloudflare.com/app (Command Center, Work, Governance, Delegation, Agent, Onboarding, Audit)
+* **Status**: Complete & Verified — 184 tests (36 Solidity, 20 policy, 96 MCP, 23 server, 11 SDK), 32 Playwright end-to-end, 41 verified proof claims across 8 gates
 
 ---
 
@@ -89,7 +90,7 @@ Instead of handing private keys to LLMs, humans and agents operate inside progra
 Microcosm adheres to the **FORGE 1.4** control plane. Every single claim is backed by executed command evidence in `forge/PROOF_LEDGER.md`.
 
 ```bash
-# Run entire test suite (63 tests: 36 contracts + 13 policy + 14 MCP)
+# Run entire test suite (184 tests: 36 contracts + 20 policy + 96 MCP + 23 server + 11 SDK)
 make test
 
 # Run full verification gate & proof ledger audit
