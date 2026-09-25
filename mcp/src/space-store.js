@@ -1173,6 +1173,56 @@ export class SpaceStore {
     return { job: { ...job }, created: true };
   }
 
+  fundIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, amount, blockNumber, txHash, logIndex }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const externalId = String(onchainJobId);
+    const onchainKey = `${chain}:${contract}:${externalId}`;
+    const job = [...this.jobs.values()].find((entry) => entry.onchainKey === onchainKey);
+    if (!job) throw new Error(`JobFunded references unknown indexed job '${onchainKey}'`);
+    if (job.spaceId !== spaceId) throw new Error(`Indexed job '${onchainKey}' belongs to Space '${job.spaceId}'`);
+    if (typeof amount !== 'bigint' || amount <= 0n) throw new Error('JobFunded requires a positive uint256 amount');
+    const budget = fromBaseUnits(amount);
+    const sourceLog = { blockNumber: Number(blockNumber), txHash: String(txHash).toLowerCase(), logIndex: Number(logIndex) };
+    const sameSourceLog = job.sourceLog && job.sourceLog.blockNumber === sourceLog.blockNumber && job.sourceLog.txHash === sourceLog.txHash && job.sourceLog.logIndex === sourceLog.logIndex;
+    if (job.status === 'Funded' && sameSourceLog && job.budget === budget && job.escrowedAmount === budget) {
+      return { job: { ...job }, funded: false };
+    }
+    if (job.status !== 'Open') {
+      throw new Error(`JobFunded cannot transition indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    job.budget = budget;
+    job.escrowedAmount = budget;
+    job.status = 'Funded';
+    job.fundedAt = timestamp;
+    job.statusHistory.push({ status: 'Funded', timestamp });
+    job.sourceLog = sourceLog;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push({
+      type: 'WORK_FUNDED',
+      jobId: job.jobId,
+      spaceId,
+      source: 'onchain',
+      onchainJobId: externalId,
+      onchainKey,
+      chainId: chain,
+      contractAddress: contract,
+      amount: budget,
+      fromStatus: 'Open',
+      toStatus: 'Funded',
+      blockNumber: sourceLog.blockNumber,
+      txHash: sourceLog.txHash,
+      logIndex: sourceLog.logIndex,
+      timestamp,
+    });
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, funded: true };
+  }
+
   /**
    * Read a Work Order by ID (applies lazy expiry first).
    */
