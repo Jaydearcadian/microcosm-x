@@ -12,6 +12,32 @@
 
 ---
 
+## See it work
+
+| | |
+| :--- | :--- |
+| **Live app** | **[mcosm.vercel.app/app](https://mcosm.vercel.app/app)** — eight operator surfaces, no wallet needed to try them |
+| **Demo video** | **[2:00 walkthrough](https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4)** (1920x1080) |
+| **Proof ledger** | **[41 claims, 8 gates](forge/PROOF_LEDGER.md)** — every claim has an executable command |
+| **Settlement** | `0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556` on OKX X Layer testnet, chain `1952`, receipt status `1`, block `41894186` |
+| **Tests** | `185` unit/integration + `41` Playwright end-to-end, all green |
+
+**Try it in one click, no wallet required.** Open the live app, go to **Sandbox**, and press
+*Run scenario* on *Request above the per-transaction cap*. The app calls the live API, is
+refused with a signed DenialProof, and reports `treasury moved $0.00`, `escrow moved $0.00`,
+`no Work Order created`. Then press *Try over the cap* under **Agent** to watch a real x402
+v2 payload hit the same boundary, and open **Audit** to see the onchain indexer's cursor and
+the work orders it has projected from OKX X Layer.
+
+Verify it yourself:
+
+```bash
+make test                          # 185 tests
+node scripts/verify-proof-ledger.mjs   # 41 claims, 8 gates
+```
+
+---
+
 > **Commit capital first. Settle only what is proven.**
 
 Microcosm connects commercial agreements to the conditions under which work is performed, the cryptographic evidence that it was completed, and the value that settles. It provides **Spaces**—durable, non-custodial coordination environments where people, organizations, contractors, evaluators, and autonomous software coordinate work, encumber capital, verify deliverables, and settle USDC on **OKX X Layer**.
@@ -151,9 +177,12 @@ Microcosm contracts are compiled with Solidity 0.8.30 for EVM Cancun/Shanghai co
 
 ## Quickstart & Verification
 
-Microcosm operates under the **FORGE 1.4** control plane. Every component is locally runnable and verifiable without external hidden dependencies:
+Microcosm operates under the **FORGE 1.4** control plane. Every component is locally runnable and verifiable without external hidden dependencies. Verified from a clean `git clone` on Node 20+ and Foundry.
 
 ```bash
+# 0. Install dependencies first — the workspace links @microcosm/* packages and viem
+npm install
+
 # 1. Run full test suite (185 tests: 36 contracts, 20 policy engine, 95 MCP, 23 server, 11 SDK)
 make test
 
@@ -166,7 +195,7 @@ npm run test:policy
 # 4. Run Model Context Protocol (MCP) server tests
 npm run test:mcp
 
-# 5. Run full proof ledger verification gate (Audits 23 claims)
+# 5. Run full proof ledger verification gate (41 claims across 8 gates)
 make verify
 
 # 6. Run live 9-step end-to-end commerce simulation
