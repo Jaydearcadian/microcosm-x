@@ -6,7 +6,7 @@
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer.
 * **Repository**: https://github.com/Jaydearcadian/microcosm-x
 * **Live Demo Video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4 (2:00, 1920x1080, follows `forge/DEMO_SCRIPT.md`; shot list in `forge/DEMO_SHOT_LIST.md`)
-* **Live App**: https://charcoal-brown.vercel.app/app (production, Vercel) — eight surfaces: Command, Work, Governance, Delegation, Agent, Sandbox, Onboarding, Audit
+* **Live App**: https://mcosm.vercel.app/app (production, Vercel) — eight surfaces: Command, Work, Governance, Delegation, Agent, Sandbox, Onboarding, Audit
 * **Failover App**: https://reputation-university-abstract-gotta.trycloudflare.com/app (self-hosted on the submission host)
 * **Status**: Complete & Verified — 185 tests (36 Solidity, 20 policy, 95 MCP, 23 server, 11 SDK), 41 Playwright end-to-end, 41 verified proof claims across 8 gates
 
@@ -116,7 +116,7 @@ portal submission itself, which requires the DevDay account.
 
 * **Repository**: https://github.com/Jaydearcadian/microcosm-x
 * **Demo video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4
-* **Live app**: https://charcoal-brown.vercel.app/app
+* **Live app**: https://mcosm.vercel.app/app
 * **Track**: Build a Company (Agentic Wallet Tooling, Onchain Services, Payment / MCP Services)
 * **Tagline**: Commerce OS for Humans and Autonomous Agents on OKX X Layer
 
@@ -129,7 +129,7 @@ Fields to paste:
 | One-line pitch | Give agents budgets, not bank accounts. |
 | Repository | https://github.com/Jaydearcadian/microcosm-x |
 | Demo video | the mp4 above (2:00, 1920x1080) |
-| Live app | https://charcoal-brown.vercel.app/app |
+| Live app | https://mcosm.vercel.app/app |
 | Chain | OKX X Layer Testnet, chain id 1952 |
 | Settlement proof | `0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556`, receipt status 1, block 41894186 |
 | Test counts | 185 unit/integration, 41 Playwright end-to-end |
