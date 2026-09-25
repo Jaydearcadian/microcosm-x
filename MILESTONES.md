@@ -30,7 +30,7 @@ Status vocabulary — claim states follow `AGENTS.md`: `UNTESTED · PARTIAL · F
 | **M6** | **Live OKX X Layer Testnet Broadcast & OKLink Verification** | `VERIFIED` | `make deploy-testnet` → 5/5 receipts `status true` on chain 1952, runtime bytecode matches compiled artifacts; all 5 sources `Pass - Verified` on OKLink |
 | **M7** | **Charcoal Visual Command Center (Frontend)** | `IN PROGRESS` | Public AWS deployment and Playwright QA (10/10) pass; RainbowKit session, bearer invite link redemption UI, and real signed-session API QA are implemented; browser wallet acceptance remains |
 | **M8** | **3-Minute Demo Video & OKX Dev Day 2026 Submission** | `PLANNED` | Script ready in `forge/DEMO_SCRIPT.md` |
-| **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `IN PROGRESS` | Restart-safe, idempotent state-only projections for `JobCreated`, `JobFunded`, `JobSubmitted`, `AdjudicationRequested`, `JobCompleted`, `JobRejected`, `JobExpired`, and `Refunded` with one persisted cursor; `AdjudicationResolved`, `AttestedJobSettlement`, WebSocket transport, and reorg handling remain |
+| **M9** | **Real-Time Onchain Event Indexer & Reconciliation** | `IN PROGRESS` | Restart-safe, idempotent state-only projections for the full Work lifecycle plus `AdjudicationResolved` and `AttestedJobSettlement` with one persisted cursor; metadata/evidence events, WebSocket transport, and reorg handling remain |
 | **M10** | **Mathematical Authority Attenuation Tree ($B \subseteq A$)** | `PLANNED` | Phase 2 (Whitepaper Section 6.1) |
 | **M11** | **Continuous Streaming & Usage-Metered Settlement** | `PLANNED` | Phase 2 (Whitepaper Section 8) |
 | **M12** | **Multi-Party Threshold Governance (Space Multisig)** | `PLANNED` | Phase 3 (Whitepaper Section 5.1) |

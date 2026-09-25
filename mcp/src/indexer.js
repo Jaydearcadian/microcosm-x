@@ -11,7 +11,9 @@ const jobRejectedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.st
 const jobExpiredFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event JobExpired("));
 const refundedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event Refunded("));
 const adjudicationRequestedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationRequested("));
-if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !jobCompletedFragment || !jobRejectedFragment || !jobExpiredFragment || !refundedFragment || !adjudicationRequestedFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
+const adjudicationResolvedFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AdjudicationResolved("));
+const attestedJobSettlementFragment = curatedAbis.AgenticCommerce.find((entry) => entry.startsWith("event AttestedJobSettlement("));
+if (!jobCreatedFragment || !jobFundedFragment || !jobSubmittedFragment || !jobCompletedFragment || !jobRejectedFragment || !jobExpiredFragment || !refundedFragment || !adjudicationRequestedFragment || !adjudicationResolvedFragment || !attestedJobSettlementFragment) throw new Error("Curated AgenticCommerce ABI is missing indexed job events");
 export const JOB_CREATED_ABI = parseAbiItem(jobCreatedFragment);
 export const JOB_FUNDED_ABI = parseAbiItem(jobFundedFragment);
 export const JOB_SUBMITTED_ABI = parseAbiItem(jobSubmittedFragment);
@@ -20,6 +22,8 @@ export const JOB_REJECTED_ABI = parseAbiItem(jobRejectedFragment);
 export const JOB_EXPIRED_ABI = parseAbiItem(jobExpiredFragment);
 export const REFUNDED_ABI = parseAbiItem(refundedFragment);
 export const ADJUDICATION_REQUESTED_ABI = parseAbiItem(adjudicationRequestedFragment);
+export const ADJUDICATION_RESOLVED_ABI = parseAbiItem(adjudicationResolvedFragment);
+export const ATTESTED_JOB_SETTLEMENT_ABI = parseAbiItem(attestedJobSettlementFragment);
 
 const eventAbis = {
   JobCreated: JOB_CREATED_ABI,
@@ -30,6 +34,8 @@ const eventAbis = {
   JobExpired: JOB_EXPIRED_ABI,
   Refunded: REFUNDED_ABI,
   AdjudicationRequested: ADJUDICATION_REQUESTED_ABI,
+  AdjudicationResolved: ADJUDICATION_RESOLVED_ABI,
+  AttestedJobSettlement: ATTESTED_JOB_SETTLEMENT_ABI,
 };
 
 const indexedEventNames = new Set(Object.keys(eventAbis));
@@ -116,8 +122,16 @@ function eventArgs(log, name) {
     const [jobId, client, amount] = args;
     return { jobId, client, amount };
   }
-  const [jobId, adjudicator, caseId] = args;
-  return { jobId, adjudicator, caseId };
+  if (name === "AdjudicationRequested") {
+    const [jobId, adjudicator, caseId] = args;
+    return { jobId, adjudicator, caseId };
+  }
+  if (name === "AdjudicationResolved") {
+    const [jobId, adjudicator, approve, reason] = args;
+    return { jobId, adjudicator, approve, reason };
+  }
+  const [jobId, provider, amount, nonce] = args;
+  return { jobId, provider, amount, nonce };
 }
 
 export class JobCreatedIndexer {
@@ -229,8 +243,12 @@ export class JobCreatedIndexer {
         this.store.expireIndexedJob(common);
       } else if (name === "Refunded") {
         this.store.recordIndexedRefund({ ...common, client: args.client, amount: args.amount });
-      } else {
+      } else if (name === "AdjudicationRequested") {
         this.store.requestAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, caseId: args.caseId });
+      } else if (name === "AdjudicationResolved") {
+        this.store.resolveAdjudicationIndexedJob({ ...common, adjudicator: args.adjudicator, approve: args.approve, reason: args.reason });
+      } else {
+        this.store.recordIndexedAttestedSettlement({ ...common, provider: args.provider, amount: args.amount, nonce: args.nonce });
       }
       this.store.indexerCursors.set(this.cursorKey, position);
       await this.checkpoint();

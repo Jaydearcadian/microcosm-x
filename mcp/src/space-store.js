@@ -1142,6 +1142,7 @@ export class SpaceStore {
       refundedAmount: null,
       refundClient: null,
       refundSourceLog: null,
+      attestedSettlement: null,
       settlement: null,
       actionId: null,
       authHash: null,
@@ -1432,7 +1433,7 @@ export class SpaceStore {
     if (job.status === 'Rejected' && this._sameIndexedSourceLog(job.sourceLog, sourceLog) && job.rejectedBy === normalizedRejector && job.rejectionReason === normalizedReason) {
       return { job: { ...job }, rejected: false };
     }
-    if (job.status !== 'Open' && job.status !== 'Funded' && job.status !== 'Submitted') {
+    if (job.status !== 'Open' && job.status !== 'Funded' && job.status !== 'Submitted' && job.status !== 'Adjudicating') {
       throw new Error(`JobRejected cannot transition indexed job '${onchainKey}' from '${job.status}'`);
     }
 
@@ -1547,6 +1548,136 @@ export class SpaceStore {
     }));
     this.activity.set(spaceId, entries);
     return { job: { ...job }, refunded: true };
+  }
+
+  resolveAdjudicationIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, adjudicator, approve, reason, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'AdjudicationResolved' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof adjudicator !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(adjudicator)) throw new Error('AdjudicationResolved requires a valid adjudicator address');
+    if (typeof approve !== 'boolean') throw new Error('AdjudicationResolved requires a boolean approve decision');
+    if (typeof reason !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(reason)) throw new Error('AdjudicationResolved requires a bytes32 reason');
+    const normalizedAdjudicator = adjudicator.toLowerCase();
+    const normalizedReason = reason.toLowerCase();
+    if (!job.adjudication?.caseId) throw new Error(`AdjudicationResolved requires an adjudication request for indexed job '${onchainKey}'`);
+    if (job.adjudicator !== normalizedAdjudicator) throw new Error(`AdjudicationResolved adjudicator '${normalizedAdjudicator}' conflicts with bound adjudicator '${job.adjudicator}'`);
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    const existing = job.adjudication.resolution;
+    if (existing) {
+      if (existing.sourceLog && this._sameIndexedSourceLog(existing.sourceLog, sourceLog) && existing.adjudicator === normalizedAdjudicator && existing.approve === approve && existing.reason === normalizedReason) {
+        const expectedStatus = approve ? 'Completed' : 'Rejected';
+        if (job.status !== expectedStatus) throw new Error(`AdjudicationResolved outcome conflicts with indexed job status '${job.status}'`);
+        return { job: { ...job }, resolved: false };
+      }
+      throw new Error(`AdjudicationResolved conflicts with recorded resolution for indexed job '${onchainKey}'`);
+    }
+    if (job.status !== 'Adjudicating' && job.status !== 'Completed' && job.status !== 'Rejected') {
+      throw new Error(`AdjudicationResolved cannot reconcile indexed job '${onchainKey}' from '${job.status}'`);
+    }
+    if ((approve && job.status === 'Rejected') || (!approve && job.status === 'Completed')) {
+      throw new Error(`AdjudicationResolved ${approve ? 'approval' : 'rejection'} conflicts with indexed job status '${job.status}'`);
+    }
+    if (job.status === 'Completed' && job.completionReason !== normalizedReason) {
+      throw new Error(`AdjudicationResolved reason conflicts with the recorded completion for indexed job '${onchainKey}'`);
+    }
+    if (job.status === 'Rejected' && (job.rejectedBy !== normalizedAdjudicator || job.rejectionReason !== normalizedReason)) {
+      throw new Error(`AdjudicationResolved outcome conflicts with the recorded rejection for indexed job '${onchainKey}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    const toStatus = approve ? 'Completed' : 'Rejected';
+    job.adjudication.resolution = {
+      adjudicator: normalizedAdjudicator,
+      approve,
+      reason: normalizedReason,
+      resolvedAt: timestamp,
+      sourceLog,
+    };
+    if (job.status === 'Adjudicating') {
+      job.status = toStatus;
+      if (approve) {
+        job.completedAt = timestamp;
+        job.completionReason = normalizedReason;
+        job.feedback = normalizedReason;
+      } else {
+        job.rejectedAt = timestamp;
+        job.rejectedBy = normalizedAdjudicator;
+        job.rejectionReason = normalizedReason;
+        job.feedback = normalizedReason;
+      }
+      job.statusHistory.push({ status: toStatus, timestamp });
+    }
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_ADJUDICATION_RESOLVED',
+      fromStatus: 'Adjudicating',
+      toStatus,
+      adjudicator: normalizedAdjudicator,
+      approved: approve,
+      approve,
+      reason: normalizedReason,
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, resolved: true };
+  }
+
+  recordIndexedAttestedSettlement({ spaceId, chainId, contractAddress, onchainJobId, provider, amount, nonce, blockNumber, txHash, logIndex }) {
+    const indexed = this._getIndexedJobForEvent({ spaceId, chainId, contractAddress, onchainJobId, eventName: 'AttestedJobSettlement' });
+    const { job, contract, chain, externalId, onchainKey } = indexed;
+    if (typeof provider !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(provider)) throw new Error('AttestedJobSettlement requires a valid provider address');
+    if (typeof amount !== 'bigint' || amount <= 0n) throw new Error('AttestedJobSettlement requires a positive uint256 amount');
+    if (typeof nonce !== 'bigint' || nonce < 0n) throw new Error('AttestedJobSettlement requires a uint256 nonce');
+    const normalizedProvider = provider.toLowerCase();
+    const settledAmount = fromBaseUnits(amount);
+    if (job.provider !== normalizedProvider) throw new Error(`AttestedJobSettlement provider '${normalizedProvider}' conflicts with indexed job provider '${job.provider}'`);
+    if (job.budget !== settledAmount) throw new Error(`AttestedJobSettlement amount '${settledAmount}' conflicts with indexed job budget '${job.budget}'`);
+    const sourceLog = this._indexedSourceLog({ blockNumber, txHash, logIndex });
+    const existing = job.attestedSettlement;
+    if (existing) {
+      if (this._sameIndexedSourceLog(existing.sourceLog, sourceLog) && existing.provider === normalizedProvider && existing.amount === settledAmount && existing.nonce === nonce.toString()) {
+        return { job: { ...job }, recorded: false };
+      }
+      throw new Error(`AttestedJobSettlement conflicts with recorded evidence for indexed job '${onchainKey}'`);
+    }
+    if (job.status !== 'Submitted') {
+      throw new Error(`AttestedJobSettlement cannot record evidence on indexed job '${onchainKey}' from '${job.status}'`);
+    }
+
+    const timestamp = new Date().toISOString();
+    job.attestedSettlement = {
+      provider: normalizedProvider,
+      amount: settledAmount,
+      nonce: nonce.toString(),
+      observedAt: timestamp,
+      sourceLog,
+    };
+    const entries = this.activity.get(spaceId) || [];
+    entries.push(this._indexedActivity({
+      spaceId,
+      job,
+      contract,
+      chain,
+      externalId,
+      onchainKey,
+      sourceLog,
+      timestamp,
+      type: 'WORK_ATTESTED_SETTLEMENT',
+      fromStatus: 'Submitted',
+      toStatus: 'Submitted',
+      provider: normalizedProvider,
+      amount: settledAmount,
+      nonce: nonce.toString(),
+    }));
+    this.activity.set(spaceId, entries);
+    return { job: { ...job }, recorded: true };
   }
 
   /**

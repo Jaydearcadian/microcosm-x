@@ -33,7 +33,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M4** | Persistence | Atomic snapshot driver: every mutation checkpoints to disk; SIGKILL + reboot restores spaces, jobs, requests, counters; corrupt snapshots refuse to boot | `VERIFIED` | `npm run test:server` (`M4-1`, `M4-2` PASS) + live box restart restores 2 spaces from snapshot | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (129 tests passed, 0 failed) | 2026-09-25 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (139 tests passed, 0 failed) | 2026-09-25 |
 | **AGENTIC-1** | Agent / E2E | Tool-using agent completes Request → Work → proof → evaluation → real testnet settlement and trace | `VERIFIED` | `node scripts/agentic-testnet-e2e.mjs`; 14 MCP calls; tx `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`; receipt status `1` at block `41861915` | 2026-09-25 |
 | **AUTH-1** | Access / Auth | Wallet signature creates an HttpOnly session; admin creates bearer or address-restricted Space invites; redemption binds membership | `VERIFIED` | `npm --workspace=@microcosm/server test` (`wallet session authenticates an address and supports Space invitations` PASS); bearer redemption PASS; Playwright `/app/access` PASS | 2026-09-25 |
 | **M9-1** | Onchain Indexer | `JobCreated` logs decode into canonical jobs with a persisted chain/contract cursor and idempotent replay | `VERIFIED` | `npm --workspace=@microcosm/mcp-server test` (`M9-1`, `M9-2` PASS; Anvil restart and same-block cursor coverage) | 2026-09-25 |
@@ -41,6 +41,7 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M9-3** | Onchain Indexer | `JobSubmitted` projects `Funded` → `Submitted` with deliverable hash and source log, without financial side effects | `VERIFIED` | `npm --workspace=@microcosm/mcp-server test` (`M9-4` PASS; state, replay, same-block, ordering, conflict, no-side-effect, and restart coverage) | 2026-09-25 |
 | **M9-4** | Onchain Indexer | `AdjudicationRequested` projects `Submitted` → `Adjudicating` with case metadata, without financial side effects | `VERIFIED` | `npm --workspace=@microcosm/mcp-server test` (`M9-5` PASS; state, replay, same-block, ordering, conflict, no-side-effect, and restart coverage) | 2026-09-25 |
 | **M9-5** | Onchain Indexer | `JobCompleted`, `JobRejected`, `JobExpired`, and `Refunded` project terminal state and refund evidence from canonical logs without local financial side effects | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-6` PASS; 37 tests) + `make test` (129 tests passed, 0 failed) | 2026-09-25 |
+| **M9-6** | Onchain Indexer | `AdjudicationResolved` records court outcomes in both contract emission orders; `AttestedJobSettlement` records settlement evidence without settling locally | `VERIFIED` | `node --test mcp/test/indexer.test.js` (`M9-7` PASS; 47 tests) + `make test` (139 tests passed, 0 failed) | 2026-09-25 |
 
 
 ---
@@ -76,6 +77,11 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 * **Commands**: `node --test mcp/test/indexer.test.js`; `make test`.
 * **Output**: the focused indexer suite passed 37/37 and the full repository gate passed 129/129. Canonical same-block logs projected all permitted terminal transitions; `Refunded` preceded rejection and expiry where emitted, preserved refund evidence, and never changed status. Replays, conflicts, invalid ordering, financial no-side-effects, and restart persistence passed.
 * **Status**: `VERIFIED` for direct terminal/refund projections. `AdjudicationResolved`, `AttestedJobSettlement`, WebSocket subscription, and reorg handling remain open.
+
+### 2026-09-25: Adjudication resolution and attested settlement evidence (M9-6)
+* **Commands**: `node --test mcp/test/indexer.test.js`; `make test`.
+* **Output**: court approval/rejection events reconciled in both contract emission orders; attested settlement events recorded provider, amount, nonce, and source log before the following completion event. No local settlement, refund, balance, or receipt side effects occurred. Focused indexer tests passed 47/47 and the full repository gate passed 139/139.
+* **Status**: `VERIFIED` for state-only resolution and attested evidence. Metadata/evidence events, WebSocket subscription, and reorg handling remain open.
 
 ### 2026-09-25: Testnet tool-using agent acceptance (AGENTIC-1)
 * **Command**: `node scripts/agentic-testnet-e2e.mjs` with `XLAYER_RPC_URL=https://testrpc.xlayer.tech`, `XLAYER_CHAIN_ID=1952`, and the deployer key loaded from the local key handoff.
