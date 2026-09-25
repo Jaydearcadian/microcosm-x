@@ -7,7 +7,7 @@
 [![OKX X Layer](https://img.shields.io/badge/Network-OKX_X_Layer_(195/196)-blue.svg)](https://www.okx.com/xlayer)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.30-orange.svg)](https://soliditylang.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(184_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
+[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(185_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -154,7 +154,7 @@ Microcosm contracts are compiled with Solidity 0.8.30 for EVM Cancun/Shanghai co
 Microcosm operates under the **FORGE 1.4** control plane. Every component is locally runnable and verifiable without external hidden dependencies:
 
 ```bash
-# 1. Run full test suite (184 tests: 36 contracts, 20 policy engine, 96 MCP, 23 server, 11 SDK)
+# 1. Run full test suite (185 tests: 36 contracts, 20 policy engine, 95 MCP, 23 server, 11 SDK)
 make test
 
 # 2. Run contracts suite alone (Foundry)
