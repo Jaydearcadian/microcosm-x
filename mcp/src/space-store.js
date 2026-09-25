@@ -20,6 +20,7 @@ export class SpaceStore {
     this.requests = new Map();
     /** @type {Map<string, object>} Space invitations keyed by invite code */
     this.invitations = new Map();
+    this.indexerCursors = new Map();
     this._nextJobSeq = 1;
     this._nextParticipantSeq = 1;
     this._nextRequestSeq = 1;
@@ -1094,6 +1095,82 @@ export class SpaceStore {
       spaceBalance: space.balance,
       refundRecord,
     };
+  }
+
+  upsertIndexedJob({ spaceId, chainId, contractAddress, onchainJobId, client, provider, evaluator, description, expiredAt, blockNumber, txHash, logIndex }) {
+    this._getSpaceOrThrow(spaceId);
+    const contract = String(contractAddress).toLowerCase();
+    const chain = Number(chainId);
+    const externalId = String(onchainJobId);
+    const onchainKey = `${chain}:${contract}:${externalId}`;
+    const existing = [...this.jobs.values()].find((job) => job.onchainKey === onchainKey);
+    if (existing) return { job: { ...existing }, created: false };
+
+    const now = new Date().toISOString();
+    const deadlineMs = Number(expiredAt) * 1000;
+    const jobId = `onchain-${chain}-${contract.slice(2, 10)}-${externalId}`;
+    const job = {
+      jobId,
+      spaceId,
+      client,
+      provider,
+      evaluator,
+      onchainJobId: externalId,
+      onchainKey,
+      chainId: chain,
+      contractAddress: contract,
+      description,
+      budget: '0.000000',
+      escrowedAmount: '0.000000',
+      status: 'Open',
+      statusHistory: [{ status: 'Open', timestamp: now }],
+      deliverableHash: null,
+      evidenceUri: null,
+      feedback: null,
+      deadline: new Date(deadlineMs).toISOString(),
+      deadlineMs,
+      createdAt: now,
+      fundedAt: null,
+      submittedAt: null,
+      completedAt: null,
+      refunded: false,
+      refundedAmount: null,
+      settlement: null,
+      actionId: null,
+      authHash: null,
+      adjudicator: null,
+      rubricHash: null,
+      adjudication: null,
+      source: 'onchain',
+      sourceLog: { blockNumber: Number(blockNumber), txHash, logIndex: Number(logIndex) },
+    };
+    this.jobs.set(jobId, job);
+    const entries = this.activity.get(spaceId) || [];
+    if (!entries.some((entry) => entry.onchainKey === onchainKey)) {
+      entries.push({
+        type: 'WORK_CREATED',
+        jobId,
+        spaceId,
+        source: 'onchain',
+        onchainJobId: externalId,
+        onchainKey,
+        chainId: chain,
+        contractAddress: contract,
+        client,
+        provider,
+        evaluator,
+        description,
+        status: 'Open',
+        fromStatus: null,
+        toStatus: 'Open',
+        blockNumber: Number(blockNumber),
+        txHash,
+        logIndex: Number(logIndex),
+        timestamp: now,
+      });
+      this.activity.set(spaceId, entries);
+    }
+    return { job: { ...job }, created: true };
   }
 
   /**

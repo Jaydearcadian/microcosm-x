@@ -33,9 +33,10 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 | **M4** | Persistence | Atomic snapshot driver: every mutation checkpoints to disk; SIGKILL + reboot restores spaces, jobs, requests, counters; corrupt snapshots refuse to boot | `VERIFIED` | `npm run test:server` (`M4-1`, `M4-2` PASS) + live box restart restores 2 spaces from snapshot | 2026-09-24 |
 | **E2E-1** | E2E Flow | End-to-end Procurement Space workflow (Creation → Funding → Valid Payment Settles → Over-limit Fails) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
 | **E2E-2** | E2E Flow | End-to-end Work loop (Work Order → Deliverable hash → Evaluator approves → Settles on X Layer → Out-of-bounds blocked → Rejected work refunded → Internet Court adjudication) | `VERIFIED` | `npm run demo` (REAL onchain settlement via deployed contracts, receipt.simulated=false) | 2026-09-22 |
-| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (92 tests passed, 0 failed) | 2026-09-25 |
+| **SUITE-1** | CI / Quality | Full repository test suite passes green locally | `VERIFIED` | `make test` (93 tests passed, 0 failed) | 2026-09-25 |
 | **AGENTIC-1** | Agent / E2E | Tool-using agent completes Request → Work → proof → evaluation → real testnet settlement and trace | `VERIFIED` | `node scripts/agentic-testnet-e2e.mjs`; 14 MCP calls; tx `0xefaac02816645dee27c5fe5961635396bce4c4415f22af5b12bb466515a0f662`; receipt status `1` at block `41861915` | 2026-09-25 |
 | **AUTH-1** | Access / Auth | Wallet signature creates an HttpOnly session; admin creates bearer or address-restricted Space invites; redemption binds membership | `VERIFIED` | `npm --workspace=@microcosm/server test` (`wallet session authenticates an address and supports Space invitations` PASS); bearer redemption PASS; Playwright `/app/access` PASS | 2026-09-25 |
+| **M9-1** | Onchain Indexer | `JobCreated` logs decode into canonical jobs with a persisted chain/contract cursor and idempotent replay | `VERIFIED` | `npm --workspace=@microcosm/mcp-server test` (`M9-1`, `M9-2` PASS; Anvil restart and same-block cursor coverage) | 2026-09-25 |
 
 
 ---
@@ -46,6 +47,11 @@ Status vocabulary: `UNTESTED · PARTIAL · FAILED · VERIFIED · REGRESSED`.
 * **Command**: `npm --workspace=@microcosm/server test` (`auth.test.js`).
 * **Output**: generated throwaway wallet signed the server nonce; session cookie authenticated the founder; founder created a Space; admin issued an unbound bearer invite; second wallet redeemed it; redemption bound the invite to the second wallet; address-scoped Space discovery returned the new Space. Targeted address-restricted invites remain supported.
 * **Status**: `VERIFIED`. Raw private keys and signatures are not persisted; the server stores session tokens and invite state only.
+
+### 2026-09-25: JobCreated indexer cursor and replay (M9-1)
+* **Command**: `npm --workspace=@microcosm/mcp-server test` (`M9-1`, `M9-2`).
+* **Output**: Anvil emitted two `JobCreated` events; the indexer decoded both into Space jobs, persisted a chain/contract/block/transaction/log cursor, resumed later logs in the same block, and produced no duplicate jobs or activity after restart replay.
+* **Status**: `VERIFIED` for the narrow M9 slice. Other lifecycle events, WebSocket subscription, and reorg handling remain open.
 
 ### 2026-09-25: Testnet tool-using agent acceptance (AGENTIC-1)
 * **Command**: `node scripts/agentic-testnet-e2e.mjs` with `XLAYER_RPC_URL=https://testrpc.xlayer.tech`, `XLAYER_CHAIN_ID=1952`, and the deployer key loaded from the local key handoff.

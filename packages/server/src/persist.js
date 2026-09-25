@@ -24,6 +24,7 @@ export function snapshot(store) {
     participants: [...store.participants.entries()],
     requests: [...store.requests.entries()],
     invitations: [...store.invitations.entries()],
+    indexerCursors: [...store.indexerCursors.entries()],
     counters: {
       job: store._nextJobSeq,
       participant: store._nextParticipantSeq,
@@ -61,6 +62,7 @@ export function load(store, filePath) {
   store.participants = new Map(data.participants || []);
   store.requests = new Map(data.requests || []);
   store.invitations = new Map(data.invitations || []);
+  store.indexerCursors = new Map(data.indexerCursors || []);
   store._nextJobSeq = data.counters?.job ?? 1;
   store._nextParticipantSeq = data.counters?.participant ?? 1;
   store._nextRequestSeq = data.counters?.request ?? 1;
