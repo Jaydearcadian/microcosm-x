@@ -104,3 +104,33 @@ export async function signGovernanceRequest(spaceId: string, requestId: string, 
 export async function executeGovernanceRequest(spaceId: string, requestId: string): Promise<{ status: string; request: GovernanceRequest; receipt?: GovernanceRequest["receipt"]; spaceBalance: string }> {
   return post(`/api/spaces/${q(spaceId)}/governance/requests/${q(requestId)}/execute`, {});
 }
+
+// ---- M10 authority delegation (attenuation only) ----
+export interface DelegationSubsetProof { valid: boolean; reasons: string[] }
+export interface AuthorityDelegation {
+  delegationId: string; spaceId: string; parentActor: string; child: string; parentRole: string; childRole: string;
+  maxPerTransaction: string; dailyBudget: string; allowedCounterparties: string[]; asset: string; chainId: number;
+  nonce: string; expiry: string; expiryAt: string; policySnapshotHash: string; digest: string;
+  typedData?: Eip712TypedData; status: string; signature: string | null; signedBy: string | null;
+  signedAt: string | null; revokedAt: string | null; revokedBy: string | null; createdAt: string;
+}
+export interface CreateDelegationInput {
+  delegationId: string; child: string; childRole: string; maxPerTransaction: string; dailyBudget: string;
+  allowedCounterparties: string[]; nonce: string; expiry: string; policySnapshotHash: string;
+}
+export async function fetchDelegations(spaceId: string, status?: string, signal?: AbortSignal): Promise<AuthorityDelegation[]> {
+  const query = status ? `?status=${q(status)}` : "";
+  return (await request<{ delegations: AuthorityDelegation[] }>(`/api/spaces/${q(spaceId)}/delegations${query}`, { signal })).delegations;
+}
+export async function createDelegation(spaceId: string, body: CreateDelegationInput): Promise<{ delegation: AuthorityDelegation; typedData: Eip712TypedData; proof: DelegationSubsetProof }> {
+  return post(`/api/spaces/${q(spaceId)}/delegations`, body);
+}
+export async function signDelegation(spaceId: string, delegationId: string, signature: string, digest?: string): Promise<AuthorityDelegation> {
+  return (await post<{ delegation: AuthorityDelegation }>(`/api/spaces/${q(spaceId)}/delegations/${q(delegationId)}/sign`, { signature, digest })).delegation;
+}
+export async function verifyDelegation(spaceId: string, delegationId: string): Promise<{ valid: boolean; delegationId: string; signer: string; digest: string; status: string }> {
+  return (await post<{ verification: { valid: boolean; delegationId: string; signer: string; digest: string; status: string } }>(`/api/spaces/${q(spaceId)}/delegations/${q(delegationId)}/verify`, {})).verification;
+}
+export async function revokeDelegation(spaceId: string, delegationId: string): Promise<AuthorityDelegation> {
+  return (await post<{ delegation: AuthorityDelegation }>(`/api/spaces/${q(spaceId)}/delegations/${q(delegationId)}/revoke`, {})).delegation;
+}

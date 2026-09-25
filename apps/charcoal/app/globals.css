@@ -736,3 +736,14 @@ button {
 .gov-quorum i.is-met { background: var(--accent); }
 .gov-quorum span { margin-left: 6px; color: var(--muted); font-size: 11px; letter-spacing: .1em; }
 @media (max-width: 1100px) { .gov-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- M10 delegation surface ---------- */
+.deleg-compare { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 16px; }
+.deleg-envelope { display: grid; gap: 8px; padding: 14px 16px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); }
+.deleg-envelope--child { border-color: rgba(202, 254, 92, .3); background: rgba(202, 254, 92, .04); }
+.deleg-envelope__row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+.deleg-envelope__row strong { color: var(--text); font-size: 14px; }
+.deleg-escalation { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid rgba(229, 72, 77, .45); border-radius: 10px; background: rgba(229, 72, 77, .07); }
+.deleg-escalation strong { color: var(--danger); font-family: var(--font-ui); font-size: 11px; letter-spacing: .16em; }
+.deleg-escalation span { color: var(--text); font-size: 13px; }
+@media (max-width: 1100px) { .deleg-compare { grid-template-columns: minmax(0, 1fr); } }

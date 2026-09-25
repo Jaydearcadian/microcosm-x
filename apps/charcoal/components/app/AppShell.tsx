@@ -6,11 +6,12 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { useAppData } from "@/lib/app-data";
 import { useWalletSession } from "@/lib/wallet-session";
 
-export type AppView = "command" | "work" | "governance" | "onboarding" | "audit";
+export type AppView = "command" | "work" | "governance" | "delegation" | "onboarding" | "audit";
 const NAV: Array<{ id: AppView; label: string; hint: string }> = [
   { id: "command", label: "Command Center", hint: "Bounds & roster" },
   { id: "work", label: "Work", hint: "Escrow & delivery" },
   { id: "governance", label: "Governance", hint: "Quorum & approvals" },
+  { id: "delegation", label: "Delegation", hint: "Narrower authority" },
   { id: "onboarding", label: "Onboarding", hint: "Six-step setup" },
   { id: "audit", label: "Audit", hint: "Activity & SSE" },
 ];
