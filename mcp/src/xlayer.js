@@ -146,9 +146,10 @@ function senderNonce(key) {
   return BigInt(n.split(' ')[0]);
 }
 
-function sendAs(key, to, sig, args, { nonce = null } = {}) {
+function sendAs(key, to, sig, args, { nonce = null, gasLimit = null } = {}) {
   const nonceArgs = nonce !== null && nonce !== undefined ? ['--nonce', String(nonce)] : [];
-  const out = cast(['send', to, sig, ...args, ...nonceArgs, '--private-key', key, '--rpc-url', rpcUrl()]);
+  const gasArgs = gasLimit !== null && gasLimit !== undefined ? ['--gas-limit', String(gasLimit)] : [];
+  const out = cast(['send', to, sig, ...args, ...nonceArgs, ...gasArgs, '--private-key', key, '--rpc-url', rpcUrl()]);
   const status = (out.match(/^status\s+(\d+)/m) || [])[1];
   const txHash = (out.match(/^transactionHash\s+(0x[0-9a-fA-F]+)/m) || [])[1];
   if (status !== '1' || !txHash) throw new Error(`XLayerAdapter: tx failed or hash unparseable (status ${status})`);
@@ -168,7 +169,7 @@ function makeSequencer(key) {
   const explicit = !/127\.0\.0\.1|localhost/.test(rpcUrl());
   let n = explicit ? senderNonce(key) : null;
   const sendOne = (to, sig, args) => explicit
-    ? sendAs(key, to, sig, args, { nonce: n++ })
+    ? sendAs(key, to, sig, args, { nonce: n++, gasLimit: 1000000 })
     : sendAs(key, to, sig, args);
   return (to, sig, args) => {
     try {
@@ -176,7 +177,7 @@ function makeSequencer(key) {
     } catch (err) {
       if (!explicit || !/nonce too low|nonce too high|replacement transaction|known transaction/i.test(err.message)) throw err;
       n = senderNonce(key);
-      return sendAs(key, to, sig, args, { nonce: n++ });
+      return sendAs(key, to, sig, args, { nonce: n++, gasLimit: 1000000 });
     }
   };
 }
