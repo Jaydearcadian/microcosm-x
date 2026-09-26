@@ -166,6 +166,15 @@ test('LIVE-5 (negative): bad provider address fails LOUD, job untouched, no rece
   const store = new SpaceStore();
   const { spaceId, deployer } = await makeLiveSpace(store, 'Live Loud Failure');
 
+  // The provider is approved as a payable counterparty first, by naming it as
+  // a participant. An unapproved provider is now refused at creation, which is
+  // correct and is covered by SPACE-9, so without this the test would no longer
+  // reach settlement at all. What it is here to prove is the other failure: an
+  // approved counterparty whose address cannot actually be paid on chain.
+  store.addParticipant({
+    spaceId, kind: 'Agent', displayName: 'UnpayableBot', address: 'not-an-address', actorId: deployer,
+  });
+
   const created = await call(store, 'work_create', {
     spaceId, actorId: deployer, provider: 'not-an-address', evaluator: deployer,
     description: 'Unsettleable job', budget: '20.00', deadline: futureDeadline(),

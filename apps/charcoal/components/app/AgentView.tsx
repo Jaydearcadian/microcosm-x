@@ -103,9 +103,14 @@ export function AgentView() {
   const memberAddresses = (space?.members ?? [])
     .map((member) => member.address ?? "")
     .filter(isAddress);
-  // x402 refuses a zero payTo: prefer an allowlisted counterparty, else a Space member
-  const defaultPayTo = evmAllowlist[0] ?? memberAddresses[0] ?? "";
-  const effectivePayTo = isAddress(payTo) ? payTo : defaultPayTo;
+  // The recipient is never guessed. This used to fall back to the first
+  // allowlisted counterparty, then the first member with an address, which meant
+  // that on any configured Space the probe silently paid someone the operator
+  // had not chosen. Picking who gets paid is the operator's decision, so an
+  // empty field keeps the probe disabled and x402's own zero-payTo refusal is
+  // never reached by accident.
+  const approvedPayees: string[] = evmAllowlist;
+  const effectivePayTo = isAddress(payTo) ? payTo : "";
   const readyToProbe = Boolean(effectivePayTo && isAddress(asset));
 
   const buildRequired = useCallback(
@@ -416,13 +421,17 @@ export function AgentView() {
                 <input
                   value={payTo}
                   onChange={(event) => setPayTo(event.target.value)}
-                  placeholder={defaultPayTo || "0x…"}
+                  placeholder="0x…"
+                  list={approvedPayees.length ? "agent-approved-payees" : undefined}
                 />
               </label>
+              <datalist id="agent-approved-payees">
+                {approvedPayees.map((entry: string) => <option key={entry} value={entry} />)}
+              </datalist>
               <span className="gov-field__hint">
-                {defaultPayTo
-                  ? `Defaulting to ${defaultPayTo.slice(0, 10)}… because x402 refuses a zero payTo.`
-                  : "This Space has no counterparty or member address to default to, so enter a payTo."}
+                {approvedPayees.length
+                  ? `This Space pays ${approvedPayees.length} approved ${approvedPayees.length === 1 ? "counterparty" : "counterparties"}. Anyone else is refused. Pick one.`
+                  : "This Space has approved no counterparties yet, so any payment will be refused. Name a participant with a wallet address in Onboarding to approve one."}
               </span>
 
               <label className="gov-field">

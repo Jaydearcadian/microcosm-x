@@ -36,6 +36,12 @@ test('M12-5: REST governance uses HttpOnly sessions and ignores body signer iden
     const signer1Cookie = await session(ctx.url, signer1);
     const signer2Cookie = await session(ctx.url, signer2);
     const outsiderCookie = await session(ctx.url, outsider);
+    // The recipient is named as a participant first so it is an approved
+    // counterparty. A payment to an unapproved recipient is now refused at
+    // request time, which is correct and is covered by SPACE-9; without this the
+    // request would 409 and this test, which is about governance and session
+    // handling rather than the allowlist, could not run at all.
+    await request(ctx.url, 'POST', `/api/spaces/${spaceId}/participants`, { kind: 'Service', displayName: 'Payee', address: '0x1111111111111111111111111111111111111111', actorId: founder.address.toLowerCase() }, founderCookie);
     const created = await request(ctx.url, 'POST', `/api/spaces/${spaceId}/governance/payments`, { requesterAddress: outsider.address, recipient: '0x1111111111111111111111111111111111111111', amount: '900.00', deadline: new Date(Date.now() + 86400000).toISOString() }, founderCookie);
     assert.equal(created.status, 201);
     assert.equal(created.json.request.requesterAddress, founder.address.toLowerCase());

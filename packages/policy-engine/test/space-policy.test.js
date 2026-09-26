@@ -155,3 +155,48 @@ test('Unit conversions preserve 6-decimal precision without rounding error', () 
   assert.equal(fromBaseUnits(500000000n), '500.000000');
   assert.equal(fromBaseUnits(1n), '0.000001');
 });
+
+test('SPACE-9: an empty counterparty allowlist denies every payment rather than allowing them', () => {
+  // The guard on this check also required `length > 0`, so an empty allowlist
+  // skipped the check entirely. Every Space created through the API seeds an
+  // empty list, which meant a fresh Space could pay any address at all. That is
+  // the one boundary this product exists to hold, so the empty case now denies.
+  const space = {
+    ...mockSpace,
+    rules: { ...mockSpace.rules, allowedCounterparties: [] },
+  };
+  const result = evaluateSpacePayment(space, {
+    actionId: 'act-empty-allowlist',
+    actorId: 'agent-procure-01',
+    recipient: '0x9999999999999999999999999999999999999999',
+    amount: '100.00',
+    asset: 'USDC',
+  });
+
+  assert.equal(result.allowed, false);
+  assert.ok(
+    result.reasons.some((reason) => /approved no counterparties yet/.test(reason)),
+    `expected an explicit empty-allowlist refusal, got ${JSON.stringify(result.reasons)}`,
+  );
+  assert.ok(result.denialProof, 'a refusal must still carry a denial proof');
+  // money must not have moved
+  assert.notEqual(result.denialProof.status, 'ALLOWED');
+});
+
+test('SPACE-9: an omitted allowlist key is still an explicit opt-out', () => {
+  // Distinct from the empty case on purpose: a Space that never mentions
+  // counterparties has opted out of the rule, and saying so has to stay
+  // possible or the deny-by-default cannot be adopted safely.
+  const rules = { ...mockSpace.rules };
+  delete rules.allowedCounterparties;
+  const space = { ...mockSpace, rules };
+  const result = evaluateSpacePayment(space, {
+    actionId: 'act-no-allowlist-key',
+    actorId: 'agent-procure-01',
+    recipient: '0x9999999999999999999999999999999999999999',
+    amount: '100.00',
+    asset: 'USDC',
+  });
+
+  assert.ok(!result.reasons.some((reason) => /counterpart/.test(reason)), `the rule should be skipped, got ${JSON.stringify(result.reasons)}`);
+});

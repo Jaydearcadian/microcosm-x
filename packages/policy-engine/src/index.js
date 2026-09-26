@@ -103,12 +103,25 @@ export function evaluateSpacePayment(space, request) {
     }
   }
 
-  // 6. Allowed counterparties check
-  if (rules.allowedCounterparties && Array.isArray(rules.allowedCounterparties) && rules.allowedCounterparties.length > 0) {
+  // 6. Allowed counterparties check.
+  //
+  // A present allowlist is authoritative even when it is empty. The previous
+  // guard also required `length > 0`, which meant an empty list skipped the
+  // check entirely and every Space created through the API could pay any
+  // address. That is the exact boundary this product exists to hold, so an
+  // empty list now denies everything rather than allowing everything.
+  //
+  // Only a Space whose rules omit the key altogether is unrestricted, and that
+  // is the one case that has to be opted into deliberately.
+  if (Array.isArray(rules.allowedCounterparties)) {
     const normalizedAllowed = rules.allowedCounterparties.map((c) => c.toLowerCase());
     const targetRecipient = (request.recipient || '').toLowerCase();
     if (!normalizedAllowed.includes(targetRecipient)) {
-      reasons.push(`Recipient '${request.recipient}' is not in the Space's approved counterparties list`);
+      reasons.push(
+        normalizedAllowed.length === 0
+          ? `Recipient '${request.recipient}' cannot be paid: this Space has approved no counterparties yet`
+          : `Recipient '${request.recipient}' is not in the Space's approved counterparties list`,
+      );
     }
   }
 

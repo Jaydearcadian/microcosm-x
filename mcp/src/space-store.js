@@ -2718,6 +2718,26 @@ export class SpaceStore {
     };
     this.participants.set(participant.participantId, participant);
     (space.members || []).push({ id: participant.displayName, name: participant.displayName, role: participant.role, address: participant.address || null });
+
+    // Naming someone with a wallet address approves them as payable.
+    //
+    // This is what makes the empty-allowlist fix usable rather than inert. The
+    // policy now treats a present but empty allowlist as "nobody is approved
+    // yet" and denies every payment, which is the correct posture but would
+    // leave a freshly created Space unable to do anything at all. The product
+    // language already says the roster is who you work with, and a work order
+    // can only be created for a participant, so approving a participant on
+    // arrival is the same decision stated once instead of twice. It also means
+    // the counterparty boundary is no longer a separate list a user can forget
+    // to fill in.
+    if (participant.address) {
+      space.rules = space.rules || {};
+      const current = Array.isArray(space.rules.allowedCounterparties) ? space.rules.allowedCounterparties : [];
+      const incoming = String(participant.address).toLowerCase();
+      if (!current.some((entry) => String(entry).toLowerCase() === incoming)) {
+        space.rules.allowedCounterparties = [...current, participant.address];
+      }
+    }
     this.activity.get(spaceId).push({
       type: 'PARTICIPANT_ADDED',
       participantId: participant.participantId,
