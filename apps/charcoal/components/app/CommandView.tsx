@@ -161,8 +161,6 @@ export function CommandView() {
     return () => observer.disconnect();
   }, [chartable]);
 
-  const startHere = () => window.location.assign("/app#settings=setup");
-
   if (loading && !space) return <div className="app-state">Loading Command Center…</div>;
 
   /* No Space is not an error, it is the starting position, and it used to render
@@ -172,7 +170,7 @@ export function CommandView() {
   if (!space) {
     return (
       <div className="app-view">
-        <EntryGate onCreate={startHere} />
+        <EntryGate />
         <div className="app-state">
           <strong>Nothing to show yet</strong>
           <p>Once you are in a Space, its money, rules and work appear here.</p>

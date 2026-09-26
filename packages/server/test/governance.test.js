@@ -67,3 +67,97 @@ test('M12-5: REST governance uses HttpOnly sessions and ignores body signer iden
     ctx.server.close();
   }
 });
+
+test('M13-1: an admin can set the Space spending limits and see what changed', async () => {
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'Limits Space', actorId: 'founder-01' });
+  const admin = { id: 'founder-01', name: 'Founder', role: 'admin', address: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' };
+  store.spaces.get(space.id).members = [admin];
+
+  const result = store.configureSpaceLimits({
+    spaceId: space.id,
+    actorAddress: admin.address,
+    maxPerTransaction: '250.00',
+    dailyBudget: '900.00',
+  });
+
+  // the operator's own figure is kept, not the six-decimal re-render
+  assert.equal(result.rules.maxPerTransaction, '250.00');
+  assert.equal(result.rules.dailyBudget, '900.00');
+  assert.deepEqual(result.changed, [
+    'maxPerTransaction: 500.00 -> 250.00',
+    'dailyBudget: 2000.00 -> 900.00',
+  ]);
+  // and the policy engine now enforces the new numbers
+  const { evaluateSpacePayment } = await import('../../policy-engine/src/index.js');
+  const verdict = evaluateSpacePayment(store.getSpace(space.id), {
+    actionId: 'act-limits', actorId: 'founder-01',
+    recipient: store.getSpace(space.id).rules.allowedCounterparties[0],
+    amount: '400.00', asset: 'USDC',
+  });
+  assert.equal(verdict.allowed, false);
+  assert.ok(verdict.reasons.some((r) => /per-transaction cap/.test(r)));
+});
+
+test('M13-1: a non-admin cannot loosen the limits', () => {
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'Limits Guard', actorId: 'founder-01' });
+  assert.throws(
+    () => store.configureSpaceLimits({ spaceId: space.id, actorAddress: '0x1111111111111111111111111111111111111111', maxPerTransaction: '99999.00' }),
+    /Only an admin/,
+  );
+});
+
+test('M13-1: a nonsense amount is rejected rather than silently coerced', () => {
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'Limits Guard 2', actorId: 'founder-01' });
+  const admin = { id: 'founder-01', name: 'Founder', role: 'admin', address: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' };
+  store.spaces.get(space.id).members = [admin];
+  assert.throws(() => store.configureSpaceLimits({ spaceId: space.id, actorAddress: admin.address, maxPerTransaction: 'lots' }), /amount like 250.00/);
+  assert.throws(() => store.configureSpaceLimits({ spaceId: space.id, actorAddress: admin.address, dailyBudget: '-5' }), /non-negative amount/);
+});
+
+test('M13-1: a budget binding is recorded and readable back', () => {
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'Binding Space', actorId: 'founder-01' });
+  const admin = { id: 'founder-01', name: 'Founder', role: 'admin', address: '0x70997970c51812dc3a010c7d01b50e0d17dc79c8' };
+  store.spaces.get(space.id).members = [admin];
+
+  assert.equal(store.getBudgetBinding({ spaceId: space.id }), null);
+  const binding = store.recordBudgetBinding({
+    spaceId: space.id, actorAddress: admin.address,
+    signature: '0xdeadbeef', message: 'Microcosm budget binding',
+    maxPerTransaction: '250.00', dailyBudget: '900.00',
+  });
+  assert.equal(binding.maxPerTransaction, '250.00');
+  assert.ok(binding.boundAt);
+  assert.deepEqual(store.getBudgetBinding({ spaceId: space.id }), binding);
+  // and it is auditable rather than silent
+  const trail = store.getActivity(space.id).filter((entry) => entry.type === 'BUDGET_BOUND');
+  assert.equal(trail.length, 1);
+  assert.equal(trail[0].dailyBudget, '900.00');
+});
+
+test('M13-1: a checksummed wallet address can fund the Space it owns', () => {
+  // Wallets hand back a checksummed address. The admin check used `m.id ===
+  // actorId`, so the owner of a Space could not fund it, and nothing caught it
+  // because every address in the fixtures is lowercase.
+  const store = new SpaceStore();
+  const lower = '0x70997970c51812dc3a010c7d01b50e0d17dc79c8';
+  const checksummed = '0x70997970C51812dc3A010c7d01B50e0D17dC79C8';
+  const space = store.createSpace({ name: 'Case Space', actorId: lower });
+  store.fundSpace({ spaceId: space.id, amount: '100.00', actorId: lower });
+
+  // the same wallet, checksummed, is the same person
+  const after = store.fundSpace({ spaceId: space.id, amount: '50.00', actorId: checksummed });
+  assert.equal(Number(after.balance), 150, 'the checksummed address funded the Space it owns');
+});
+
+test('M13-1: a non-member still cannot fund a Space', () => {
+  const store = new SpaceStore();
+  const space = store.createSpace({ name: 'Case Guard', actorId: 'founder-01' });
+  assert.throws(
+    () => store.fundSpace({ spaceId: space.id, amount: '10.00', actorId: '0x1111111111111111111111111111111111111111' }),
+    /is not an admin/,
+  );
+});

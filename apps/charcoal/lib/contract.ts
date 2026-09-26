@@ -69,6 +69,32 @@ export async function fetchCapabilities(spaceId: string, actorId: string, signal
 export async function fetchBoundsFor(spaceId: string, actorId: string, signal?: AbortSignal): Promise<Bounds> { return request<Bounds>(`/api/spaces/${q(spaceId)}/bounds?actorId=${q(actorId)}`, { signal }); }
 
 export async function fetchBounds(signal?: AbortSignal): Promise<Bounds> { const spaces = await fetchSpaces(undefined, signal); const spaceId = spaces[0]?.id; if (!spaceId) throw new Error("No Space is available"); return fetchBoundsFor(spaceId, "admin-01", signal); }
+export interface BudgetBinding {
+  actorAddress: string;
+  signature: string;
+  message: string;
+  maxPerTransaction: string;
+  dailyBudget: string;
+  boundAt: string;
+}
+
+export interface BudgetChallenge { message: string; nonce: string; maxPerTransaction: string; dailyBudget: string }
+
+/** Sets a Space's own per-payment cap and daily budget. Admin only. */
+export async function configureSpaceLimits(spaceId: string, input: { maxPerTransaction?: string; dailyBudget?: string }): Promise<{ rules: Record<string, unknown>; changed: string[] }> {
+  return request<{ rules: Record<string, unknown>; changed: string[] }>(`/api/spaces/${q(spaceId)}/limits`, { method: "POST", body: JSON.stringify(input) });
+}
+
+/** The message to sign, plus whatever is already bound. */
+export async function fetchBudgetBinding(spaceId: string): Promise<{ binding: BudgetBinding | null; challenge: BudgetChallenge }> {
+  return request<{ binding: BudgetBinding | null; challenge: BudgetChallenge }>(`/api/spaces/${q(spaceId)}/budget-binding`);
+}
+
+/** Submits a signature over the challenge. The server verifies it before storing. */
+export async function submitBudgetBinding(spaceId: string, signature: string, nonce: string): Promise<{ binding: BudgetBinding }> {
+  return request<{ binding: BudgetBinding }>(`/api/spaces/${q(spaceId)}/budget-binding`, { method: "POST", body: JSON.stringify({ signature, nonce }) });
+}
+
 export async function fetchParticipants(spaceId: string, signal?: AbortSignal): Promise<Participant[]> { return (await request<{ participants: Participant[] }>(`/api/spaces/${q(spaceId)}/participants`, { signal })).participants; }
 export async function fetchJobs(spaceId: string, signal?: AbortSignal): Promise<Job[]> { return (await request<{ jobs: Job[] }>(`/api/spaces/${q(spaceId)}/work`, { signal })).jobs; }
 export async function fetchRequests(spaceId: string, signal?: AbortSignal): Promise<Request[]> { return (await request<{ requests: Request[] }>(`/api/spaces/${q(spaceId)}/requests`, { signal })).requests; }

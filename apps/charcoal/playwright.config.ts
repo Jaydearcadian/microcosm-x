@@ -9,6 +9,10 @@ export default defineConfig({
   // budget above is 120s, so a longer assertion bound keeps every check
   // meaningful while stopping machine load from reading as a regression.
   expect: { timeout: 15000 },
+  // Run the suite through ./scripts/e2e.sh. It clears the ports first, because
+  // Playwright aborts at webServer launch if one is still held, and that happens
+  // before any globalSetup would run. `reuseExistingServer` is false below so a
+  // leftover dev server can never be adopted and serve a stale bundle.
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [['list']],
@@ -23,7 +27,7 @@ export default defineConfig({
       cwd: '../..',
       env: { CORS_ORIGIN: 'http://127.0.0.1:3010' },
       url: 'http://127.0.0.1:8788/api/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120000,
     },
     {
@@ -39,7 +43,7 @@ export default defineConfig({
         NEXT_DIST_DIR: '.next-e2e',
       },
       url: 'http://127.0.0.1:3010/app/onboarding',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 120000,
     },
   ],

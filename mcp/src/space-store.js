@@ -2339,10 +2339,24 @@ export class SpaceStore {
       const text = String(value).trim();
       // Round-trip through base units: this rejects anything that is not a
       // non-negative amount with at most 6 decimal places, which is what
-      // toBaseUnits already enforces.
-      const base = toBaseUnits(text);
+      // toBaseUnits already enforces. The conversion is wrapped because its own
+      // failure is a SyntaxError reading "Cannot convert lots to a BigInt", which
+      // is not something to show someone who mistyped a field.
+      let base;
+      try {
+        base = toBaseUnits(text);
+      } catch {
+        throw new Error(`'${field}' must be an amount like 250.00, got '${text}'`);
+      }
       if (base < 0n) throw new Error(`'${field}' must be a non-negative amount, got '${text}'`);
-      const normalised = fromBaseUnits(base);
+      // Keep the operator's own figure once it round-trips. fromBaseUnits
+      // re-renders as 250.000000, which then appears in a signed message and in
+      // every bound the Space ever shows. The base-unit round trip is what
+      // validates it; the string is theirs.
+      const normalised = Number(text.replace(/,/g, '')).toFixed(2);
+      if (toBaseUnits(normalised) !== base) {
+        throw new Error(`'${field}' is not a valid amount: '${text}'`);
+      }
       if (String(next[field] || '') !== normalised) changed.push(`${field}: ${next[field] ?? 'unset'} -> ${normalised}`);
       next[field] = normalised;
     }
@@ -2350,6 +2364,53 @@ export class SpaceStore {
     if (!changed.length) return { rules: { ...next }, changed: [] };
     space.rules = next;
     return { rules: { ...next }, changed };
+  }
+
+  /**
+   * Records a wallet signature that binds a Space's spending limits.
+   *
+   * The signature is over a message the server composed, so what was signed is
+   * the actual limits and not a label the client chose. The address that signed
+   * must be an admin of the Space. Verification itself happens in the HTTP layer
+   * with viem's verifyMessage; this stores the result so the binding is
+   * inspectable afterwards rather than being a button that says "done".
+   */
+  recordBudgetBinding({ spaceId, actorAddress, signature, message, maxPerTransaction, dailyBudget }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const admin = (space.members || []).find(
+      (member) => String(member.address || '').toLowerCase() === String(actorAddress || '').toLowerCase() && member.role === 'admin',
+    );
+    if (!admin) throw new Error(`Only an admin of Space '${spaceId}' can bind its budget`);
+
+    const binding = {
+      actorAddress: String(actorAddress).toLowerCase(),
+      signature: String(signature),
+      message: String(message),
+      maxPerTransaction: String(maxPerTransaction ?? space.rules?.maxPerTransaction ?? ''),
+      dailyBudget: String(dailyBudget ?? space.rules?.dailyBudget ?? ''),
+      boundAt: new Date().toISOString(),
+    };
+    space.budgetBinding = binding;
+
+    const entries = this.activity.get(spaceId) || [];
+    entries.push({
+      type: 'BUDGET_BOUND',
+      spaceId,
+      source: 'wallet',
+      actorId: binding.actorAddress,
+      maxPerTransaction: binding.maxPerTransaction,
+      dailyBudget: binding.dailyBudget,
+      txHash: null,
+      timestamp: binding.boundAt,
+    });
+    this.activity.set(spaceId, entries);
+
+    return { ...binding };
+  }
+
+  getBudgetBinding({ spaceId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    return space.budgetBinding ? { ...space.budgetBinding } : null;
   }
 
   configureSpaceGovernance({ spaceId, actorAddress, threshold, signerAllowlist, enabled = true }) {
@@ -2836,7 +2897,16 @@ export class SpaceStore {
       throw new Error(`Invalid amount '${amount}': must be a USDC decimal string`);
     }
     if (amountBase <= 0n) throw new Error("Invalid amount: must be greater than zero");
-    const member = (space.members || []).find((m) => m.id === actorId || m.name === actorId);
+    // Matched case-insensitively and on the address as well as the id. A wallet
+    // hands back a checksummed address, and this check used `m.id === actorId`,
+    // so the owner of a Space could not fund it. Nothing caught it because every
+    // address in the fixtures happens to be lowercase.
+    const wanted = String(actorId || '').toLowerCase();
+    const member = (space.members || []).find(
+      (m) => String(m.id || '').toLowerCase() === wanted
+        || String(m.name || '').toLowerCase() === wanted
+        || String(m.address || '').toLowerCase() === wanted,
+    );
     if (!member || member.role !== 'admin') {
       throw new Error(`'${actorId}' is not an admin of Space '${spaceId}'`);
     }

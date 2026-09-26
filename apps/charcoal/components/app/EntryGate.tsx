@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { redeemSpaceInvitation } from "@/lib/contract";
 import { useAppData } from "@/lib/app-data";
+import { CreateSpaceFlow } from "@/components/app/CreateSpaceFlow";
 import { useWalletSession } from "@/lib/wallet-session";
 
 /**
@@ -16,14 +17,21 @@ import { useWalletSession } from "@/lib/wallet-session";
  * invite" and "Create a Space" are things you do; a bearer credential and an
  * operating context are not.
  */
-export function EntryGate({ onCreate }: { onCreate: () => void }) {
-  const { spaceId, setSpaceId } = useAppData();
+export function EntryGate() {
+  const { spaceId, setSpaceId, refresh } = useAppData();
   const { isConnected, isAuthenticated, authenticate, isAuthenticating, address } = useWalletSession();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
+  // Order matters. Creating a Space sets the selected Space, and the gate used to
+  // bail out on that, which unmounted the form halfway through and threw away the
+  // budget-binding step and the log of what had actually been created.
+  if (creating) {
+    return <CreateSpaceFlow onDone={() => { setCreating(false); void refresh(); }} />;
+  }
   if (spaceId) return null;
 
   // Accepts a bare code, or a whole invite URL, because an invite arrives as a
@@ -115,7 +123,7 @@ export function EntryGate({ onCreate }: { onCreate: () => void }) {
               Name it, say what it is for, add who works in it, set what it may spend, and open a
               door for agents. About two minutes.
             </p>
-            <button type="button" className="btn btn--primary" onClick={onCreate}>
+            <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
               Create a Space
             </button>
             <span className="entry-gate__as">You are signed in as {address}.</span>

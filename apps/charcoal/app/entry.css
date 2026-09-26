@@ -35,3 +35,43 @@
 .app-wallet__try span { font-size: 8px; }
 .app-wallet__try:hover { border-color: rgba(202, 254, 92, .42); color: var(--accent); }
 .app-wallet__try.is-current { border-color: rgba(202, 254, 92, .42); background: rgba(202, 254, 92, .1); color: var(--accent); }
+
+/* Create a Space: five steps, each one a real call. */
+.csf { margin-bottom: 26px; padding: 22px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-2); }
+.csf__head h2 { margin-top: 8px; font-size: 28px; }
+.csf__head p { max-width: 64ch; margin-top: 10px; font-size: 14px; line-height: 1.6; }
+.csf__steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 4px; padding: 0; list-style: none; }
+.csf__steps li { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); color: var(--text-4); font-size: 12px; }
+.csf__steps li span { font-size: 10px; }
+.csf__steps li.is-current { border-color: rgba(202, 254, 92, .42); background: rgba(202, 254, 92, .08); color: var(--accent); }
+.csf__steps li.is-done { color: var(--text-2); }
+.csf__body { display: grid; gap: 16px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--hairline-soft); }
+.csf__body > p { max-width: 66ch; font-size: 13px; line-height: 1.6; }
+.csf__field { display: grid; gap: 6px; min-width: 0; }
+.csf__field > span { color: var(--text-4); font-family: var(--font-ui); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.csf__field input, .csf__field select, .csf__field textarea { width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); background: var(--bg-app); color: var(--text); font: 14px var(--font-body); }
+.csf__field textarea { min-height: 74px; resize: vertical; }
+.csf__field input:focus-visible, .csf__field select:focus-visible, .csf__field textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.csf__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.csf__add { display: grid; grid-template-columns: 1.2fr .8fr 1.2fr auto; gap: 10px; align-items: end; }
+.csf__people { display: grid; gap: 8px; }
+.csf__person { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); background: var(--surface); }
+.csf__person strong { font-size: 13px; }
+.csf__person span { font-size: 11px; }
+.csf__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.csf__facts { display: grid; gap: 0; margin: 0; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); overflow: hidden; }
+.csf__facts > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: baseline; padding: 11px 14px; border-bottom: 1px solid var(--hairline-soft); }
+.csf__facts > div:last-child { border-bottom: 0; }
+.csf__facts dt { color: var(--text-4); font-size: 11px; }
+.csf__facts dd { margin: 0; font-size: 13px; text-align: right; }
+.csf__warn { padding: 14px 16px; border: 1px solid var(--hairline); border-left: 2px solid var(--danger); border-radius: 0 var(--radius-ctl) var(--radius-ctl) 0; background: var(--surface); }
+.csf__warn strong { display: block; font-size: 13px; }
+.csf__warn p { margin-top: 8px; font-size: 13px; line-height: 1.6; }
+.csf__warn code { padding: 1px 5px; border-radius: 4px; background: var(--surface-3); font-family: var(--font-ui); font-size: 12px; }
+.csf__sig, .csf__log { padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); background: var(--surface); font-size: 12px; }
+.csf__sig summary, .csf__log summary { cursor: pointer; color: var(--text-2); }
+.csf__sig pre { margin: 10px 0 0; padding: 10px; border-radius: 8px; background: var(--bg-app); color: var(--text-2); font-family: var(--font-ui); font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.csf__log ul { display: grid; gap: 4px; margin: 10px 0 0; padding-left: 18px; color: var(--text-2); font-size: 11px; }
+.csf__error { margin-top: 16px; padding: 11px 14px; border: 1px solid var(--danger); border-radius: var(--radius-ctl); color: var(--danger); font-size: 13px; }
+.csf__hint { color: var(--text-4); font-size: 12px; }
+@media (max-width: 900px) { .csf__grid { grid-template-columns: 1fr; } .csf__add { grid-template-columns: 1fr; } }

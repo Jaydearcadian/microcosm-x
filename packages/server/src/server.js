@@ -7,6 +7,8 @@
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
+import { verifyMessage } from 'viem';
 import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { toBaseUnits, fromBaseUnits } from '../../policy-engine/src/index.js';
 import { buildDemoSpace } from './seed.js';
@@ -197,6 +199,40 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
   }
 
   return { store, auth, subscribers, publish, mutate, checkpoint, corsHeaders, indexerState, spaceBounds: (id) => spaceBounds(store, id) };
+}
+
+/**
+ * The message a wallet is asked to sign when binding a Space's budget.
+ *
+ * Composed on the server so the signed text carries the real limits. The nonce
+ * is what ties a returned signature to this specific challenge, so a signature
+ * captured earlier cannot be replayed against limits that have since changed.
+ */
+const budgetChallenges = new Map();
+
+function budgetBindingChallenge(store, spaceId, { fresh = true } = {}) {
+  const space = store.getSpace(spaceId);
+  const cap = space?.rules?.maxPerTransaction ?? 'unset';
+  const daily = space?.rules?.dailyBudget ?? 'unset';
+
+  // Reuse an outstanding challenge for the same limits. Recomposing on the POST
+  // handed back a different nonce than the GET issued, so a correctly signed
+  // message was rejected as a mismatch.
+  const outstanding = budgetChallenges.get(spaceId);
+  if (!fresh && outstanding && outstanding.cap === cap && outstanding.daily === daily) {
+    return { message: outstanding.message, nonce: outstanding.nonce, cap, daily };
+  }
+
+  const nonce = crypto.randomUUID();
+  const message = [
+    'Microcosm budget binding',
+    `space: ${spaceId}`,
+    `max per transaction: ${cap}`,
+    `daily budget: ${daily}`,
+    `nonce: ${nonce}`,
+  ].join('\n');
+  budgetChallenges.set(spaceId, { message, nonce, cap, daily, issuedAt: Date.now() });
+  return { message, nonce, cap, daily };
 }
 
 export async function start({ port = 8787, seed = false, dataPath = process.env.DATA_PATH || null, store = new SpaceStore(), x402Settlement = null, x402SettlementAdapter = null, x402Facilitator = null, indexer = null } = {}) {
@@ -541,6 +577,43 @@ async function dispatch(app, req, res) {
       needSpace(spaceId);
       return ok(200, { intent: store.getX402Intent({ spaceId, intentId, sessionAddress: current.address }) });
     }
+    // Binding the budget: the server composes the message, the wallet signs it,
+    // and the server verifies the signature against the session address before
+    // recording it. Composing it here is the point: what gets signed is the real
+    // limits, not a label the client picked.
+    m = path.match(/^\/api\/spaces\/([^/]+)\/budget-binding$/);
+    if (m && req.method === 'GET') {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      // One call returns both what is already bound and the message to sign if
+      // it is not, so a client never has to know which of the two verbs to use.
+      return ok(200, { binding: store.getBudgetBinding({ spaceId }), challenge: budgetBindingChallenge(store, spaceId) });
+    }
+    if (m && req.method === 'POST') {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      const { message, nonce, cap, daily } = budgetBindingChallenge(store, spaceId, { fresh: false });
+
+      if (body.signature) {
+        const valid = await verifyMessage({ address: current.address, message, signature: body.signature }).catch(() => false);
+        if (!valid || body.nonce !== nonce) {
+          throw Object.assign(new Error('That signature does not match this budget binding'), { httpStatus: 401, httpCode: 'AUTH_REQUIRED' });
+        }
+        try {
+          const binding = await app.mutate(spaceId, async () => store.recordBudgetBinding({
+            spaceId, actorAddress: current.address, signature: body.signature, message,
+            maxPerTransaction: cap, dailyBudget: daily,
+          }));
+          return ok(201, { binding });
+        } catch (err) {
+          throwMapped(err);
+        }
+      }
+      return ok(200, { message, nonce, maxPerTransaction: cap, dailyBudget: daily });
+    }
+
     // A Space's own spending limits. Session-gated and admin-checked in the
     // store, same as the governance config below.
     m = path.match(/^\/api\/spaces\/([^/]+)\/limits$/);
