@@ -59,6 +59,7 @@ monochrome.** Colour is a punctuation mark, not a theme.
   --rail-width: 264px;
   --rail-width-collapsed: 64px;
   --frame-inset: 16px;
+  --rail-max-share: 22%;   /* the rail may never dominate the viewport */
 }
 ```
 
@@ -81,6 +82,10 @@ page  #0a0a0b
   an object rather than a page.
 - The rail and main are the same colour, separated by a hairline only.
 - Content is left-aligned. Nothing is centred except empty states.
+- The rail is capped at `--rail-max-share` of the viewport and steps down in
+  width as the viewport shrinks. Full table in
+  [`DESIGN-REVIEW.md`](DESIGN-REVIEW.md) §4. Below 1024px it defaults to the
+  64px icon rail.
 
 ### Rail anatomy, top to bottom
 
@@ -121,8 +126,42 @@ The reference's metric card is two panels side by side inside one border.
 - An alarming metric changes the number to the danger colour and nothing else.
   Do not tint the card.
 
-The row scrolls horizontally rather than wrapping or squashing. A card is
-280px minimum. Cut off at the right edge is correct and intentional.
+**The row only scrolls where there is room for it.** Below 1280px it is a
+wrapping grid, because nobody should have to scroll sideways to read a balance.
+The reasoning, and the sources that disagreed about it, are in
+[`DESIGN-REVIEW.md`](DESIGN-REVIEW.md) §3.
+
+| Viewport | Behaviour |
+|---|---|
+| below 640px | one column |
+| 640–1279px | two columns |
+| 1280px and up | horizontal scroller, 280px minimum card |
+
+A cut-off card at the right edge is intentional **only** in the last row of that
+table. Everywhere else it is a bug.
+
+## 4a. Text must never break out
+
+Three rules, applied together. Missing the first is the usual reason the other
+two silently do nothing.
+
+```css
+.row > *      { min-width: 0; }              /* lets a flex/grid child shrink */
+.label        { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc         { display: -webkit-box; -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2; overflow: hidden; }
+```
+
+- A flex or grid child defaults to `min-width: auto` and refuses to shrink below
+  its longest word. Any card showing a hash, an identifier or a long
+  description needs all three rules.
+- Identifiers and hashes use `word-break: break-all` **only** inside a hash
+  chip, where they must wrap. Everywhere else they truncate.
+- Figures that are compared vertically get `font-variant-numeric: tabular-nums`
+  so they do not jitter as their values change.
+- Headings get `text-wrap: balance`.
+- Nothing in the app is smaller than 11px. Form inputs are 16px at mobile
+  widths, which is what stops iOS zooming the page on focus.
 
 ### Hatched area chart
 
