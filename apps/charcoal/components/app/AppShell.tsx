@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { SiteHeader } from "@/components/SiteHeader";
 import { useAppData } from "@/lib/app-data";
@@ -22,5 +22,42 @@ export function AppShell({ active, onChange, children }: { active: AppView; onCh
   const { space, spaces, setSpaceId, actorId, setActorId, refresh, loading } = useAppData();
   const { isConnected, isAuthenticated, authenticate, disconnect, isAuthenticating, error } = useWalletSession();
   const actors = space?.members?.length ? space.members : [{ id: actorId, name: actorId, role: "unaffiliated" }];
-  return <div className="app-root"><SiteHeader onNavigate={onChange} /><div className="app-workspace"><aside className="app-rail"><div className="app-rail__brand"><span className="app-rail__mark">M</span><div><strong>MICROCOSM</strong><span>SPACE COMMAND</span></div></div><div className="app-rail__space"><span className="eyebrow">ACTIVE SPACE</span><select value={space?.id ?? ""} onChange={(event) => setSpaceId(event.target.value)} aria-label="Active Space" disabled={!spaces.length}><option value="">No Space yet</option>{spaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><nav className="app-rail__nav" aria-label="App views">{NAV.map((item) => <button key={item.id} className={active === item.id ? "is-active" : ""} aria-current={active === item.id ? "page" : undefined} onClick={() => onChange(item.id)}><span className="font-ui">{String(NAV.indexOf(item) + 1).padStart(2, "0")}</span><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav><div className="app-rail__foot"><div className="app-rail__wallet"><ConnectButton showBalance={false} chainStatus="icon" />{isConnected && !isAuthenticated && <button className="app-refresh" onClick={() => void authenticate().catch(() => undefined)} disabled={isAuthenticating}>{isAuthenticating ? "SIGNING…" : "SIGN SESSION"}</button>}{isAuthenticated && <button className="app-refresh" onClick={() => void disconnect()}>DISCONNECT</button>}{error && <span className="app-rail__status app-rail__status--danger" role="status">{error}</span>}</div><label className="app-rail__actor"><span>ACTING AS</span><select value={actorId} onChange={(event) => setActorId(event.target.value)} aria-label="Acting actor">{actors.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}</select></label><button className="app-refresh" onClick={() => void refresh()} disabled={loading}>{loading ? "SYNCING…" : "↻ REFRESH"}</button><span className="app-rail__status"><i className={loading ? "is-busy" : ""} /> {loading ? "SYNCING" : "API CONNECTED"}</span></div></aside><main className="app-content">{children}</main></div></div>;
+  // The rail is the primary navigation, so it collapses to an icon strip rather
+  // than disappearing: an operator scanning eight views should not lose them.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setRailCollapsed(window.localStorage.getItem("microcosm:rail") === "collapsed");
+    } catch {}
+  }, []);
+  const toggleRail = useCallback(() => {
+    setRailCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("microcosm:rail", next ? "collapsed" : "open");
+      } catch {}
+      return next;
+    });
+  }, []);
+  return <div className="app-root"><SiteHeader
+    onNavigate={onChange}
+    onToggleRail={toggleRail}
+    railCollapsed={railCollapsed}
+    actions={
+      <div className="app-wallet">
+        <ConnectButton showBalance={false} chainStatus="icon" />
+        {isConnected && !isAuthenticated ? (
+          <button className="app-wallet__session" type="button" onClick={() => void authenticate().catch(() => undefined)} disabled={isAuthenticating}>
+            {isAuthenticating ? "SIGNING…" : "SIGN SESSION"}
+          </button>
+        ) : null}
+        {isAuthenticated ? (
+          <button className="app-wallet__session app-wallet__session--on" type="button" onClick={() => void disconnect()}>
+            DISCONNECT
+          </button>
+        ) : null}
+        {error ? <span className="app-wallet__error" role="status">{error}</span> : null}
+      </div>
+    }
+  /><div className="app-workspace"><aside className={`app-rail${railCollapsed ? " is-collapsed" : ""}`}><div className="app-rail__brand"><span className="app-rail__mark">M</span></div><div className="app-rail__space"><span className="eyebrow">ACTIVE SPACE</span><select value={space?.id ?? ""} onChange={(event) => setSpaceId(event.target.value)} aria-label="Active Space" disabled={!spaces.length}><option value="">No Space yet</option>{spaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><nav className="app-rail__nav" aria-label="App views">{NAV.map((item) => <button key={item.id} className={active === item.id ? "is-active" : ""} aria-current={active === item.id ? "page" : undefined} onClick={() => onChange(item.id)}><span className="font-ui">{String(NAV.indexOf(item) + 1).padStart(2, "0")}</span><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav><div className="app-rail__foot"><div className="app-rail__wallet" /><label className="app-rail__actor"><span>ACTING AS</span><select value={actorId} onChange={(event) => setActorId(event.target.value)} aria-label="Acting actor">{actors.map((member) => <option key={member.id} value={member.id}>{member.name} · {member.role}</option>)}</select></label><button className="app-refresh" onClick={() => void refresh()} disabled={loading}>{loading ? "SYNCING…" : "↻ REFRESH"}</button><span className="app-rail__status"><i className={loading ? "is-busy" : ""} /> {loading ? "SYNCING" : "API CONNECTED"}</span></div></aside><main className="app-content">{children}</main></div></div>;
 }

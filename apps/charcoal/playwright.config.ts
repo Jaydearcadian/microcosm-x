@@ -31,7 +31,13 @@ export default defineConfig({
       cwd: '.',
       // both the browser client and the /api rewrite must hit the same fresh server,
       // otherwise the suite silently exercises whatever host the default proxy names
-      env: { NEXT_PUBLIC_MICROCOSM_API: 'http://127.0.0.1:8788', MICROCOSM_API_PROXY: 'http://127.0.0.1:8788' },
+      // Its own distDir: this dev server must never write into the .next that
+      // the deployed `next start` reads from.
+      env: {
+        NEXT_PUBLIC_MICROCOSM_API: 'http://127.0.0.1:8788',
+        MICROCOSM_API_PROXY: 'http://127.0.0.1:8788',
+        NEXT_DIST_DIR: '.next-e2e',
+      },
       url: 'http://127.0.0.1:3010/app/onboarding',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,

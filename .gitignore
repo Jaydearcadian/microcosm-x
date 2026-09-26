@@ -64,3 +64,4 @@ videos/*/dist/
 .demo-foundry/
 apps/*/test-results/
 apps/*/tsconfig.tsbuildinfo
+apps/charcoal/.next-e2e/

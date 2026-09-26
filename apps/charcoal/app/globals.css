@@ -6,19 +6,22 @@
  * change (brief §2 "build with vars from day one").
  */
 :root {
-  --bg: #020202;
-  --surface: #0e0e0e;
+  --bg: #090909;
+  --surface: #121212;
+  --surface-2: #171717;        /* raised rows, inputs, hover */
   --accent: #cafe5c;          /* the one accent. Green reads "active/settled". */
   --accent-soft: #e8ffb8;
   --danger: #e5484d;          /* denials + refunds ONLY. Never decoration. */
-  --text: #ffffff;
-  --muted: rgba(255, 255, 255, 0.6);
-  --hairline: rgba(255, 255, 255, 0.08);
+  --text: #f5f5f5;
+  --muted: #8b8b8b;
+  --dim: #5e5e5e;
+  --hairline: rgba(255, 255, 255, 0.10);
+  --hairline-soft: rgba(255, 255, 255, 0.06);
   --font-display: "Delight", "Clash Display", sans-serif;
   --font-body: "Aeonik Pro", "Inter Tight", sans-serif;
   --font-ui: "Geist", "Geist Mono", monospace;
   --radius-pill: 999px;
-  --radius-card: 16px;
+  --radius-card: 12px;
   --content-width: 1216px;
 }
 
@@ -41,8 +44,8 @@ body {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--bg);
+  background: rgba(202, 254, 92, 0.25);
+  color: var(--text);
 }
 
 a {
@@ -564,12 +567,26 @@ button {
 .app-select select, .wizard-field input, .wizard-field select { min-height: 44px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); color: var(--text); padding: 0 12px; font: inherit; letter-spacing: 0; }
 .command-toolbar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 24px; }
 .command-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* Metric row: a quiet four-up of headline numbers, the way an operator reads
+   a dashboard. Numbers carry the emphasis; the label stays quiet. */
+.stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; min-width: 0; padding: 18px 18px 16px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface); }
+.stat-card__label { display: block; color: var(--muted); font-size: 12px; }
+.stat-card__value { display: block; margin-top: 10px; font-family: var(--font-ui); font-size: 30px; line-height: 1.1; letter-spacing: -0.02em; }
+.stat-card__note { display: block; margin-top: 6px; color: var(--dim); font-size: 11px; }
+.stat-card__mark { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--hairline-soft); background: var(--surface-2); color: var(--dim); }
+.stat-card__mark--live { color: var(--accent); border-color: rgba(202, 254, 92, 0.35); }
+.stat-card--alert .stat-card__value { color: var(--danger); }
+
+@media (max-width: 1080px) { .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .stat-row { grid-template-columns: 1fr; } }
 .command-panel { min-width: 0; padding: 24px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface); }
 .command-panel--wide { grid-column: 1 / -1; }
 .command-panel__head, .command-panel__foot, .wizard-panel__top, .audit-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .command-panel__foot { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 12px; }
 .command-gauge { display: grid; place-items: center; padding-block: 26px 12px; }
-.authority-list { display: grid; gap: 26px; padding-block: 42px 28px; }
+.authority-list { display: grid; gap: 22px; padding-block: 26px 20px; }
 .authority-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 20px; color: var(--muted); font-size: 13px; }
 .authority-row strong { color: var(--text); }
 .authority-track { grid-column: 1 / -1; height: 6px; border-radius: var(--radius-pill); background: rgba(255,255,255,.07); overflow: hidden; }
@@ -580,7 +597,7 @@ button {
 .policy-row .muted { text-align: right; font-size: 11px; }
 .roster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .roster-member { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--hairline); border-radius: 12px; }
-.roster-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--bg); font-family: var(--font-ui); font-weight: 600; }
+.roster-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--hairline); color: var(--muted); font-family: var(--font-ui); font-weight: 600; }
 .roster-member strong, .roster-member span:not(.status-pill) { display: block; }
 .roster-member strong { font-size: 14px; }
 .roster-member span:not(.status-pill) { margin-top: 3px; font-size: 11px; }
@@ -670,7 +687,56 @@ button {
 
 /* Workspace shell — persistent navigation, not an editorial section stack. */
 .app-workspace { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: calc(100vh - 1px); }
-.app-rail { display: flex; flex-direction: column; min-height: 100vh; padding: 128px 16px 24px; border-right: 1px solid var(--hairline); background: #060606; }
+/* Header: rail toggle, and the session cluster in the top-right. The wallet
+   reads as one dark control with a single lime accent rather than a bright
+   pill, so it sits in the bar without competing with the page heading. */
+.site-header__toggle { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1; }
+.site-header__toggle:hover { background: var(--surface-2); color: var(--text); }
+.site-header__end { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.app-wallet { display: flex; align-items: center; gap: 8px; }
+/* This RainbowKit build exposes no style props on ConnectButton and styles it
+   through emotion, so the wallet control is matched to the app's surface scale
+   here. A solid accent fill shouted from the header; the rest of the bar is
+   quiet, so it takes the same dark control as every other button and keeps the
+   accent for the border and the hover state. */
+.app-wallet button[data-testid="rk-connect-button"] {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  height: 38px !important;
+  padding: 0 18px !important;
+  box-shadow: none !important;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.app-wallet button[data-testid="rk-connect-button"]:hover {
+  background: var(--surface-2) !important;
+  border-color: rgba(202, 254, 92, 0.42) !important;
+  color: var(--accent) !important;
+}
+.app-wallet__session { min-height: 34px; padding: 0 14px; border: 1px solid rgba(202, 254, 92, 0.42); border-radius: 999px; background: rgba(202, 254, 92, 0.08); color: var(--accent); font-family: var(--font-ui); font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+.app-wallet__session:hover:not(:disabled) { background: rgba(202, 254, 92, 0.16); }
+.app-wallet__session:disabled { opacity: .6; cursor: progress; }
+.app-wallet__session--on { border-color: var(--hairline); background: var(--surface); color: var(--muted); }
+.app-wallet__session--on:hover { background: var(--surface-2); color: var(--text); }
+.app-wallet__error { max-width: 220px; color: var(--danger); font-size: 11px; }
+
+/* Collapsed rail: an icon strip, so all eight views stay reachable. */
+.app-rail.is-collapsed { padding-inline: 10px; }
+.app-workspace:has(.app-rail.is-collapsed) { grid-template-columns: 62px minmax(0, 1fr); }
+.app-rail.is-collapsed .app-rail__brand > div,
+.app-rail.is-collapsed .app-rail__space,
+.app-rail.is-collapsed .app-rail__nav button strong,
+.app-rail.is-collapsed .app-rail__nav button small,
+.app-rail.is-collapsed .app-rail__foot { display: none; }
+.app-rail.is-collapsed .app-rail__brand { justify-content: center; padding-inline: 0; }
+.app-rail.is-collapsed .app-rail__nav { padding-top: 14px; }
+.app-rail.is-collapsed .app-rail__nav button { grid-template-columns: 1fr; place-items: center; min-height: 42px; padding: 8px 0; }
+.app-rail.is-collapsed .app-rail__nav button > span { grid-row: auto; font-size: 11px; }
+
+.app-rail { display: flex; flex-direction: column; min-height: 100vh; padding: 128px 16px 24px; border-right: 1px solid var(--hairline); background: #0b0b0b; }
 .app-rail__brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 28px; }
 .app-rail__mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--bg); font-family: var(--font-display); font-weight: 600; }
 .app-rail__brand strong, .app-rail__brand span { display: block; }
@@ -679,12 +745,14 @@ button {
 .app-rail__space { display: grid; gap: 8px; padding: 16px 10px; border-block: 1px solid var(--hairline); }
 .app-rail__space select, .app-rail__actor select { width: 100%; min-height: 40px; padding: 0 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); color: var(--text); font: 13px var(--font-body); }
 .app-rail__nav { display: grid; gap: 4px; padding-top: 22px; }
-.app-rail__nav button { display: grid; grid-template-columns: 28px 1fr; gap: 3px 8px; min-height: 58px; padding: 10px; border: 1px solid transparent; border-radius: 10px; text-align: left; color: var(--muted); }
+.app-rail__nav button { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; min-height: 50px; padding: 9px 10px; border: 1px solid transparent; border-radius: 10px; text-align: left; color: var(--muted); }
 .app-rail__nav button > span { grid-row: 1 / span 2; color: var(--muted); font-size: 10px; }
 .app-rail__nav button strong { color: var(--text); font-size: 13px; }
-.app-rail__nav button small { color: var(--muted); font-size: 10px; }
-.app-rail__nav button:hover, .app-rail__nav button.is-active { border-color: var(--hairline); background: var(--surface); }
-.app-rail__nav button.is-active > span, .app-rail__nav button.is-active strong { color: var(--accent); }
+.app-rail__nav button small { color: var(--dim); font-size: 10px; }
+.app-rail__nav button:hover { background: var(--surface-2); }
+.app-rail__nav button.is-active { border-color: var(--hairline); background: var(--surface); }
+.app-rail__nav button.is-active > span { color: var(--dim); }
+.app-rail__nav button.is-active strong { color: var(--text); }
 .app-rail__foot { display: grid; gap: 14px; margin-top: auto; padding: 16px 10px 0; border-top: 1px solid var(--hairline); }
 .app-rail__wallet { display: grid; gap: 8px; }
 .app-rail__wallet > div { width: 100%; }

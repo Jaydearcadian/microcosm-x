@@ -1,1 +1,4 @@
 .vercel
+
+# e2e dev-server output; never the production .next
+.next-e2e/

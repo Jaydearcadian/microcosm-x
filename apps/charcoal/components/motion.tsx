@@ -14,7 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
+import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { defineChain, http } from "viem";
 import { WagmiProvider, createConfig, injected } from "wagmi";
@@ -51,8 +51,22 @@ const rainbowConfig = createConfig({
 });
 const queryClient = new QueryClient();
 
+/**
+ * RainbowKit ships a blue accent that fought the rest of the product, which is
+ * monochrome with a single lime accent. The theme below moves it onto the same
+ * surface scale and lets the app's own accent through, so the wallet control
+ * reads as part of the bar rather than a foreign widget pasted into it.
+ */
+const rainbowTheme = darkTheme({
+  accentColor: "#cafe5c",
+  accentColorForeground: "#0b0b0b",
+  borderRadius: "medium",
+  fontStack: "system",
+  overlayBlur: "small",
+});
+
 export function Providers({ children }: { children: ReactNode }) {
-  return <WagmiProvider config={rainbowConfig}><QueryClientProvider client={queryClient}><RainbowKitProvider><WalletSessionProvider>{children}</WalletSessionProvider></RainbowKitProvider></QueryClientProvider></WagmiProvider>;
+  return <WagmiProvider config={rainbowConfig}><QueryClientProvider client={queryClient}><RainbowKitProvider theme={rainbowTheme}><WalletSessionProvider>{children}</WalletSessionProvider></RainbowKitProvider></QueryClientProvider></WagmiProvider>;
 }
 
 export type HeadlineSegment = { text: string; accent?: boolean };
