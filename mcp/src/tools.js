@@ -135,7 +135,8 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'payments_request',
-    description: 'Request a disbursement from a Space treasury to a recipient. Checked against Space policy rules before settlement.',
+    description:
+      'Request a disbursement from a Space treasury to a recipient. Checked against Space policy rules before settlement. An agent must present the delegationId its Space owner signed; a human spends on a wallet session.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -147,6 +148,12 @@ export const TOOL_DEFINITIONS = [
           type: 'string',
           description: 'The ID of the agent or user making the request.',
         },
+        delegationId: {
+          type: 'string',
+          description:
+            "Required when actorId is an agent. The authority delegation your Space owner signed for this agent. Without one, an agent has no spending authority at all.",
+        },
+
         recipient: {
           type: 'string',
           description: 'The destination wallet address, ENS/name, or approved counterparty identifier.',
@@ -294,6 +301,12 @@ export const TOOL_DEFINITIONS = [
           type: 'string',
           description: 'The client (human or agent) requesting the work.',
         },
+        delegationId: {
+          type: 'string',
+          description:
+            "Required when actorId is an agent. The authority delegation your Space owner signed for this agent. Without one, an agent has no spending authority at all.",
+        },
+
         provider: {
           type: 'string',
           description: 'The provider who will perform the work (address or agent ID).',

@@ -75,9 +75,13 @@ async function connectWallet(page: Page) {
   await expect(connect).toBeVisible();
   await connect.click({ force: true });
   const dialog = page.getByRole("dialog", { name: "Connect a Wallet" });
-  const injected = dialog.getByRole("button", { name: /Injected/i });
-  await expect(injected).toBeVisible();
-  await dialog.locator("button").filter({ hasText: "Injected" }).click({ force: true, noWaitAfter: true });
+  await expect(dialog.getByRole("button", { name: /Injected/i })).toBeVisible();
+  // Deliberately not `force`. The connector modal renders before React has
+  // attached its click handler, and a forced click can land in that window and
+  // do nothing at all — which is exactly the intermittent "wallet never
+  // connects" failure this suite had been living with. Waiting for
+  // actionability makes the click wait for the handler instead.
+  await dialog.getByRole("button", { name: /Injected/i }).click();
   await expect(page.getByRole("button", { name: /Sign session/i }).first()).toBeVisible();
 }
 

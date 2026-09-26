@@ -111,12 +111,21 @@ export function effectivePaymentLimits(space, delegation) {
  * being resolved as an agent.
  */
 export function findSpaceMember(space, actorId) {
-  const wanted = String(actorId ?? '').toLowerCase();
+  const raw = String(actorId ?? '');
+  const wanted = raw.toLowerCase();
+  // A member's id is whatever the Space was created with, and a Space created
+  // from a connected wallet has the *lowercased* session address as its id. A
+  // caller then supplies the checksummed form from their wallet, so id and name
+  // are compared case-insensitively too — but only when they look like an
+  // address, so ordinary display names keep their exact-match behaviour.
+  const isAddressLike = (v) => /^0x[0-9a-fA-F]{40}$/.test(String(v ?? ''));
   return (space.members || []).find(
     (m) =>
-      m.id === actorId ||
-      m.name === actorId ||
-      (!!m.address && String(m.address).toLowerCase() === wanted),
+      m.id === raw ||
+      m.name === raw ||
+      (!!m.address && String(m.address).toLowerCase() === wanted) ||
+      (isAddressLike(m.id) && String(m.id).toLowerCase() === wanted) ||
+      (isAddressLike(m.name) && String(m.name).toLowerCase() === wanted),
   );
 }
 

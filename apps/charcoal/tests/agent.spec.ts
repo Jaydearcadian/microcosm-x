@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 const CAPABILITY_COPY = ['payment', 'work', 'request', 'court'] as const;
 
@@ -11,19 +12,37 @@ const CAPABILITY_COPY = ['payment', 'work', 'request', 'court'] as const;
 /** The counterparty the compliant scenario pays. Must match PAY_T below. */
 const PAYEE = '0x1111111111111111111111111111111111111111';
 
+/**
+ * Funding a Space and naming a participant both need a principal, so the suite
+ * signs in as a real wallet and builds the Space under that address rather than
+ * naming an actor that owns nothing.
+ */
 async function provisionSpace(request: APIRequestContext): Promise<{ id: string; name: string }> {
   const stamp = Date.now().toString(36);
-  const created = await request.post('/api/spaces', { data: { name: `Agent Surface ${stamp}`, actorId: 'admin-01' } });
+  const account = privateKeyToAccount(generatePrivateKey());
+  const challenge = await request.get(`/api/auth/challenge?address=${account.address}`);
+  const { message } = (await challenge.json()) as { message: string };
+  const session = await request.post('/api/auth/session', {
+    data: { address: account.address, signature: await account.signMessage({ message }) },
+  });
+  const cookie = (session.headers()['set-cookie'] ?? '').split(';')[0];
+  expect(cookie, 'sign-in returned no session cookie').toBeTruthy();
+  const auth = { headers: { Cookie: cookie } };
+
+  const created = await request.post('/api/spaces', { ...auth, data: { name: `Agent Surface ${stamp}`, actorId: account.address } });
   expect(created.ok()).toBeTruthy();
   const space = (await created.json()).space as { id: string; name: string };
-  await request.post(`/api/spaces/${space.id}/fund`, { data: { amount: '5000.00', actorId: 'admin-01' } });
+  const funded = await request.post(`/api/spaces/${space.id}/fund`, { ...auth, data: { amount: '5000.00', actorId: account.address } });
+  expect(funded.status(), 'funding needs a principal').toBe(200);
   // Name the payee as a participant, which approves it as a counterparty. A
   // payment to an unapproved recipient is refused, which is the behaviour
   // SPACE-9 pins, so a Space with an empty allowlist can no longer be used to
   // demonstrate a compliant payment without approving the recipient first.
-  await request.post(`/api/spaces/${space.id}/participants`, {
-    data: { kind: 'Service', displayName: 'CloudCompute Corp', address: PAYEE, actorId: 'admin-01' },
+  const added = await request.post(`/api/spaces/${space.id}/participants`, {
+    ...auth,
+    data: { kind: 'Service', displayName: 'CloudCompute Corp', address: PAYEE, actorId: account.address },
   });
+  expect(added.status(), 'adding a participant needs a principal').toBe(201);
   return space;
 }
 

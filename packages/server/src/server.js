@@ -520,7 +520,20 @@ async function dispatch(app, req, res) {
         const parent = (space.members || []).find((member) => String(member.address || '').toLowerCase() === current.address);
         if (!parent || !['admin', 'agent', 'operator'].includes(parent.role)) throw Object.assign(new Error('Authenticated session is not a spending member of this Space'), { httpStatus: 403, httpCode: 'FORBIDDEN' });
         try {
-          const result = await app.mutate(spaceId, async () => store.createDelegation({ ...input, spaceId, parentActor: current.address, parentRole: input.parentRole || parent.role }));
+          // chainId and asset describe the Space, not the caller, so they come
+          // from the Space unless the caller stated one — in which case a
+          // mismatch is still an error. Sourcing them here means a client that
+          // omits them gets a working delegation instead of a normalization
+          // failure, while a client that sends the wrong chain or asset is still
+          // caught by the store's own equality checks.
+          const result = await app.mutate(spaceId, async () => store.createDelegation({
+            ...input,
+            spaceId,
+            parentActor: current.address,
+            parentRole: input.parentRole || parent.role,
+            chainId: input.chainId ?? space.chainId,
+            asset: input.asset ?? space.currency,
+          }));
           return ok(201, result);
         } catch (err) {
           throwMapped(err);
@@ -584,7 +597,12 @@ async function dispatch(app, req, res) {
     if (req.method === 'POST' && m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
-      requirePrincipal(spaceId, body);
+      // Deliberately not principal-gated. This route evaluates policy and
+      // changes nothing, and the capability manifest beside it is open and
+      // reports the same caps and allowlist. Requiring a principal here
+      // protected nothing while locking the Agent and Sandbox surfaces to
+      // connected wallets. The x402 intent routes below it, which do move
+      // money, stay session-gated.
       requireFields(body, ['paymentRequired', 'selectedAcceptIndex', 'actorId', 'expectedAssetAddress']);
       const validation = await store.validateX402PaymentIntent({ spaceId, ...body });
       return ok(200, { validation });
@@ -778,11 +796,11 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
-      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         return ok(200, { participants: store.listParticipants({ spaceId, kind: query.kind || null, status: query.status || null }) });
       }
       if (req.method === 'POST') {
+      requirePrincipal(spaceId, body);
         requireFields(body, ['kind', 'displayName']);
         try {
           const participant = await app.mutate(spaceId, async () => store.addParticipant({ spaceId, kind: body.kind, displayName: body.displayName, address: body.address || null, externalRef: body.externalRef || null, actorId: body.actorId || null }));
@@ -810,11 +828,11 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
-      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         return ok(200, { requests: store.listRequests({ spaceId, status: query.status || null, assignee: query.assignee || null, createdBy: query.createdBy || null }) });
       }
       if (req.method === 'POST') {
+      requirePrincipal(spaceId, body);
         requireFields(body, ['createdBy', 'title']);
         try {
           const request = await app.mutate(spaceId, async () => store.createRequest({ spaceId, createdBy: body.createdBy, assignee: body.assignee || null, title: body.title, instructions: body.instructions || '', context: body.context || null }));
@@ -907,12 +925,12 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
-      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         const jobs = [...store.jobs.values()].filter((j) => j.spaceId === spaceId).map((j) => ({ ...j }));
         return ok(200, { jobs });
       }
       if (req.method === 'POST') {
+      requirePrincipal(spaceId, body);
         requireFields(body, ['actorId', 'provider', 'evaluator', 'description', 'budget', 'deadline']);
         const result = await workAction(spaceId, () => store.createJob({ spaceId, actorId: body.actorId, provider: body.provider, evaluator: body.evaluator, adjudicator: body.adjudicator, rubricHash: body.rubricHash, description: body.description, budget: body.budget, deadline: body.deadline, requestId: body.requestId, delegationId: body.delegationId }));
         if (result.status === 'REJECTED') {

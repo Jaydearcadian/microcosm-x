@@ -6,10 +6,16 @@ import type { Hex } from "viem";
 /*
  * The create-a-Space path.
  *
- * The gate test below is live. The full flow test is marked `fixme` because the
- * browser path through the wallet step is still flaky, and a test that fails for
- * reasons outside the code under test is worse than one that is honestly parked.
- * The server side of every step it covers is tested directly in
+ * Both tests are live. The full flow drives the wallet the way the app does —
+ * connect, sign the session, create the Space, set limits, fund it, sign the
+ * budget binding, then sign an EIP-712 delegation for the agent — and asserts
+ * on what the server actually returned rather than on the shape of the page.
+ *
+ * The injected provider implements `personal_sign` and `eth_signTypedData_v4`
+ * because the flow needs both: the session and the budget binding are plain
+ * messages, the delegation is typed data.
+ *
+ * The server side of every step is also tested directly in
  * packages/server/test/governance.test.js (M13-1), including that a forged
  * signature is rejected.
  */
@@ -20,6 +26,12 @@ async function installInjectedWallet(context: BrowserContext, page: Page) {
     if (address.toLowerCase() !== account.address.toLowerCase()) throw new Error("Unexpected signing address.");
     const signableMessage = message.startsWith("0x") ? hexToString(message as Hex) : message;
     return account.signMessage({ message: signableMessage });
+  });
+  // The delegation step signs EIP-712, not a plain message, so the injected
+  // wallet has to be able to do that too.
+  await context.exposeFunction("signTypedData", async (payload: string, address: string) => {
+    if (address.toLowerCase() !== account.address.toLowerCase()) throw new Error("Unexpected signing address.");
+    return account.signTypedData(JSON.parse(payload));
   });
   await page.addInitScript(({ address, chainId }) => {
     type Listener = (...args: unknown[]) => void;
@@ -47,9 +59,14 @@ async function installInjectedWallet(context: BrowserContext, page: Page) {
         if (method === "wallet_getPermissions") return [{ parentCapability: "eth_accounts" }];
         if (method === "wallet_requestPermissions") return [{ parentCapability: "eth_accounts" }];
         if (method === "wallet_switchEthereumChain" || method === "wallet_addEthereumChain") return null;
+        if (method === "eth_signTypedData_v4" || method === "eth_signTypedData") {
+          // Note the order: this method takes [address, typedData], unlike
+          // personal_sign which takes [message, address].
+          const [signer, payload] = params as [string, string];
+          return (window as typeof window & { signTypedData: (value: string, signerAddress: string) => Promise<string> }).signTypedData(payload, signer);
+        }
         if (method === "personal_sign") {
           const [message, signer] = params as [string, string];
-          emit("accountsChanged", [address]);
           return (window as typeof window & { personalSign: (value: string, signerAddress: string) => Promise<string> }).personalSign(message, signer);
         }
         throw new Error(`Unsupported EIP-1193 method: ${method}`);
@@ -86,9 +103,13 @@ async function connectWallet(page: Page) {
   await expect(connect).toBeVisible();
   await connect.click({ force: true });
   const dialog = page.getByRole("dialog", { name: "Connect a Wallet" });
-  const injected = dialog.getByRole("button", { name: /Injected/i });
-  await expect(injected).toBeVisible();
-  await dialog.locator("button").filter({ hasText: "Injected" }).click({ force: true, noWaitAfter: true });
+  await expect(dialog.getByRole("button", { name: /Injected/i })).toBeVisible();
+  // Deliberately not `force`. The connector modal renders before React has
+  // attached its click handler, and a forced click can land in that window and
+  // do nothing at all — which is exactly the intermittent "wallet never
+  // connects" failure this suite had been living with. Waiting for
+  // actionability makes the click wait for the handler instead.
+  await dialog.getByRole("button", { name: /Injected/i }).click();
   await expect(page.getByRole("button", { name: /Sign session/i }).first()).toBeVisible();
 }
 
@@ -114,7 +135,7 @@ test("the entry gate offers a way in, and no jargon", async ({ page }) => {
   await expect(page.getByText(/Command Center unavailable/)).toHaveCount(0);
 });
 
-test.fixme("creating a Space sets real limits, funds it, and binds the budget by signature", async ({ context, page }) => {
+test("creating a Space sets real limits, funds it, binds the budget, and signs a delegation for the agent", async ({ context, page }) => {
   await installInjectedWallet(context, page);
   // Connect first, exactly as session.spec does. Deselecting the Space before
   // connecting raced the app's re-render and the wallet never settled.
@@ -157,10 +178,32 @@ test.fixme("creating a Space sets real limits, funds it, and binds the budget by
 
   await page.getByRole("button", { name: /Sign and bind the budget/ }).click();
 
-  await expect(page.getByText(/Read this before you hand out the agent name/)).toBeVisible({ timeout: 20000 });
-  await expect(page.getByText(/does not sign anything/)).toBeVisible();
-  await expect(page.getByText(/Budget bound and signed by/)).toBeVisible();
-  await page.getByText("The exact message that was signed").click();
+  await expect(page.getByText(/Budget bound and signed by/)).toBeVisible({ timeout: 20000 });
+
+  // The last step mints a real delegation for the agent and signs it with the
+  // same wallet. This is the part that used to be a warning paragraph.
+  await expect(page.getByText(/An agent spends under a delegation you signed/)).toBeVisible();
+  await page.getByRole("button", { name: /Sign delegations for your agents/ }).click();
+
+  // The delegation id the agent must present, and the limits it carries.
+  const delegationId = page.getByText(/^delegation-/).first();
+  await expect(delegationId).toBeVisible({ timeout: 25000 });
+  // exact, so it matches the status cell rather than the prose that happens
+  // to contain the word "signed"
+  await expect(page.getByText("SIGNED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Delegated ProbeVendor up to 300.00 per payment, 1200.00 a day")).toBeVisible();
+
+  // The true actorId is the agent's name, not the Space id. The old panel
+  // labelled the Space id as the actorId, which was never a member of anything.
+  await expect(page.getByText("Its actorId", { exact: true })).toBeVisible();
+  await expect(page.getByText("Space id (the agent's actorId)")).toHaveCount(0);
+
+  // And the handoff the agent actually needs.
+  await page.getByText("How to hand this to the agent").click();
+  await expect(page.getByText(/"delegationId"/)).toBeVisible();
+
+  // The budget binding itself was signed earlier in the flow.
+  await page.getByText("The exact budget message that was signed").click();
   await expect(page.getByText(/Microcosm budget binding/)).toBeVisible();
   await expect(page.getByText(/max per transaction: 300.00/)).toBeVisible();
 });

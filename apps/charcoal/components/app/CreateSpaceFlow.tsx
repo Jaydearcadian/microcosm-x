@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useSignMessage } from "wagmi";
+import { useSignMessage, useSignTypedData } from "wagmi";
 import {
   configureSpaceLimits,
+  createDelegation,
   createParticipant,
   createSpace,
   fetchBudgetBinding,
+  fetchSpace,
   fundSpace,
+  signDelegation,
   submitBudgetBinding,
   type BudgetBinding,
   type ParticipantKind,
@@ -23,13 +26,31 @@ import { useWalletSession } from "@/lib/wallet-session";
  * limits are set on the Space itself, the money is funded, and the budget is
  * bound by a signature the server composes and then verifies.
  *
- * The step that looked like a formality is the one that matters. An agent
- * connecting over MCP identifies itself with an actorId and nothing else, so
- * whoever holds that name can spend the Space's money. Handing it out is the
- * moment authority leaves the building, and the screen says so.
+ * The last step is the one that used to be wrong. It said an agent connects
+ * with a name and nothing else, and handed out the Space id as the agent's
+ * actorId. Both were untrue, and the policy engine now refuses exactly that:
+ * an agent spends only under a delegation its owner signed, addressed to a
+ * wallet, and the Space id was never a member of anything.
+ *
+ * So this step mints a real delegation per agent, signs it with the connected
+ * wallet, and shows the exact id and actorId the agent must present. Nothing
+ * here is advisory: if the signature fails, the agent has no authority and the
+ * screen says that rather than implying otherwise.
  */
 
 type Person = { name: string; kind: ParticipantKind; address: string };
+
+/** One agent, and the authority it was actually given. */
+type Issued = {
+  name: string;
+  address: string;
+  delegationId: string;
+  maxPerTransaction: string;
+  dailyBudget: string;
+  expiresAt: string;
+  status: string;
+  signature: string | null;
+};
 
 const STEPS = ["Purpose", "People", "Limits", "Bind", "Agents"] as const;
 type StepId = (typeof STEPS)[number];
@@ -39,6 +60,7 @@ const EMPTY_PERSON: Person = { name: "", kind: "Agent", address: "" };
 export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void }) {
   const { address, isAuthenticated } = useWalletSession();
   const { signMessageAsync } = useSignMessage();
+  const { signTypedDataAsync } = useSignTypedData();
 
   const [step, setStep] = useState<StepId>("Purpose");
   const [name, setName] = useState("");
@@ -50,6 +72,7 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
   const [daily, setDaily] = useState("2000.00");
   const [spaceId, setCreated] = useState("");
   const [binding, setBinding] = useState<BudgetBinding | null>(null);
+  const [issued, setIssued] = useState<Issued[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -105,6 +128,10 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
       note(`Funded with ${balance} ${funded.currency ?? "USDC"}.`);
 
       setStep("Bind");
+      // Clear the busy flag on the way out. Without this the Bind step renders
+      // its button disabled and labelled "Waiting for your signature…", so the
+      // step that needs a signature could never be started.
+      setBusy(false);
     } catch (reason) {
       fail(reason);
     }
@@ -121,10 +148,83 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
       setBinding(result.binding);
       note(`Budget bound and signed by ${result.binding.actorAddress.slice(0, 10)}…`);
       setStep("Agents");
+      setBusy(false);
     } catch (reason) {
       fail(reason);
     }
   }, [signMessageAsync, spaceId]);
+
+  /**
+   * Mint one signed delegation per agent.
+   *
+   * The values come from the Space, not from this form: the allowlist and chain
+   * are read back from the server, because a delegation that tried to exceed the
+   * Space's own authority would be refused anyway and the operator would be
+   * left guessing why.
+   */
+  const issueDelegations = useCallback(async () => {
+    setBusy(true); setError(null);
+    try {
+      const agents = people.filter((person) => person.kind === "Agent");
+      if (agents.length === 0) {
+        note("No agents in this Space, so there is nothing to delegate.");
+        setStep("Agents");
+        setBusy(false);
+        return;
+      }
+      const missing = agents.filter((person) => !person.address.trim());
+      if (missing.length > 0) {
+        throw new Error(
+          `${missing.map((person) => person.name).join(", ")} ${missing.length === 1 ? "has" : "have"} no wallet address. A delegation is bound to an address, so an agent without one cannot be given any authority.`,
+        );
+      }
+
+      const space = await fetchSpace(spaceId);
+      const allowlist = space.rules?.allowedCounterparties ?? [];
+      const granted: Issued[] = [];
+
+      for (const person of agents) {
+        const delegationId = `delegation-${spaceId}-${person.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+        const created = await createDelegation(spaceId, {
+          delegationId,
+          child: person.address.trim(),
+          childRole: "agent",
+          maxPerTransaction: cap,
+          dailyBudget: daily,
+          allowedCounterparties: allowlist,
+          nonce: "1",
+          expiry: String(Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60),
+          policySnapshotHash: `0x${"0".repeat(64)}`,
+        });
+        // The server composes the EIP-712 payload, so what gets signed is the
+        // real limits rather than a label chosen here.
+        const signature = await signTypedDataAsync({
+          domain: created.typedData.domain as { name?: string; version?: string; chainId?: number },
+          types: created.typedData.types,
+          primaryType: created.typedData.primaryType,
+          message: created.typedData.message,
+        });
+        const signed = await signDelegation(spaceId, delegationId, signature);
+        granted.push({
+          name: person.name,
+          address: person.address.trim(),
+          delegationId,
+          maxPerTransaction: cap,
+          dailyBudget: daily,
+          expiresAt: signed.expiryAt,
+          status: signed.status,
+          signature,
+        });
+        note(`Delegated ${person.name} up to ${cap} per payment, ${daily} a day`);
+      }
+
+      setIssued(granted);
+      setStep("Agents");
+      setBusy(false);
+    } catch (reason) {
+      fail(reason);
+    }
+  }, [cap, daily, people, signTypedDataAsync, spaceId]);
 
   const done = () => { if (spaceId) onDone(spaceId); };
 
@@ -264,28 +364,110 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
       {step === "Agents" ? (
         <div className="csf__body">
           <div className="csf__warn">
-            <strong>Read this before you hand out the agent name.</strong>
+            <strong>An agent spends under a delegation you signed, or it cannot spend at all.</strong>
             <p className="muted">
-              An agent connects over MCP with a name and nothing else. It does not sign anything.
-              Whoever holds <code className="ident">{spaceId}</code> can spend this Space&apos;s money
-              up to the limits above, and the only thing standing between that and a mistake is the
-              cap. Give the agent to one process, and lower the cap to what you can afford to lose.
+              An agent is not authorised by knowing its name. It presents a delegation id that you
+              signed, and the Space checks the signature, the expiry, and the limits before any money
+              moves. Two ceilings apply at once: the limits below, and the limits on the Space itself.
+              The lower one wins, so a delegation can never widen what the Space allows.
             </p>
           </div>
+
+          {issued.length === 0 ? (
+            <div className="csf__actions">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void issueDelegations()}
+                disabled={busy}
+              >
+                {busy ? "Signing…" : "Sign delegations for your agents"}
+              </button>
+            </div>
+          ) : (
+            <>
+              {issued.map((grant) => (
+                <div className="csf__facts" key={grant.delegationId}>
+                  <div>
+                    <dt>Agent</dt>
+                    <dd>{grant.name}</dd>
+                  </div>
+                  <div>
+                    <dt>Its actorId</dt>
+                    <dd className="ident">{grant.name}</dd>
+                  </div>
+                  <div>
+                    <dt>Bound to wallet</dt>
+                    <dd className="ident">{grant.address}</dd>
+                  </div>
+                  <div>
+                    <dt>Delegation id (the agent presents this)</dt>
+                    <dd className="ident">{grant.delegationId}</dd>
+                  </div>
+                  <div>
+                    <dt>Per-payment cap</dt>
+                    <dd className="tnum">{grant.maxPerTransaction}</dd>
+                  </div>
+                  <div>
+                    <dt>Daily budget</dt>
+                    <dd className="tnum">{grant.dailyBudget}</dd>
+                  </div>
+                  <div>
+                    <dt>Expires</dt>
+                    <dd>{new Date(grant.expiresAt).toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{grant.status}</dd>
+                  </div>
+                </div>
+              ))}
+
+              <p className="muted">
+                Give the agent its actorId and its delegation id, and nothing else. It cannot widen
+                its own limits, and revoking the delegation stops it at the next call.
+              </p>
+
+              {binding ? (
+                <details className="csf__sig">
+                  <summary>The exact budget message that was signed</summary>
+                  <pre className="ident">{binding.message}</pre>
+                  <p className="muted">
+                    Signature <span className="ident">{binding.signature}</span>
+                  </p>
+                </details>
+              ) : null}
+
+              <details className="csf__sig">
+                <summary>How to hand this to the agent</summary>
+                <pre className="ident">
+{issued
+  .map(
+    (grant) => `{
+  "spaceId": "${spaceId}",
+  "actorId": "${grant.name}",
+  "delegationId": "${grant.delegationId}"
+}`,
+  )
+  .join("\n\n")}
+                </pre>
+                <p className="muted">
+                  The agent passes <code className="ident">delegationId</code> on every spending call,
+                  for example <code className="ident">payments_request</code> or{" "}
+                  <code className="ident">work_create</code>. Without it the call is refused.
+                </p>
+              </details>
+            </>
+          )}
+
           <dl className="csf__facts">
-            <div><dt>Space id (the agent's actorId)</dt><dd className="ident">{spaceId}</dd></div>
-            <div><dt>Per-payment cap</dt><dd className="tnum">{cap}</dd></div>
-            <div><dt>Daily budget</dt><dd className="tnum">{daily}</dd></div>
-            <div><dt>Bound by</dt><dd className="ident">{binding?.actorAddress ?? "—"}</dd></div>
+            <div><dt>Space id</dt><dd className="ident">{spaceId}</dd></div>
+            <div><dt>Space per-payment cap</dt><dd className="tnum">{cap}</dd></div>
+            <div><dt>Space daily budget</dt><dd className="tnum">{daily}</dd></div>
+            <div><dt>Budget bound by</dt><dd className="ident">{binding?.actorAddress ?? "—"}</dd></div>
             <div><dt>Signed at</dt><dd>{binding?.boundAt ? new Date(binding.boundAt).toLocaleString() : "—"}</dd></div>
           </dl>
-          {binding ? (
-            <details className="csf__sig">
-              <summary>The exact message that was signed</summary>
-              <pre className="ident">{binding.message}</pre>
-              <p className="muted">Signature <span className="ident">{binding.signature}</span></p>
-            </details>
-          ) : null}
+
           <div className="csf__actions">
             <button type="button" className="btn btn--primary" onClick={done}>Open the Space</button>
           </div>

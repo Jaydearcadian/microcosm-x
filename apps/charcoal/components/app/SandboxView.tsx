@@ -155,7 +155,11 @@ function judge(run: Run): Verdict {
       {
         label: "Accepted by the API",
         ok: outcome.allowed === true,
-        detail: outcome.allowed ? `${outcome.status} ${outcome.job.status}` : `${outcome.status} ${outcome.code}`,
+        // The reason, not just the code. A refusal that cannot explain itself
+        // is indistinguishable from a broken screen.
+        detail: outcome.allowed
+          ? `${outcome.status} ${outcome.job.status}`
+          : `${outcome.status} ${outcome.code}${outcome.reasons?.length ? ` \u2014 ${outcome.reasons[0]}` : ""}`,
       },
       {
         label: "Only the budget left the treasury",
@@ -185,8 +189,21 @@ export function SandboxView() {
   const [failure, setFailure] = useState<string | null>(null);
 
   const approved = space?.rules.allowedCounterparties?.find((entry) => /^0x[0-9a-fA-F]{40}$/.test(entry)) ?? "";
-  const addressBacked = participants.filter((item) => item.address);
-  const provider = addressBacked[0]?.address ?? approved;
+  const isAddress = (value: string | null | undefined) => /^0x[0-9a-fA-F]{40}$/.test(String(value ?? ''));
+  const addressBacked = participants.filter((item) => isAddress(item.address));
+  // The counterparty has to be somebody the Space is prepared to pay, and it
+  // must not be the person clicking the button. Taking the first address-backed
+  // member did neither: as soon as the founder had a wallet address, the
+  // sandbox tried to pay the founder, which the allowlist rightly refused.
+  const allowlist = space?.rules.allowedCounterparties ?? [];
+  const counterparty =
+    addressBacked.find(
+      (item) =>
+        String(item.address).toLowerCase() !== String(actorId).toLowerCase() &&
+        allowlist.some((entry) => String(entry).toLowerCase() === String(item.address).toLowerCase()),
+    ) ??
+    addressBacked.find((item) => String(item.address).toLowerCase() !== String(actorId).toLowerCase());
+  const provider = counterparty?.address ?? approved;
   // createJob validates that the provider and evaluator are Space participants,
   // so a Space with no address-backed member cannot run a scenario at all
   const runnable = Boolean(addressBacked.length);

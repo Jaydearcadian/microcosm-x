@@ -60,6 +60,27 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (isAuthenticated && address) setActorId(address);
   }, [address, isAuthenticated]);
 
+  // Never leave someone acting as a stranger. The default actor is a fixed
+  // string, so opening any Space whose members are named differently left the
+  // whole app refusing every payment with "not an authorized member". The
+  // chosen actor is only replaced when it is genuinely not a member here, so an
+  // explicit choice is never overridden.
+  useEffect(() => {
+    if (!space) return;
+    const members = space.members ?? [];
+    if (members.length === 0) return;
+    const isMember = members.some(
+      (m) => m.id === actorId || m.name === actorId || String(m.address ?? "").toLowerCase() === actorId.toLowerCase(),
+    );
+    if (isMember) return;
+    const connected = address && members.some((m) => String(m.address ?? "").toLowerCase() === address.toLowerCase());
+    const next = connected
+      ? address
+      : (members.find((m) => ["admin", "operator", "agent"].includes(m.role)) ?? members[0]).address ??
+        (members.find((m) => ["admin", "operator", "agent"].includes(m.role)) ?? members[0]).id;
+    setActorId(String(next));
+  }, [space, address, actorId]);
+
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
     try {

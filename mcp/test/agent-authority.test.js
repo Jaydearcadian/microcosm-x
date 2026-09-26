@@ -260,3 +260,51 @@ test('M14-13: a human admin spends on a session, with no delegation required', a
   });
   assert.equal(result.status, 'SETTLED', `expected approval, got: ${result.reasons?.join(' | ')}`);
 });
+
+
+// --- the same comparison, four times now: a wallet's address and a stored
+// --- member id disagree about case, and the mismatch reads as "not a member"
+
+test('M14-14: a member id that is an address is found whichever case it is given in', async () => {
+  const store = new SpaceStore({
+    seed: false,
+    settlement: async () => ({ txHash: `0x${'ab'.repeat(32)}`, receipt: { status: 1 } }),
+  });
+  // The server derives a founder's id from the session, which is lowercased.
+  const space = store.createSpace({ name: 'Case Space', actorId: founder.address.toLowerCase() });
+  store.bindMemberAddress(space.id, founder.address.toLowerCase(), founder.address);
+  store.fundSpace({ spaceId: space.id, amount: '500.00', actorId: founder.address.toLowerCase() });
+  store.getSpace(space.id).rules.allowedCounterparties = [vendor];
+
+  for (const actorId of [founder.address, founder.address.toLowerCase(), founder.address.toUpperCase()]) {
+    const result = await store.requestPayment({
+      spaceId: space.id,
+      actorId,
+      recipient: vendor,
+      amount: '10.00',
+    });
+    assert.equal(
+      result.status,
+      'SETTLED',
+      `founder was not recognised when addressed as ${actorId}: ${(result.reasons || []).join(' | ')}`,
+    );
+  }
+});
+
+test('M14-15: display names still match exactly, so casing is not a free pass', async () => {
+  const store = new SpaceStore({
+    seed: false,
+    settlement: async () => ({ txHash: `0x${'ab'.repeat(32)}`, receipt: { status: 1 } }),
+  });
+  const space = store.createSpace({ name: 'Name Space', actorId: 'Ada Founder' });
+  store.fundSpace({ spaceId: space.id, amount: '500.00', actorId: 'Ada Founder' });
+  store.getSpace(space.id).rules.allowedCounterparties = [vendor];
+  const result = await store.requestPayment({
+    spaceId: space.id,
+    actorId: 'ada founder',
+    recipient: vendor,
+    amount: '10.00',
+  });
+  assert.equal(result.status, 'REJECTED');
+  assert.ok(result.reasons.some((r) => /not an authorized member/.test(r)));
+});
