@@ -1,0 +1,622 @@
+/* ==========================================================================
+   Command Center — the view body's own layout.
+
+   Everything a primitive already ships (.stat-row, .stat-card*, .panel*,
+   .chart-*, .truncate, .clamp-*, .tnum, .balance, .ident) lives in
+   primitives.css and is not restated here. What is here is what the
+   foundation does not ship: the Command Center's own grid, its meters, its
+   policy table, its roster, and the one local primitive the chart needs.
+
+   Ownership: components/app/CommandView.tsx and this file. Nothing else may
+   be edited from here, and the rules that dress another owner's component
+   (SpaceAccess) are scoped under .access-panel so they cannot leak.
+   ========================================================================== */
+
+/* ── the view's own grid ─────────────────────────────────────────────────── */
+
+/* The shell owns .app-view and .app-view__header; the rhythm below is this
+   view's own. The header already carries 28px of air and .stat-row carries
+   16px, so everything after the metric row steps down to a flat 12px. */
+.command-flag,
+.command-chart,
+.command-grid {
+  margin-bottom: 12px;
+}
+
+/* The honest-inconsistency strip. It is not decoration: the seed reports more
+   in escrow than the Space was ever funded with, and saying so in one line is
+   better than letting four tidy cards imply the books add up. */
+.command-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 13px 16px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--danger);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.command-flag > * {
+  min-width: 0;
+}
+
+.command-flag__tag {
+  flex: none;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.command-flag__text {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.command-flag__text b {
+  color: var(--text);
+  font-weight: 500;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two panels side by side from 1024px, one below. The roster spans both
+   columns because a member list reads badly in a 400px well. */
+.command-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.command-grid > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .command-grid__full {
+    grid-column: 1 / -1;
+  }
+}
+
+/* A panel's meta line: 11px, --text-4, allowed to shrink and truncate. */
+.command-panel__meta {
+  flex: none;
+  max-width: 62%;
+  color: var(--text-4);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the chart panel ─────────────────────────────────────────────────────── */
+
+/* .chart-card is the card; the head and body inside it are this view's own
+   because a chart wants no divider between its title and its plot. */
+.command-chart__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  margin-bottom: 18px;
+}
+
+.command-chart__head > * {
+  min-width: 0;
+}
+
+.command-chart__body {
+  min-width: 0;
+}
+
+.command-chart__empty {
+  display: grid;
+  gap: 10px;
+  min-height: 200px;
+  place-content: center;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.command-chart__empty strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.command-chart__empty > * {
+  max-width: 46ch;
+  margin-inline: auto;
+}
+
+.command-chart__headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.command-chart__headline > * {
+  min-width: 0;
+}
+
+.command-chart__figure {
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.command-chart__caption {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* Two series, so a legend is not optional: one is white, the other is the
+   dashed compare, and they must be named. */
+.command-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  min-width: 0;
+  margin-top: 14px;
+}
+
+.command-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.command-legend__key {
+  flex: none;
+  width: 18px;
+  height: 2px;
+  background: var(--chart-line);
+}
+
+.command-legend__key--compare {
+  height: 1px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--chart-compare) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.command-chart__plot {
+  min-width: 0;
+}
+
+.command-chart__note {
+  max-width: 96ch;
+  margin-top: 12px;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* The 1px stripe inside the SVG hatch pattern. A presentation attribute
+   cannot read a custom property, so the pattern's line is dressed here. */
+.command-chart__hatch {
+  stroke: var(--chart-fill);
+  stroke-width: 1;
+}
+
+/* ── meters: SPACE-WIDE AUTHORITY ────────────────────────────────────────── */
+
+.command-meters {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.command-meter {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.command-meter__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.command-meter__top > * {
+  min-width: 0;
+}
+
+.command-meter__label {
+  color: var(--text-2);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-meter__value {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A 6px track, --surface-1, pill radius, inset to the card's content edge. */
+.command-meter__track {
+  height: 6px;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.command-meter__fill {
+  display: block;
+  height: 100%;
+  min-width: 0;
+  border-radius: var(--radius-pill);
+  background: var(--text);
+}
+
+/* Escrow is real money but not the headline figure, so it sits one step down
+   the type scale rather than being given a colour. */
+.command-meter__fill--soft {
+  background: var(--text-3);
+}
+
+/* A value that has run past the bound it is measured against. The bar is
+   already full at 100%; the flag is what says the rest. */
+.command-meter__over {
+  flex: none;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.command-panel__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+.command-panel__foot > * {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the policy table ────────────────────────────────────────────────────── */
+
+.command-policy {
+  min-width: 0;
+}
+
+.command-policy__head,
+.command-policy__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.command-policy__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.command-policy__head {
+  padding-top: 0;
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+/* The stacked rows below 768px label themselves, so the column header would
+   only be a third line of noise. */
+@media (max-width: 767.98px) {
+  .command-policy__head {
+    display: none;
+  }
+}
+
+/* Below 768px the table is a stack of labelled rows, not a squeezed
+   three-column grid: the value stays right-aligned against the label and the
+   note moves to its own line underneath. */
+@media (min-width: 768px) {
+  .command-policy__head,
+  .command-policy__row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  /* The value column is the one that reads as a figure, so it is the one that
+     gets right-aligned; the note then trails it as a caption, which is how
+     the reference sets a rule out too. */
+  .command-policy__head > :nth-child(2) {
+    text-align: right;
+  }
+
+  .command-policy__head > :nth-child(3),
+  .command-policy__note {
+    text-align: left;
+  }
+}
+
+.command-policy__row > *,
+.command-policy__head > * {
+  min-width: 0;
+}
+
+.command-policy__label {
+  color: var(--text-2);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-policy__value {
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.command-policy__note {
+  grid-column: 1 / -1;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .command-policy__note {
+    grid-column: auto;
+  }
+}
+
+/* ── the roster ─────────────────────────────────────────────────────────── */
+
+.command-roster {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .command-roster {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.command-roster__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+/* Rule 1 of DESIGN.md §4a, per container: the middle column holds a name and
+   a role line, and it is the only thing allowed to shrink. The pill keeps its
+   intrinsic width (primitives.css says so) and the name truncates. */
+.command-roster__row > * {
+  min-width: 0;
+}
+
+.command-roster__text {
+  flex: 1;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.command-roster__name {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-roster__role {
+  color: var(--text-4);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.command-roster__avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-ctl);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* The hash chips. A chip is a flex item that may shrink, and its own inline
+   flex-wrap does the rest; the row wraps so a long name never pushes the
+   panel wider than its column. */
+.command-roster__hashes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.command-roster__hashes > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ── SPACE ACCESS ────────────────────────────────────────────────────────────
+   SpaceAccess is not this file's component and its class names belong to the
+   sandbox and onboarding owners, so every rule below is scoped under
+   .access-panel. Higher specificity, zero reach outside this view. */
+
+.access-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.access-panel > * {
+  min-width: 0;
+}
+
+.access-panel h2 {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.access-panel p {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.access-panel .command-panel__head {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.access-panel .wizard-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.access-panel .wizard-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+.access-panel .wizard-field input {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-ghost);
+  color: var(--text);
+  font-size: 16px;
+}
+
+.access-panel .wizard-field input::placeholder {
+  color: var(--text-4);
+}
+
+.access-panel .wizard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.access-panel .wizard-run,
+.access-panel .wizard-next {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  color: var(--bg-app);
+  font-size: 14px;
+  font-weight: 500;
+  touch-action: manipulation;
+}
+
+.access-panel .wizard-next {
+  background: var(--surface-btn);
+  color: var(--text);
+}
+
+.access-panel .wizard-run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.access-panel .action-flash {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.access-panel .wizard-result {
+  color: var(--text-2);
+  font-size: 13px;
+}

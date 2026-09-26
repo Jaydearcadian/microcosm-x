@@ -52,14 +52,16 @@ const rainbowConfig = createConfig({
 const queryClient = new QueryClient();
 
 /**
- * RainbowKit ships a blue accent that fought the rest of the product, which is
- * monochrome with a single lime accent. The theme below moves it onto the same
- * surface scale and lets the app's own accent through, so the wallet control
- * reads as part of the bar rather than a foreign widget pasted into it.
+ * RainbowKit ships a blue accent that fought the rest of the product, and the
+ * lime accent that replaced it is gone too: the app is monochrome (DESIGN.md
+ * §1). White on the app surface is the only emphasis the wallet UI gets, so the
+ * connect dialog reads as part of the product rather than a foreign widget
+ * pasted into it. The connect *button* itself is matched to the surface scale in
+ * app/shell.css.
  */
 const rainbowTheme = darkTheme({
-  accentColor: "#cafe5c",
-  accentColorForeground: "#0b0b0b",
+  accentColor: "#ffffff",
+  accentColorForeground: "#0f0f0f",
   borderRadius: "medium",
   fontStack: "system",
   overlayBlur: "small",

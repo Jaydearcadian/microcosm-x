@@ -1,0 +1,929 @@
+/* ==========================================================================
+   The shell: the page, the floating app frame, the rail, and the header that
+   spans the top of the frame. Geometry from DESIGN.md §3.
+
+   The frame is an object on a page, not a page: 16px of page shows on every
+   side, the corners are 20px, and the whole thing is clipped so nothing can
+   escape the object.
+   ========================================================================== */
+
+.app-root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--frame-inset);
+  background: var(--bg-page);
+}
+
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--frame-inset) * 2);
+  height: calc(100dvh - var(--frame-inset) * 2);
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-frame);
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+/* The rail and main are the same colour, separated by a hairline only.
+
+   The rail's width is a ladder, not a constant (DESIGN-REVIEW.md §4). It used
+   to be 264px at every width, which is 34% of a 768px viewport — the measured
+   complaint. The breakpoint default is resolved here so no width is ever
+   hardcoded at the point of use, and every step is capped at
+   --rail-max-share of the grid, so no viewport can make the rail dominant.
+
+   | Viewport      | Rail                       |
+   | below 768px   | horizontal strip (below)    |
+   | 768–1023px    | 64px icon rail (default)   |
+   | 1024–1279px   | 200px                      |
+   | 1280–1535px   | 232px                      |
+   | 1536px and up | 264px                      | */
+.app-workspace {
+  --rail: min(var(--rail-width), var(--rail-max-share));
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The ladder, widest breakpoint first: the media queries share one selector, so
+   the LAST matching block in source order is the one that applies, and that
+   has to be the narrowest. */
+@media (max-width: 1535.98px) {
+  .app-workspace {
+    --rail: min(var(--rail-width-lg), var(--rail-max-share));
+  }
+}
+
+@media (max-width: 1279.98px) {
+  .app-workspace {
+    --rail: min(var(--rail-width-md), var(--rail-max-share));
+  }
+}
+
+/* Below 1024px the rail DEFAULTS to the collapsed 64px icon rail, in CSS as
+   well as in the shell's state, so the first paint is already the right one.
+   The toggle still works at every size and an explicit localStorage choice
+   still wins: is-expanded is the operator asking for the labelled rail back
+   at a width where the default hid it. */
+@media (max-width: 1023.98px) {
+  .app-workspace {
+    --rail: var(--rail-width-collapsed);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .app-workspace {
+    --rail: 100%;
+  }
+}
+
+/* The operator's own choice, at any width. Both rules outrank the breakpoint
+   ladder above, so a choice made at 1600px is still a choice at 1600px after a
+   window resize. */
+.app-workspace:has(> .app-rail.is-collapsed) {
+  --rail: var(--rail-width-collapsed);
+}
+
+.app-workspace:has(> .app-rail.is-expanded) {
+  --rail: min(var(--rail-width-md), var(--rail-max-share));
+}
+
+.app-content {
+  min-width: 0;
+  min-height: 0;
+  padding: 28px 32px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── rail ────────────────────────────────────────────────────────────────── */
+.app-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  height: 100%;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-app);
+  /* overflow-y:auto makes the x axis compute to auto in every engine, which
+     would make the rail an accidental horizontal scroller. The rail is a
+     column: it only ever scrolls vertically. Below 768px it is deliberately
+     the other way round and the media query at the end of this file says so. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Rule 1 of DESIGN.md §4a for the rail: every child may shrink, so the
+   truncation rules on the labels actually take effect. */
+.app-rail > * {
+  min-width: 0;
+}
+
+/* 1. Brand selector — a control, not a logo: a bordered pill holding the mark,
+   the active Space and a chevron. */
+.app-rail__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.app-rail__mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--text);
+  color: var(--bg-app);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-rail__space {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.app-rail__space select {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 22px 0 0;
+  border: 0;
+  border-radius: 0;
+  /* Explicit, so a Windows dark-mode form control is never painted from the
+     UA default. The pill behind it supplies the surface. */
+  background-color: transparent;
+  color: var(--text);
+  font: 500 13px var(--font-body);
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  appearance: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.app-rail__space select option {
+  background-color: var(--surface-1);
+  color: var(--text);
+}
+
+.app-rail__space select:disabled {
+  color: var(--text-4);
+  cursor: not-allowed;
+}
+
+.app-rail__chevron {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+/* 2. Search — a row reading "Search" with a keycap badge on the right. */
+.app-rail__search {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.app-rail__keycap {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* 3–5. Two nav groups split by a hairline. */
+.app-rail__nav {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.app-rail__group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.app-rail__divider {
+  height: 1px;
+  margin: 12px 0 8px;
+  background: var(--border);
+}
+
+.app-rail__link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  color: var(--text-2);
+  text-align: left;
+  touch-action: manipulation; /* removes the 300ms double-tap delay */
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.app-rail__link > * {
+  min-width: 0;
+}
+
+/* The label is the thing that must truncate when the rail narrows; the icon
+   beside it never shrinks. DESIGN.md §4a. */
+.app-rail__label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-rail__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: var(--text-3);
+  transition: color 150ms ease;
+}
+
+.app-rail__link:hover {
+  background: var(--surface-1);
+  border-color: var(--border);
+}
+
+.app-rail__link:hover .app-rail__icon {
+  color: var(--text-2);
+}
+
+/* The current view is a surface and a hairline. Never a colour. */
+.app-rail__link.is-active {
+  background: var(--surface-1);
+  border-color: var(--border);
+}
+
+.app-rail__link.is-active .app-rail__label,
+.app-rail__link.is-active .app-rail__icon {
+  color: var(--text);
+}
+
+/* 6. Bottom block, pushed down. */
+.app-rail__foot {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.app-rail__foot > * {
+  min-width: 0;
+}
+
+.app-rail__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+/* The status line is chrome, so it truncates rather than widening the rail. */
+.app-rail__status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-rail__status i {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text);
+}
+
+.app-rail__status i.is-busy {
+  background: var(--text-4);
+}
+
+.app-rail__actor {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-rail__actor > span {
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+.app-rail__actor select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  /* Explicit: a native select is never left to the UA default, which is what
+     renders light in Windows dark mode. */
+  background-color: var(--surface-1);
+  color: var(--text);
+  font: 13px var(--font-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.app-rail__actor select option {
+  background-color: var(--surface-1);
+  color: var(--text);
+}
+
+.app-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  color: var(--text-2);
+  font-size: 13px;
+  touch-action: manipulation;
+}
+
+.app-refresh > * {
+  min-width: 0;
+}
+
+.app-refresh > [aria-hidden] {
+  flex: none;
+}
+
+.app-rail__refresh-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-refresh:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  color: var(--text);
+}
+
+.app-refresh:disabled {
+  color: var(--text-4);
+  cursor: progress;
+}
+
+/* Collapsed: an icon strip, so all eight views stay reachable. */
+.app-rail.is-collapsed {
+  gap: 10px;
+  padding: 12px 8px;
+}
+
+.app-rail.is-collapsed .app-rail__brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-rail.is-collapsed .app-rail__space,
+.app-rail.is-collapsed .app-rail__search,
+.app-rail.is-collapsed .app-rail__label,
+.app-rail.is-collapsed .app-rail__actor {
+  display: none;
+}
+
+.app-rail.is-collapsed .app-rail__link {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-rail.is-collapsed .app-rail__foot {
+  justify-items: center;
+}
+
+.app-rail.is-collapsed .app-refresh {
+  justify-content: center;
+  width: 36px;
+  padding: 0;
+}
+
+.app-rail.is-collapsed .app-rail__refresh-label,
+.app-rail.is-collapsed .app-rail__status-text {
+  display: none;
+}
+
+.app-rail.is-collapsed .app-rail__status {
+  justify-content: center;
+}
+
+/* ── header ──────────────────────────────────────────────────────────────── */
+/* On the landing page the header floats over the hero; inside the frame it is
+   the first row of the object. */
+.site-header {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 50;
+  padding: 24px;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.site-header__inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  pointer-events: auto;
+}
+
+/* Rule 1 of DESIGN.md §4a: the bar is a flex row, so every child needs to be
+   allowed to shrink before any of them can truncate. */
+.site-header__inner > * {
+  min-width: 0;
+}
+
+.app-frame > .site-header {
+  position: relative;
+  inset: auto;
+  z-index: 2;
+  flex: none;
+  height: 60px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-app);
+  pointer-events: auto;
+}
+
+.app-frame > .site-header .site-header__inner {
+  height: 100%;
+  min-height: 0;
+}
+
+.site-header__toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-1);
+  color: var(--text-2);
+  touch-action: manipulation;
+}
+
+.site-header__toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.site-header__wordmark {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 32px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.site-header__nav {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+}
+
+.site-header__nav > * {
+  min-width: 0;
+}
+
+.site-header__link {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  touch-action: manipulation;
+  transition: color 300ms ease;
+}
+
+.site-header__link:hover,
+.site-header__link:focus-visible {
+  color: var(--text);
+}
+
+.site-header__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 36px;
+  margin-left: auto;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  color: var(--bg-app);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  touch-action: manipulation;
+  transition: background 250ms ease, color 250ms ease;
+}
+
+.site-header__action:hover,
+.site-header__action:focus-visible {
+  background: var(--text-2);
+  color: var(--bg-app);
+}
+
+.site-header__action-mark {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.site-header__end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+/* ── wallet cluster ──────────────────────────────────────────────────────── */
+.app-wallet {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.app-wallet > * {
+  min-width: 0;
+}
+
+/* This RainbowKit build exposes no style props on ConnectButton and styles it
+   through emotion, so the control is matched to the app's surface scale here.
+   A bright blue pill would shout from a monochrome bar; it takes the same dark
+   control as every other button in the header. */
+.app-wallet button[data-testid="rk-connect-button"] {
+  background: var(--surface-btn) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: var(--radius-pill) !important;
+  font-family: var(--font-body) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  height: 36px !important;
+  padding: 0 16px !important;
+  box-shadow: none !important;
+  touch-action: manipulation;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.app-wallet button[data-testid="rk-connect-button"] > div {
+  background: transparent !important;
+}
+
+.app-wallet button[data-testid="rk-connect-button"]:hover {
+  background: var(--text-2) !important;
+  border-color: var(--text-3) !important;
+  color: var(--text) !important;
+}
+
+.app-wallet__session {
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  touch-action: manipulation;
+}
+
+.app-wallet__session:hover:not(:disabled) {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+
+.app-wallet__session:disabled {
+  color: var(--text-4);
+  cursor: progress;
+}
+
+.app-wallet__session--on {
+  background: transparent;
+  color: var(--text-2);
+}
+
+.app-wallet__session--on:hover {
+  background: var(--surface-1);
+}
+
+.app-wallet__error {
+  min-width: 0;
+  max-width: 220px;
+  color: var(--danger);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the view slot ───────────────────────────────────────────────────────── */
+.app-view {
+  max-width: 1400px;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.app-view__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  min-width: 0;
+  margin-bottom: 28px;
+}
+
+.app-view__header > * {
+  min-width: 0;
+}
+
+.app-view__header p {
+  max-width: 60ch;
+  margin-top: 10px;
+  color: var(--text-2);
+}
+
+.app-state {
+  display: grid;
+  gap: 10px;
+  min-height: 300px;
+  place-content: center;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.app-state strong {
+  color: var(--text);
+}
+
+.app-state--danger {
+  color: var(--danger);
+}
+
+/* ── mobile: the frame goes edge to edge and the rail becomes a strip ─────── */
+/* Below 768px the rail is a horizontal strip, per DESIGN-REVIEW.md §4. The
+   strip is the one deliberate horizontal scroller in the app, and it keeps its
+   labels: eight unlabelled icons would be a worse rail than no rail. */
+@media (max-width: 767.98px) {
+  .app-root {
+    padding: 0;
+  }
+
+  .app-frame {
+    height: calc(100vh - env(safe-area-inset-top, 0px));
+    height: calc(100dvh - env(safe-area-inset-top, 0px));
+    border: 0;
+    border-radius: 0;
+  }
+
+  .app-frame > .site-header {
+    height: 56px;
+    padding: 0 14px;
+  }
+
+  .app-workspace,
+  .app-workspace:has(> .app-rail.is-collapsed) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-content {
+    padding: 20px 16px 40px;
+  }
+
+  /* One scroller: the whole rail becomes a horizontal strip, so nothing in it
+     is lost, it just scrolls sideways. */
+  .app-rail,
+  .app-rail.is-collapsed {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    height: auto;
+    padding: 10px 14px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .app-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-rail__brand {
+    flex: none;
+    width: 168px;
+  }
+
+  .app-rail__search,
+  .app-rail__divider {
+    display: none;
+  }
+
+  .app-rail__nav {
+    display: flex;
+    flex: none;
+    gap: 8px;
+  }
+
+  .app-rail__group {
+    display: flex;
+    gap: 8px;
+  }
+
+  .app-rail__link {
+    flex: none;
+    min-height: 40px;
+    padding: 0 12px;
+  }
+
+  .app-rail__foot {
+    flex: none;
+    grid-auto-flow: column;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 0 4px;
+    padding: 0 0 0 12px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .app-rail.is-collapsed .app-rail__refresh-label,
+  .app-rail.is-collapsed .app-rail__status-text {
+    display: inline;
+  }
+
+  .app-rail__actor {
+    width: 168px;
+  }
+
+  .app-rail__actor > span {
+    display: none;
+  }
+
+  .app-refresh {
+    min-height: 40px;
+    white-space: nowrap;
+  }
+
+  /* Collapsed on desktop is a 64px icon strip; on mobile that would be eight
+     unlabelled icons, so the labels stay. */
+  .app-rail.is-collapsed .app-rail__label {
+    display: block;
+  }
+
+  /* The strip is a labelled bar, not an icon rail, so collapsing it changes
+     nothing about what it shows: the Space and actor selectors are controls
+     the suite drives at this width (tests/agent.spec.ts sets 390px and then
+     selects a Space), and a control that is display:none is not operable. */
+  .app-rail.is-collapsed .app-rail__search {
+    display: none;
+  }
+
+  .app-rail.is-collapsed .app-rail__space {
+    display: flex;
+  }
+
+  .app-rail.is-collapsed .app-rail__actor {
+    display: grid;
+  }
+
+  .app-rail.is-collapsed .app-rail__brand {
+    justify-content: flex-start;
+    padding: 0 10px;
+  }
+
+  .app-rail.is-collapsed .app-rail__link {
+    justify-content: flex-start;
+    padding: 0 12px;
+  }
+
+  .app-rail.is-collapsed .app-rail__foot {
+    display: grid;
+  }
+
+  .app-view__header {
+    flex-direction: column;
+    gap: 14px;
+  }
+}
+
+/* ── motion ──────────────────────────────────────────────────────────────── */
+/* Every transition in the shell names its properties (background,
+   border-color, color) and only those, and none of them animate. Here they
+   stop entirely. globals.css has the app-wide rule; this is the shell's own,
+   so the chrome honours the preference even if the global block is refactored. */
+@media (prefers-reduced-motion: reduce) {
+  .app-rail__link,
+  .app-rail__icon,
+  .app-refresh,
+  .site-header__toggle,
+  .site-header__link,
+  .site-header__action,
+  .app-wallet button[data-testid="rk-connect-button"],
+  .app-wallet__session {
+    transition: none;
+  }
+}

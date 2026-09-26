@@ -10,7 +10,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020202",
+  // --bg-page from globals.css. A mismatched theme-color is what makes the
+  // mobile browser chrome and the overscroll bounce render a lighter band
+  // under a dark app (DESIGN-REVIEW.md §2).
+  themeColor: "#0a0a0b",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({

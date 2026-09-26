@@ -1,0 +1,427 @@
+/* ==========================================================================
+   Primitives — the classes every view wears.
+
+   Plain CSS, no React wrapper: a view is markup plus these class names
+   (DESIGN.md §8), so a view being rebuilt at the same time cannot be broken by
+   a change here, and this file cannot break a view that is halfway through.
+
+   Every colour, radius and spacing step below is a token from globals.css.
+   ========================================================================== */
+
+/* ── text must never break out (DESIGN.md §4a) ────────────────────────────────
+   These are the three rules of DESIGN.md §4a as real classes, so a view — or
+   the shell — truncates by wearing a class instead of by remembering a
+   declaration. Rule 1 is the one that is always missing: a flex or grid child
+   defaults to min-width:auto, refuses to shrink below its longest word, and
+   every rule below then silently does nothing. It is applied per container in
+   this file, with the general case at the bottom of the block. */
+
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clamp-2,
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.clamp-3 {
+  -webkit-line-clamp: 3;
+}
+
+/* A figure compared vertically must not jitter as its value changes. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A two-line heading should not leave one word alone on the second line. */
+.balance {
+  text-wrap: balance;
+}
+
+/* ONLY for hashes and machine identifiers that must wrap rather than truncate.
+   Never on prose: DESIGN.md §4a is explicit that wrapping an identifier is
+   correct and truncating it is not, and that this is the one place the two
+   are the other way round. */
+.ident {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* ── panel ───────────────────────────────────────────────────────────────── */
+.panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Rule 1 of DESIGN.md §4a, per container: the head's two children are a
+   title and a control, and the title has to be the one that shrinks. */
+.panel__head > *,
+.panel__body > *,
+.chart-card > * {
+  min-width: 0;
+}
+
+.panel__title {
+  min-width: 0;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.panel__body {
+  min-width: 0;
+  padding: 18px;
+}
+
+/* ── the split stat card (DESIGN.md §4) ──────────────────────────────────── */
+/* Two panels side by side inside one border: content on the left, a
+   --surface-3 inset holding a 30px mark on the right.
+
+   The row only scrolls where there is room for it (DESIGN-REVIEW.md §3, which
+   resolved the conflict with the reference). Below 1280px it is a wrapping
+   grid and a card is minmax(0, 1fr) — a min-width is only ever allowed above
+   the width at which the container starts scroller — so a balance is never
+   something you have to scroll sideways to read.
+
+   | Viewport            | Behaviour                                  |
+   | below 640px         | one column                                 |
+   | 640–1279px          | two columns                                |
+   | 1280px and up       | horizontal scroller, 280px minimum card    | */
+.stat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+
+.stat-row > * {
+  min-width: 0;
+}
+
+@media (min-width: 640px) and (max-width: 1279.98px) {
+  .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .stat-row {
+    display: flex;
+    padding-bottom: 2px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  /* A deliberate cut-off card at the right edge is correct only in this last
+     row of the table; everywhere else it is a bug. */
+  .stat-row > .stat-card {
+    flex: 0 0 auto;
+    min-width: 280px;
+  }
+}
+
+.stat-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30%;
+  align-items: stretch;
+  min-width: 0;
+  padding: 18px 0 18px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* The content side. Use a plain <div> or this class; both lay out the same. */
+.stat-card__body {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  padding-right: 18px;
+}
+
+.stat-card__label {
+  display: block;
+  color: var(--text-2);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-card__value {
+  display: block;
+  margin-top: 10px;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  /* A long balance wraps inside the card rather than breaking out of it. The
+     figure itself is never truncated — it is content, not chrome. */
+  overflow-wrap: anywhere;
+}
+
+.stat-card__note {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-4);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The inset panel: --surface-3, bleeding to the card's top, right and bottom
+   edges, 30% of the card's width. A bare .stat-card__mark as a direct child of
+   .stat-card is treated as the inset too, so either markup reads correctly. */
+.stat-card__inset {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  margin: -18px 0 -18px 18px;
+  padding: 12px;
+  background: var(--surface-3);
+}
+
+/* A 30px mark: a glyph or a 2px-stroke icon in --text-3, never a filled
+   colour. */
+.stat-card__mark {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.stat-card > .stat-card__mark {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  margin: -18px 0 -18px 18px;
+  padding: 12px;
+  background: var(--surface-3);
+}
+
+/* An alarming metric recolours the number and nothing else. The card is not
+   tinted. */
+.stat-card--alert .stat-card__value {
+  color: var(--danger);
+}
+
+/* ── the hatched area chart (DESIGN.md §4) ───────────────────────────────── */
+.chart-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-grid {
+  fill: none;
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+/* The only place white draws a data line. */
+.chart-line {
+  fill: none;
+  stroke: var(--chart-line);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-compare {
+  fill: none;
+  stroke: var(--chart-compare);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  stroke-linecap: round;
+}
+
+/* The area under the line is a diagonal hatch, not a gradient and not a solid
+   fill. The pattern lives in the SVG; the solid colour is the fallback if the
+   view has not declared it yet. */
+.chart-area {
+  fill: url(#chart-hatch) var(--chart-fill);
+  stroke: none;
+}
+
+/* The same hatch as a CSS background, for a legend swatch or a table cell. */
+.hatch {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--chart-fill) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+.chart-axis {
+  fill: var(--text-4);
+  font-family: var(--font-body);
+  font-size: 11px;
+}
+
+/* ── buttons (DESIGN.md §6) ──────────────────────────────────────────────── */
+/* Pill radius, 36px tall. No colour fills except primary. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  touch-action: manipulation; /* removes the 300ms double-tap delay */
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btn > * {
+  min-width: 0;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--text);
+  color: var(--bg-app);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--text-2);
+  color: var(--bg-app);
+}
+
+.btn--secondary {
+  background: var(--surface-btn);
+  color: var(--text);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--text-4);
+  color: var(--text);
+}
+
+.btn--ghost {
+  background: var(--surface-ghost);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn--danger {
+  background: transparent;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--surface-1);
+  color: var(--danger);
+}
+
+/* ── status pill ─────────────────────────────────────────────────────────── */
+/* The class name and the text inside it are part of the test contract
+   (DESIGN.md §7): only the tone modifier changes. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* A pill carries a fixed status word that the test contract may read, so it
+     is never a shrinkable text container: it keeps its intrinsic width and the
+     flexible column beside it is what gives way. */
+  flex: none;
+  min-height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.status-pill--active {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.status-pill--quiet {
+  color: var(--text-3);
+}
+
+.status-pill--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── hairline ────────────────────────────────────────────────────────────── */
+.hairline {
+  width: 100%;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: var(--border);
+}
