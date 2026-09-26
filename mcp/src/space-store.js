@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { evaluateSpacePayment, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest, authorityDelegationDigest, authorityDelegationTypedData, normalizeAuthorityDelegation, verifyAuthorityDelegationSignature, validateAuthorityDelegation, authoritySubsetProof } from '../../packages/policy-engine/src/index.js';
+import { evaluateSpacePayment, findSpaceMember, governanceApprovalTypedData, governancePaymentDigest, governancePolicyHash, toBaseUnits, fromBaseUnits, validateGovernanceApproval, validateGovernanceConfig, createCapabilityManifest, authorityDelegationDigest, authorityDelegationTypedData, normalizeAuthorityDelegation, verifyAuthorityDelegationSignature, validateAuthorityDelegation, authoritySubsetProof } from '../../packages/policy-engine/src/index.js';
 import { validateX402PaymentIntent as validateX402PaymentIntentPure, normalizeX402Expiry, newX402Nonce, verifyX402IntentSignature, x402IntentDigest, x402IntentTypedData } from './x402.js';
 
 /**
@@ -399,6 +399,10 @@ export class SpaceStore {
     const spentTodayBefore = toBaseUnits(space.totalSpentToday);
     space.balance = fromBaseUnits(balanceBefore - amountBase);
     space.totalSpentToday = fromBaseUnits(spentTodayBefore + amountBase);
+    // An agent spends from its own delegation, so it is counted there too. The
+    // Space total still moves: both ceilings are real and either can stop it.
+    const settledMember = findSpaceMember(space, actorId);
+    if (settledMember?.address) this._recordAgentSpend(space, settledMember.address, amountBase);
     const receipt = {
       receiptId: `rcpt-${crypto.randomUUID().slice(0, 8)}`,
       actionId,
@@ -423,18 +427,96 @@ export class SpaceStore {
     return { status: 'SETTLED', receipt, spaceBalance: space.balance };
   }
 
-  async requestPayment({ spaceId, actorId, recipient, amount, memo }) {
+  /**
+   * What one agent has spent today, in base units.
+   *
+   * Held per agent and per UTC day rather than on the Space, so two agents
+   * with separate delegations do not spend from a shared allowance and a new
+   * day genuinely starts again.
+   */
+  _agentSpendOn(space, address, day = new Date().toISOString().slice(0, 10)) {
+    const key = String(address).toLowerCase();
+    const ledger = space.agentSpendLedger || (space.agentSpendLedger = {});
+    const entry = ledger[key];
+    if (!entry || entry.day !== day) return 0n;
+    return BigInt(entry.spent);
+  }
+
+  _recordAgentSpend(space, address, amountBase, day = new Date().toISOString().slice(0, 10)) {
+    const key = String(address).toLowerCase();
+    const ledger = space.agentSpendLedger || (space.agentSpendLedger = {});
+    const prior = ledger[key] && ledger[key].day === day ? BigInt(ledger[key].spent) : 0n;
+    ledger[key] = { day, spent: (prior + BigInt(amountBase)).toString() };
+  }
+
+  /**
+   * Turn a delegation id into authority an agent can actually spend under.
+   *
+   * A stored delegation is not enough on its own. It has to be signed by the
+   * Space, still inside its expiry, not revoked, and issued by somebody who is
+   * actually an admin here — otherwise anyone could enrol an agent under a
+   * delegation that was never theirs to give.
+   */
+  resolveAgentDelegation(space, delegationId) {
+    if (!delegationId) return null;
+    const delegation = this._delegationOrThrow(space.id, delegationId);
+    if (delegation.status === 'REVOKED') {
+      throw new Error(`Authority delegation '${delegationId}' was revoked${delegation.revokedAt ? ` at ${delegation.revokedAt}` : ''}`);
+    }
+    if (delegation.status === 'PENDING') {
+      throw new Error(`Authority delegation '${delegationId}' has not been signed by the Space owner`);
+    }
+    if (BigInt(delegation.expiry) * 1000n <= BigInt(Date.now())) {
+      throw new Error(`Authority delegation '${delegationId}' expired at ${new Date(Number(delegation.expiry) * 1000).toISOString()}`);
+    }
+    const parent = (space.members || []).find(
+      (m) => String(m.address || '').toLowerCase() === String(delegation.parentActor).toLowerCase(),
+    );
+    if (!parent) {
+      throw new Error(`Authority delegation '${delegationId}' was issued by '${delegation.parentActor}', who is not a member of this Space`);
+    }
+    if (!['admin', 'operator'].includes(parent.role)) {
+      throw new Error(`Authority delegation '${delegationId}' was issued by '${parent.name || delegation.parentActor}', whose role '${parent.role}' cannot delegate spending authority`);
+    }
+    return {
+      delegationId: delegation.delegationId,
+      child: delegation.child,
+      parentActor: delegation.parentActor,
+      maxPerTransaction: delegation.maxPerTransaction,
+      dailyBudget: delegation.dailyBudget,
+      allowedCounterparties: delegation.allowedCounterparties,
+      expiry: delegation.expiry,
+      status: delegation.status,
+    };
+  }
+
+  async requestPayment({ spaceId, actorId, recipient, amount, memo, delegationId }) {
     const space = this.spaces.get(spaceId);
     if (!space) throw new Error(`Space '${spaceId}' not found`);
     const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
-    const evaluation = evaluateSpacePayment(space, { actionId, actorId, recipient, amount, memo });
+    // Resolve the delegation first. A bad one is a refusal with a reason, not
+    // an exception, so it lands in the activity log like any other denial.
+    let delegation = null;
+    let delegationError = null;
+    try {
+      delegation = this.resolveAgentDelegation(space, delegationId);
+    } catch (error) {
+      delegationError = error.message;
+    }
+    const member = findSpaceMember(space, actorId);
+    const actorSpentToday = member?.address
+      ? fromBaseUnits(this._agentSpendOn(space, member.address))
+      : '0.00';
+    const evaluation = evaluateSpacePayment(space, { actionId, actorId, recipient, amount, memo, delegation, actorSpentToday });
+    if (delegationError) evaluation.reasons.push(delegationError);
     const timestamp = new Date().toISOString();
-    if (!evaluation.allowed) {
+    if (!evaluation.allowed || delegationError) {
+      evaluation.allowed = false;
       const record = { type: 'PAYMENT_DENIED', actionId, actorId, recipient, amount, reasons: evaluation.reasons, denialProof: evaluation.denialProof, timestamp };
       this.activity.get(spaceId).push(record);
       return { status: 'REJECTED', actionId, reasons: evaluation.reasons, denialProof: evaluation.denialProof, spaceBalance: space.balance };
     }
-    const memberAddr = (space.members || []).find((mb) => mb.id === actorId)?.address;
+    const memberAddr = findSpaceMember(space, actorId)?.address;
     return this._settleApprovedPayment({ space, actionId, actorId, recipient, amount, memo, evaluation, evaluatorAddr: memberAddr, timestamp });
   }
 
@@ -799,7 +881,7 @@ export class SpaceStore {
    * with a `rubricHash` to route contested deliverables to adjudication
    * instead of single-evaluator settlement, mirroring AgenticCommerce.sol.
    */
-  createJob({ spaceId, actorId, provider, evaluator, adjudicator, rubricHash, description, budget, deadline, requestId }) {
+  createJob({ spaceId, actorId, provider, evaluator, adjudicator, rubricHash, description, budget, deadline, requestId, delegationId }) {
     const space = this._getSpaceOrThrow(spaceId);
     if (!provider) {
       throw new Error('Work Order requires a provider');
@@ -850,15 +932,31 @@ export class SpaceStore {
     // Space policy gate: the escrowed budget must satisfy Space rules
     // (maxPerTransaction, daily budget, counterparty allowlist, balance).
     const actionId = `act-${crypto.randomUUID().slice(0, 8)}`;
+    // Escrowing is spending, so an agent needs the same signed delegation here
+    // as it does for a direct payment.
+    let delegation = null;
+    let delegationError = null;
+    try {
+      delegation = this.resolveAgentDelegation(space, delegationId);
+    } catch (error) {
+      delegationError = error.message;
+    }
+    const escrowMember = findSpaceMember(space, actorId);
     const evaluation = evaluateSpacePayment(space, {
       actionId,
       actorId,
       recipient: provider,
       amount: String(budget),
       memo: description,
+      delegation,
+      actorSpentToday: escrowMember?.address
+        ? fromBaseUnits(this._agentSpendOn(space, escrowMember.address))
+        : '0.00',
     });
+    if (delegationError) evaluation.reasons.push(delegationError);
     const timestamp = new Date().toISOString();
-    if (!evaluation.allowed) {
+    if (!evaluation.allowed || delegationError) {
+      evaluation.allowed = false;
       const record = {
         type: 'WORK_DENIED',
         actionId,
@@ -889,6 +987,7 @@ export class SpaceStore {
     // refunds restore headroom.
     const spentTodayBefore = toBaseUnits(space.totalSpentToday || '0');
     space.totalSpentToday = fromBaseUnits(spentTodayBefore + budgetBase);
+    if (escrowMember?.address) this._recordAgentSpend(space, escrowMember.address, budgetBase);
 
     const jobId = `job-${String(this._nextJobSeq++).padStart(4, '0')}`;
     const job = {

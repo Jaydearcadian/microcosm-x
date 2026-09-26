@@ -25,10 +25,10 @@ test('M14-SDK-1: SDK exposes manifest and x402 validation without settlement', a
     const before = JSON.stringify({ space: store.getSpace(SPACE_ID), activity: store.getActivity(SPACE_ID), receipts: [...store.receipts.entries()] });
     const manifestResponse = await client.getCapabilityManifest(SPACE_ID);
     assert.equal(manifestResponse.manifest.schema, 'microcosm.space.capability-manifest/v1');
-    const valid = await client.validateX402PaymentIntent(SPACE_ID, { paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'agent-procure-01', expectedAssetAddress: ASSET });
+    const valid = await client.validateX402PaymentIntent(SPACE_ID, { paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET });
     assert.equal(valid.validation.valid, true);
     assert.equal(valid.validation.selectedAccept.amountDecimal, '350.000000');
-    const invalid = await client.validateX402Payment(SPACE_ID, { paymentRequired: paymentRequired({ accepts: [{ ...paymentRequired().accepts[0], network: 'eip155:1' }] }), selectedAcceptIndex: 0, actorId: 'agent-procure-01', expectedAssetAddress: ASSET });
+    const invalid = await client.validateX402Payment(SPACE_ID, { paymentRequired: paymentRequired({ accepts: [{ ...paymentRequired().accepts[0], network: 'eip155:1' }] }), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET });
     assert.equal(invalid.validation.valid, false);
     assert.equal(JSON.stringify({ space: store.getSpace(SPACE_ID), activity: store.getActivity(SPACE_ID), receipts: [...store.receipts.entries()] }), before);
   } finally {

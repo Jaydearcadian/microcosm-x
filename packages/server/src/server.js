@@ -866,7 +866,7 @@ async function dispatch(app, req, res) {
       }
       if (req.method === 'POST') {
         requireFields(body, ['actorId', 'provider', 'evaluator', 'description', 'budget', 'deadline']);
-        const result = await workAction(spaceId, () => store.createJob({ spaceId, actorId: body.actorId, provider: body.provider, evaluator: body.evaluator, adjudicator: body.adjudicator, rubricHash: body.rubricHash, description: body.description, budget: body.budget, deadline: body.deadline, requestId: body.requestId }));
+        const result = await workAction(spaceId, () => store.createJob({ spaceId, actorId: body.actorId, provider: body.provider, evaluator: body.evaluator, adjudicator: body.adjudicator, rubricHash: body.rubricHash, description: body.description, budget: body.budget, deadline: body.deadline, requestId: body.requestId, delegationId: body.delegationId }));
         if (result.status === 'REJECTED') {
           const d = denied(result);
           return sendJson(res, d.status, d.body, headers);
@@ -919,7 +919,7 @@ async function dispatch(app, req, res) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
       requireFields(body, ['actorId', 'recipient', 'amount']);
-      const result = await workAction(spaceId, () => store.requestPayment({ spaceId, actorId: body.actorId, recipient: body.recipient, amount: body.amount, memo: body.memo }));
+      const result = await workAction(spaceId, () => store.requestPayment({ spaceId, actorId: body.actorId, recipient: body.recipient, amount: body.amount, memo: body.memo, delegationId: body.delegationId }));
       if (result.status === 'REJECTED') {
         const d = denied(result);
         return sendJson(res, d.status, d.body, headers);

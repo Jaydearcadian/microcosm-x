@@ -17,6 +17,7 @@ const AGENT = 'ConformanceBot';
 // Onchain-backed operator identities (member records carry real addresses;
 // settlement resolves display ids to these for the chain calls).
 let OP;
+let store;
 let VENDOR;
 
 let base;
@@ -39,7 +40,8 @@ test.before(async () => {
   adapter = new XLayerAdapter();
   OP = chain.addrs.deployer;
   VENDOR = chain.addrs.provider;
-  ctx = await start({ port: 0, store: new SpaceStore() });
+  store = new SpaceStore();
+  ctx = await start({ port: 0, store });
   base = ctx.url;
 });
 
@@ -58,6 +60,13 @@ test('M3-1: health + space lifecycle (create → fund → bounds)', async () => 
   const spaceId = created.json.space.id;
   assert.ok(spaceId.startsWith('space-'));
   ctx.spaceId = spaceId;
+
+  // The treasury operator's onchain address belongs to the founder, who is the
+  // admin. So `actorId: OP` below spends as a session principal rather than as
+  // an agent, which is what this suite is about: the HTTP surface and live
+  // settlement. Agent authority has its own coverage in
+  // mcp/test/agent-authority.test.js and WORK-10.
+  store.bindMemberAddress(spaceId, FOUNDER, OP);
 
   // Onchain-backed operator roster (live settlement resolves these).
   const op = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Agent', displayName: 'TreasuryOp', address: OP });

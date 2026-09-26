@@ -31,7 +31,7 @@ test('M14-SERVER-1: manifest and x402 validation routes are read-only', async ()
     const validResponse = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'agent-procure-01', expectedAssetAddress: ASSET }),
+      body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET }),
     });
     assert.equal(validResponse.status, 200);
     const valid = await validResponse.json();
@@ -41,7 +41,7 @@ test('M14-SERVER-1: manifest and x402 validation routes are read-only', async ()
     const invalidResponse = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentRequired: paymentRequired({ accepts: [{ ...paymentRequired().accepts[0], amount: '0' }] }), selectedAcceptIndex: 0, actorId: 'agent-procure-01', expectedAssetAddress: ASSET }),
+      body: JSON.stringify({ paymentRequired: paymentRequired({ accepts: [{ ...paymentRequired().accepts[0], amount: '0' }] }), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET }),
     });
     assert.equal(invalidResponse.status, 200);
     assert.equal((await invalidResponse.json()).validation.valid, false);
@@ -59,7 +59,7 @@ test('M14-SERVER-2: x402 route requires explicit expected asset configuration', 
     const response = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'agent-procure-01' }),
+      body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'admin-01' }),
     });
     assert.equal(response.status, 400);
   } finally {

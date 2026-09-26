@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateSpacePayment, toBaseUnits, fromBaseUnits } from '../src/index.js';
 
+// An agent spends under a delegation its Space owner signed. Without one it
+// has no authority at all, which is what SPACE-8 below asserts. Every other
+// test here is about the Space's own limits, so they all present this one.
+const agentDelegation = {
+  delegationId: 'delegation-procure-01',
+  child: '0x4444444444444444444444444444444444444444',
+  parentActor: '0x5555555555555555555555555555555555555555',
+  maxPerTransaction: '500.00',
+  dailyBudget: '2000.00',
+  allowedCounterparties: ['0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222'],
+};
+
 const mockSpace = {
   id: 'space-procurement-001',
   name: 'Autonomous Procurement Space',
@@ -10,7 +22,7 @@ const mockSpace = {
   totalSpentToday: '0.00',
   members: [
     { id: 'human-admin-01', role: 'admin', name: 'Treasury Admin' },
-    { id: 'agent-procure-01', role: 'agent', name: 'Purchasing Agent' },
+    { id: 'agent-procure-01', role: 'agent', name: 'Purchasing Agent', address: '0x4444444444444444444444444444444444444444' },
     { id: 'viewer-01', role: 'viewer', name: 'Observer' },
   ],
   rules: {
@@ -28,6 +40,7 @@ test('SPACE-1: Valid compliant payment within rules is approved', () => {
   const request = {
     actionId: 'act-001',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x1111111111111111111111111111111111111111',
     amount: '350.00',
     asset: 'USDC',
@@ -47,6 +60,7 @@ test('SPACE-2: Out-of-policy request exceeding per-transaction cap is rejected w
   const request = {
     actionId: 'act-002',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x1111111111111111111111111111111111111111',
     amount: '900.00', // Exceeds $500 cap
     asset: 'USDC',
@@ -67,6 +81,7 @@ test('SPACE-3: Strict boundary test ($500.00 exact passes, $500.01 fails)', () =
   const requestExact = {
     actionId: 'act-exact',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x1111111111111111111111111111111111111111',
     amount: '500.00',
     asset: 'USDC',
@@ -77,6 +92,7 @@ test('SPACE-3: Strict boundary test ($500.00 exact passes, $500.01 fails)', () =
   const requestOver = {
     actionId: 'act-over',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x1111111111111111111111111111111111111111',
     amount: '500.01',
     asset: 'USDC',
@@ -90,6 +106,7 @@ test('SPACE-4: Payment to unapproved counterparty is rejected', () => {
   const request = {
     actionId: 'act-unapproved',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x9999999999999999999999999999999999999999', // Unknown recipient
     amount: '100.00',
     asset: 'USDC',
@@ -110,6 +127,7 @@ test('SPACE-5: Payment exceeding daily budget is rejected', () => {
   const request = {
     actionId: 'act-daily',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x1111111111111111111111111111111111111111',
     amount: '300.00', // 1800 + 300 = 2100 > 2000
     asset: 'USDC',
@@ -156,6 +174,46 @@ test('Unit conversions preserve 6-decimal precision without rounding error', () 
   assert.equal(fromBaseUnits(1n), '0.000001');
 });
 
+test('SPACE-8: an agent with no delegation has no spending authority at all', () => {
+  // The name 'Purchasing Agent' used to be the whole credential. It is not any
+  // more: without a signed delegation behind it, the same request is refused.
+  const result = evaluateSpacePayment(mockSpace, {
+    actionId: 'act-unsigned-agent',
+    actorId: 'agent-procure-01',
+    recipient: '0x1111111111111111111111111111111111111111',
+    amount: '10.00',
+    asset: 'USDC',
+  });
+  assert.equal(result.allowed, false);
+  assert.ok(
+    result.reasons.some((r) => r.includes('presented no signed delegation')),
+    `expected a missing-delegation reason, got: ${result.reasons.join(' | ')}`,
+  );
+  assert.ok(result.denialProof);
+});
+
+test('SPACE-10: a delegation cannot raise the Space cap above what the Space allows', () => {
+  const greedy = evaluateSpacePayment(mockSpace, {
+    actionId: 'act-greedy',
+    actorId: 'agent-procure-01',
+    recipient: '0x1111111111111111111111111111111111111111',
+    amount: '10.00',
+    asset: 'USDC',
+    delegation: { ...agentDelegation, maxPerTransaction: '999999.00' },
+  });
+  assert.equal(greedy.allowed, true);
+  const over = evaluateSpacePayment(mockSpace, {
+    actionId: 'act-greedy-2',
+    actorId: 'agent-procure-01',
+    recipient: '0x1111111111111111111111111111111111111111',
+    amount: '500.01',
+    asset: 'USDC',
+    delegation: { ...agentDelegation, maxPerTransaction: '999999.00' },
+  });
+  assert.equal(over.allowed, false, 'a generous delegation must not lift the Space 500.00 cap');
+  assert.ok(over.reasons.some((r) => r.includes('Space per-transaction cap')));
+});
+
 test('SPACE-9: an empty counterparty allowlist denies every payment rather than allowing them', () => {
   // The guard on this check also required `length > 0`, so an empty allowlist
   // skipped the check entirely. Every Space created through the API seeds an
@@ -168,6 +226,7 @@ test('SPACE-9: an empty counterparty allowlist denies every payment rather than 
   const result = evaluateSpacePayment(space, {
     actionId: 'act-empty-allowlist',
     actorId: 'agent-procure-01',
+    delegation: agentDelegation,
     recipient: '0x9999999999999999999999999999999999999999',
     amount: '100.00',
     asset: 'USDC',
@@ -190,13 +249,30 @@ test('SPACE-9: an omitted allowlist key is still an explicit opt-out', () => {
   const rules = { ...mockSpace.rules };
   delete rules.allowedCounterparties;
   const space = { ...mockSpace, rules };
-  const result = evaluateSpacePayment(space, {
+
+  // A human on a session: omitting the key really does mean unrestricted.
+  const asHuman = evaluateSpacePayment(space, {
     actionId: 'act-no-allowlist-key',
-    actorId: 'agent-procure-01',
+    actorId: 'human-admin-01',
     recipient: '0x9999999999999999999999999999999999999999',
     amount: '100.00',
     asset: 'USDC',
   });
+  assert.ok(!asHuman.reasons.some((reason) => /counterpart/.test(reason)), `the rule should be skipped, got ${JSON.stringify(asHuman.reasons)}`);
 
-  assert.ok(!result.reasons.some((reason) => /counterpart/.test(reason)), `the rule should be skipped, got ${JSON.stringify(result.reasons)}`);
+  // A delegated agent is not widened by that. The Space omitting a list is an
+  // opt-out for the Space, but the delegation still names who this agent pays.
+  const asAgent = evaluateSpacePayment(space, {
+    actionId: 'act-no-allowlist-key-agent',
+    actorId: 'agent-procure-01',
+    delegation: agentDelegation,
+    recipient: '0x9999999999999999999999999999999999999999',
+    amount: '100.00',
+    asset: 'USDC',
+  });
+  assert.equal(asAgent.allowed, false);
+  assert.ok(
+    asAgent.reasons.some((reason) => /counterpart/.test(reason)),
+    `a delegation must still bound the agent, got ${JSON.stringify(asAgent.reasons)}`,
+  );
 });

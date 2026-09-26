@@ -52,19 +52,108 @@ export function canonicalHash(obj) {
  *   approvedIntent?: object
  * }}
  */
+/**
+ * The limits that actually apply to one payment.
+ *
+ * A delegated agent never gets the Space's own numbers. Its delegation is a
+ * ceiling, not a starting point, so the two are intersected: the lower cap
+ * wins, and a recipient has to be on both lists. A delegation that was more
+ * generous than the Space therefore cannot widen it, which is the only way
+ * this is safe to hand to something we do not control.
+ */
+export function effectivePaymentLimits(space, delegation) {
+  const rules = space.rules || {};
+  // Returns the binding value and which side it came from. The source matters
+  // to the person reading a refusal: if the Space rule stopped it they raise
+  // the Space rule, and if the delegation stopped it they raise the delegation.
+  // Comparing in base units but handing back the original decimal, because the
+  // callers run these through toBaseUnits again.
+  const pickLower = (spaceValue, delegationValue) => {
+    if (spaceValue == null || spaceValue === '') return { value: delegationValue, source: 'delegation' };
+    if (delegationValue == null || delegationValue === '') return { value: spaceValue, source: 'space' };
+    return toBaseUnits(spaceValue) <= toBaseUnits(delegationValue)
+      ? { value: spaceValue, source: 'space' }
+      : { value: delegationValue, source: 'delegation' };
+  };
+  const out = {
+    maxPerTransaction: rules.maxPerTransaction ?? null,
+    dailyBudget: rules.dailyBudget ?? null,
+    allowedCounterparties: Array.isArray(rules.allowedCounterparties)
+      ? rules.allowedCounterparties.map((c) => c.toLowerCase())
+      : null,
+    capSource: { maxPerTransaction: 'space', dailyBudget: 'space' },
+  };
+  if (!delegation) return out;
+
+  const max = pickLower(out.maxPerTransaction, delegation.maxPerTransaction);
+  out.maxPerTransaction = max.value;
+  out.capSource.maxPerTransaction = max.source;
+  const daily = pickLower(out.dailyBudget, delegation.dailyBudget);
+  out.dailyBudget = daily.value;
+  out.capSource.dailyBudget = daily.source;
+
+  const delegationSet = (delegation.allowedCounterparties || []).map((c) => c.toLowerCase());
+  // An absent Space list means unrestricted, so it cannot narrow anything. A
+  // present one intersects: the agent is limited to what both agree on.
+  out.allowedCounterparties = out.allowedCounterparties == null
+    ? delegationSet
+    : out.allowedCounterparties.filter((c) => delegationSet.includes(c));
+  return out;
+}
+
+/**
+ * Find the member an actorId refers to.
+ *
+ * Addresses are compared case-insensitively. Wallets hand back checksummed
+ * addresses while the store keeps them lowercased, so an exact string match
+ * silently failed to find the member and fell through to somebody else with
+ * the same address in a different case — which is how a Space admin ended up
+ * being resolved as an agent.
+ */
+export function findSpaceMember(space, actorId) {
+  const wanted = String(actorId ?? '').toLowerCase();
+  return (space.members || []).find(
+    (m) =>
+      m.id === actorId ||
+      m.name === actorId ||
+      (!!m.address && String(m.address).toLowerCase() === wanted),
+  );
+}
+
 export function evaluateSpacePayment(space, request) {
   const reasons = [];
   const requestedBase = toBaseUnits(request.amount);
 
-  // 1. Verify Space membership and actor role. actorId may be the member id
-  // or the member name (displayName) — both identify a Space member.
-  const member = (space.members || []).find(
-    (m) => m.id === request.actorId || m.name === request.actorId || m.address === request.actorId
-  );
+  // 1. Verify Space membership and actor role. actorId may be the member id,
+  // the member name (displayName), or the member address.
+  const member = findSpaceMember(space, request.actorId);
   if (!member) {
     reasons.push(`Actor '${request.actorId}' is not an authorized member of Space '${space.id}'`);
   } else if (!['admin', 'agent', 'operator'].includes(member.role)) {
     reasons.push(`Actor role '${member.role}' has no spending authority in this Space`);
+  }
+
+  // 1b. An agent is a machine holding someone else's authority, so it has to
+  // arrive with that authority attached. Without this step a name in an
+  // unauthenticated request body was all that stood between a caller and the
+  // Space treasury. Humans (admin, operator) are identified by their session
+  // instead and are deliberately not asked for a delegation.
+  const isAgent = member?.role === 'agent';
+  const delegation = request.delegation || null;
+  if (isAgent) {
+    if (!delegation) {
+      reasons.push(
+        `Agent '${request.actorId}' presented no signed delegation: an agent may only spend under authority its Space owner signed`,
+      );
+    } else if (!member.address) {
+      reasons.push(
+        `Agent '${request.actorId}' has no address on this Space, so no delegation can be bound to it`,
+      );
+    } else if (String(delegation.child || '').toLowerCase() !== String(member.address).toLowerCase()) {
+      reasons.push(
+        `Delegation is addressed to '${delegation.child}', but agent '${request.actorId}' is '${member.address}'`,
+      );
+    }
   }
 
   // 2. Asset match check
@@ -80,25 +169,49 @@ export function evaluateSpacePayment(space, request) {
     reasons.push(`Insufficient Space balance: requested ${request.amount} ${requestAsset}, available ${space.balance}`);
   }
 
-  const rules = space.rules || {};
+  // The limits that actually bind this payment: the Space's own, intersected
+  // with the agent's delegation when there is one.
+  const rules = effectivePaymentLimits(space, isAgent ? delegation : null);
 
   // 4. Per-transaction limit check (INV-S1)
   if (rules.maxPerTransaction) {
     const maxTxBase = toBaseUnits(rules.maxPerTransaction);
     if (requestedBase > maxTxBase) {
       reasons.push(
-        `Exceeds Space per-transaction cap: requested ${request.amount} ${requestAsset}, max permitted is ${rules.maxPerTransaction}`
+        `Exceeds ${rules.capSource.maxPerTransaction === 'delegation' ? 'agent' : 'Space'} per-transaction cap: requested ${request.amount} ${requestAsset}, max permitted is ${rules.maxPerTransaction}`
       );
     }
   }
 
   // 5. Daily budget check
-  if (rules.dailyBudget) {
-    const dailyBudgetBase = toBaseUnits(rules.dailyBudget);
-    const spentTodayBase = toBaseUnits(space.totalSpentToday || '0');
-    if (spentTodayBase + requestedBase > dailyBudgetBase) {
+  // 5. The Space's own daily budget, measured against the Space's own spend.
+  //
+  // This deliberately reads space.rules, not the intersected limits. The
+  // intersected dailyBudget belongs to the agent's delegation, and comparing
+  // the Space-wide total against it charged every agent for the others'
+  // spending — the second agent to use a delegation was refused because the
+  // first one had already spent.
+  const spaceDaily = space.rules?.dailyBudget;
+  if (spaceDaily) {
+    const spaceDailyBase = toBaseUnits(spaceDaily);
+    const spaceSpent = toBaseUnits(space.totalSpentToday || '0');
+    if (spaceSpent + requestedBase > spaceDailyBase) {
       reasons.push(
-        `Exceeds Space daily budget: requested ${request.amount}, spent today ${space.totalSpentToday || '0'}, daily limit is ${rules.dailyBudget}`
+        `Exceeds Space daily budget: requested ${request.amount}, spent today ${space.totalSpentToday || '0'}, daily limit is ${spaceDaily}`
+      );
+    }
+  }
+
+  // 5b. And separately, a delegated agent's own allowance, measured against
+  // what that agent has spent. A second ceiling rather than a replacement: both
+  // have to hold, so two agents cannot eat one another's budget, and neither
+  // can spend past what the Space itself allows.
+  if (isAgent && delegation) {
+    const agentDaily = toBaseUnits(delegation.dailyBudget);
+    const agentSpent = toBaseUnits(request.actorSpentToday || '0');
+    if (agentSpent + requestedBase > agentDaily) {
+      reasons.push(
+        `Exceeds agent daily budget: requested ${request.amount}, this agent has spent ${request.actorSpentToday || '0'} today, its delegation allows ${delegation.dailyBudget}`
       );
     }
   }

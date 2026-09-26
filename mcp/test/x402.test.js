@@ -25,7 +25,10 @@ function paymentRequired(overrides = {}) {
 }
 
 function args(overrides = {}) {
-  return { spaceId: SPACE_ID, actorId: 'agent-procure-01', expectedAssetAddress: ASSET, selectedAcceptIndex: 0, ...overrides };
+  // A human admin, because the x402 route authenticates with a wallet session
+  // rather than an actor name. An agent actor on this route would additionally
+  // need a delegation id threaded through, which it does not accept yet.
+  return { spaceId: SPACE_ID, actorId: 'admin-01', expectedAssetAddress: ASSET, selectedAcceptIndex: 0, ...overrides };
 }
 
 function state(store) {

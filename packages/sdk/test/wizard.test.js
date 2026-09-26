@@ -19,11 +19,13 @@ import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { SpaceClient, PolicyDenial } from '../src/client.js';
 import { ensureChain } from '../../../mcp/test/helpers/chain.mjs';
 import { XLayerAdapter } from '../../../mcp/src/xlayer.js';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 
 let chain;
 let adapter;
 let client;
 let ctx;
+let store;
 
 const F = (d = 7) => new Date(Date.now() + d * 86400000).toISOString();
 const txOk = (h) => typeof h === 'string' && /^0x[0-9a-fA-F]{64}$/.test(h);
@@ -31,7 +33,8 @@ const txOk = (h) => typeof h === 'string' && /^0x[0-9a-fA-F]{64}$/.test(h);
 test.before(async () => {
   chain = await ensureChain({ port: 18546 });
   adapter = new XLayerAdapter();
-  ctx = await start({ port: 0, store: new SpaceStore() });
+  store = new SpaceStore();
+  ctx = await start({ port: 0, store });
   client = new SpaceClient(ctx.url);
 });
 
@@ -56,6 +59,34 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
   await client.addParticipant(spaceId, { kind: 'Agent', displayName: 'TreasuryOp', address: D });
   await client.fundSpace(spaceId, { amount: '5000.00', actorId: founderMember });
 
+  // 2b. The founder's own wallet, and a delegation from it to the treasury
+  // agent. An agent holds no authority of its own: without this signature the
+  // escrow below is refused, which is the whole point of the onboarding path.
+  const founderWallet = privateKeyToAccount(generatePrivateKey());
+  store.bindMemberAddress(spaceId, founderMember, founderWallet.address);
+  const delegation = store.createDelegation({
+    spaceId,
+    delegationId: 'delegation-treasury-1',
+    parentActor: founderWallet.address,
+    child: D,
+    parentRole: 'admin',
+    childRole: 'agent',
+    maxPerTransaction: '500.00',
+    dailyBudget: '2000.00',
+    allowedCounterparties: [P],
+    asset: 'USDC',
+    chainId: chain.chainId,
+    nonce: '1',
+    expiry: String(Math.floor(Date.now() / 1000) + 86400),
+    policySnapshotHash: `0x${'0'.repeat(64)}`,
+  });
+  await store.signDelegation({
+    spaceId,
+    delegationId: 'delegation-treasury-1',
+    parentActor: founderWallet.address,
+    signature: await founderWallet.signTypedData(delegation.typedData),
+  });
+
   // 3. Request: human asks, provider agent accepts.
   const { request } = await client.createRequest(spaceId, { createdBy: founderMember, title: 'Onboard GPU run' });
   assert.equal(request.status, 'Open');
@@ -65,7 +96,7 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
   // 4. Work: escrow → deliver → evaluate → REAL settlement.
   const before = await adapter.balanceOf(P);
   const created = await client.createJob(spaceId, {
-    actorId: 'TreasuryOp', provider: P, evaluator: 'TreasuryOp',
+    actorId: 'TreasuryOp', provider: P, evaluator: 'TreasuryOp', delegationId: 'delegation-treasury-1',
     description: 'Wizard GPU job', budget: '5.00', deadline: F(), requestId: request.requestId,
   });
   assert.equal(created.status, 'Funded');
@@ -84,7 +115,7 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
 
   // 5. Second request is blocked with reasons (denial path, zero chain cost).
   const balBeforeDeny = await adapter.balanceOf(P);
-  const denied = await client.requestPayment(spaceId, { actorId: 'TreasuryOp', recipient: P, amount: '900.00' })
+  const denied = await client.requestPayment(spaceId, { actorId: 'TreasuryOp', recipient: P, amount: '900.00', delegationId: 'delegation-treasury-1' })
     .then(() => null, (e) => e);
   assert.ok(denied instanceof PolicyDenial);
   assert.equal(await adapter.balanceOf(P), balBeforeDeny);

@@ -66,7 +66,10 @@ test('MCP-3: Agent requests non-compliant payment ($900 > $500) -> isError true 
 // --- First-class Work lifecycle & Gaia exception handling -------------------
 
 const WORK_SPACE = 'space-procurement-001';
-const WORK_CLIENT = 'agent-procure-01';
+// The escrow lifecycle is exercised by a human admin on a session. An agent
+// client is a separate case now — it needs a signed delegation, which is
+// covered by WORK-10 below and by mcp/test/agent-authority.test.js.
+const WORK_CLIENT = 'admin-01';
 const WORK_VENDOR = '0x1111111111111111111111111111111111111111';
 const WORK_EVALUATOR = 'admin-01';
 
@@ -728,4 +731,26 @@ test('REQ-6b (negative): trace of an unknown request errors', async () => {
   });
   assert.equal(bad.isError, true);
   assert.match(bad.content[0].text, /not found/);
+});
+
+
+test('WORK-10: an agent client cannot escrow Space funds without a signed delegation', async () => {
+  const store = new SpaceStore();
+  const res = await handleToolCall(store, 'work_create', {
+    spaceId: WORK_SPACE,
+    actorId: 'agent-procure-01',
+    provider: WORK_VENDOR,
+    evaluator: WORK_EVALUATOR,
+    description: 'Unauthorised escrow attempt',
+    budget: '350.00',
+    deadline: futureDeadline(),
+  });
+  const data = JSON.parse(res.content[0].text);
+  assert.equal(data.status, 'REJECTED');
+  assert.ok(
+    data.reasons.some((r) => /no signed delegation/.test(r)),
+    `expected a missing-delegation reason, got: ${JSON.stringify(data.reasons)}`,
+  );
+  // And the treasury is untouched: a refused escrow must not move money.
+  assert.equal(store.getSpace(WORK_SPACE).balance, '5000.00');
 });
