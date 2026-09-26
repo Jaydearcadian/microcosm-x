@@ -4,6 +4,11 @@ export default defineConfig({
   testDir: './tests',
   timeout: 120000,
   fullyParallel: true,
+  // Web-first assertions default to a 5s timeout, which the wallet modal and
+  // first page hydration can both exceed on a loaded machine. The per-test
+  // budget above is 120s, so a longer assertion bound keeps every check
+  // meaningful while stopping machine load from reading as a regression.
+  expect: { timeout: 15000 },
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [['list']],

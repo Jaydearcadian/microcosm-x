@@ -12,7 +12,13 @@ test('audit view states whether a chain indexer is configured', async ({ page })
 
 test('the indexer panel explains an unconfigured deployment instead of failing', async ({ page }) => {
   await page.goto('/app#audit');
-  const notConfigured = page.getByText('NOT CONFIGURED');
+  // The panel renders a loading state while the status request is in flight, so
+  // branching on which terminal state has appeared yet races the fetch. Wait for
+  // the panel to settle first, then assert the branch that actually applies.
+  const panel = page.locator('.indexer-panel');
+  await expect(panel).toBeVisible({ timeout: 20000 });
+  await expect(panel).not.toContainText('Reading indexer status', { timeout: 20000 });
+  const notConfigured = panel.getByText('NOT CONFIGURED');
   if (await notConfigured.count()) {
     await expect(page.getByText(/no chain indexer is configured for this deployment/i)).toBeVisible();
     await expect(page.getByText(/sequenced activity log/i)).toBeVisible();
