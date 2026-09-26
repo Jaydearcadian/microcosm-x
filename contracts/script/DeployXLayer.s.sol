@@ -6,6 +6,7 @@ import {ClaimEscrow} from "../src/ClaimEscrow.sol";
 import {EnvelopeRegistry} from "../src/EnvelopeRegistry.sol";
 import {AgenticCommerce} from "../src/AgenticCommerce.sol";
 import {MockERC20} from "../src/test/MockERC20.sol";
+import {SpaceBudget} from "../src/SpaceBudget.sol";
 
 interface Vm {
     function startBroadcast() external;
@@ -38,12 +39,15 @@ contract DeployXLayer {
         address agenticCommerce
     );
 
+    event SpaceBudgetDeployed(address indexed spaceBudget, address indexed settlementRouter, address indexed asset);
+
     function run() external returns (
         address envelopeRegistryAddr,
         address settlementRouterAddr,
         address claimEscrowAddr,
         address usdcAddr,
-        address agenticCommerceAddr
+        address agenticCommerceAddr,
+        address spaceBudgetAddr
     ) {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address existingUsdc = vm.envOr("USDC_ADDRESS", address(0));
@@ -77,6 +81,9 @@ contract DeployXLayer {
         AgenticCommerce agenticCommerce = new AgenticCommerce(deployer, usdcAddr);
         agenticCommerceAddr = address(agenticCommerce);
 
+        // 6. Deploy the per-Space limits contract and point the router at it.
+        spaceBudgetAddr = _deployAndWireLimits(settlementRouter);
+
         emit Deployed(
             envelopeRegistryAddr,
             settlementRouterAddr,
@@ -86,5 +93,21 @@ contract DeployXLayer {
         );
 
         vm.stopBroadcast();
+    }
+
+    /**
+     * Deploy the per-Space limits contract and point the router at it.
+     *
+     * This step is not optional. SettlementRouter refuses to move anything
+     * unless a limits contract is configured, so a router deployed without one
+     * cannot settle a single payment, by anyone, ever. The first version of this
+     * script left it unset, which is why the live router looked deployed and was
+     * in fact inert — and nothing about the deployment itself said so.
+     */
+    function _deployAndWireLimits(SettlementRouter router) internal returns (address) {
+        SpaceBudget spaceBudget = new SpaceBudget();
+        router.setBudgetContract(address(spaceBudget));
+        emit SpaceBudgetDeployed(address(spaceBudget), address(router), address(0));
+        return address(spaceBudget);
     }
 }
