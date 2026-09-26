@@ -2,7 +2,7 @@
 
 You build the interface. Backend (`packages/server`, MCP, contracts) is owned
 separately. Your sole backend dependency is the frozen contract in
-[`docs/API_CONTRACT.md`](../API_CONTRACT.md) — code against it, never against
+[`docs/API_CONTRACT.md`](API_CONTRACT.md) — code against it, never against
 implementation details.
 
 ## 1. Stack (decided)

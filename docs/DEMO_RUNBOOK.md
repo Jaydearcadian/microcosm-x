@@ -2,8 +2,8 @@
 
 **Live Human-Agent Commerce on OKX X Layer**  
 Target Presentation / Video Duration: **3 Minutes**  
-Execution Script: [`scripts/demo-procurement-space.mjs`](file:///home/jay/okx/scripts/demo-procurement-space.mjs)  
-API Contract Alignment: [`docs/API_CONTRACT.md`](file:///home/jay/okx/docs/API_CONTRACT.md) (v1 Frozen)
+Execution Script: [`scripts/demo-procurement-space.mjs`](../scripts/demo-procurement-space.mjs)  
+API Contract Alignment: [`docs/API_CONTRACT.md`](API_CONTRACT.md) (v1 Frozen)
 
 ---
 
@@ -18,7 +18,7 @@ Before initiating the demo run, verify the environment keys and network connecti
 * **Testnet Faucet**: `https://www.okx.com/xlayer/faucet` (fund deployer with OKB for gas)
 
 ### Deployed Smart Contracts (Chain 1952, Verified on Sourcify & OKLink)
-From [`forge.json`](file:///home/jay/okx/forge.json):
+From [`forge.json`](../forge.json):
 * **AgenticCommerce (Kernel)**: `0xCdddCDC435f9C6C4a38D1E421b89fdcD7Be92a81`
 * **SettlementRouter**: `0xe772f79C10fac15e52909B376633A3e80Cb6a2E6`
 * **ClaimEscrow**: `0x767C79c97Aee5440f70074309a3efd89bF863945`
@@ -241,7 +241,7 @@ If performing a live presentation under degraded network conditions:
 
 ## 6. Frozen API Contract Cross-Reference
 
-Every action in the demo maps 1:1 to our frozen v1 API endpoints ([`docs/API_CONTRACT.md`](file:///home/jay/okx/docs/API_CONTRACT.md)):
+Every action in the demo maps 1:1 to our frozen v1 API endpoints ([`docs/API_CONTRACT.md`](API_CONTRACT.md)):
 
 | Demo Action | HTTP REST Endpoint | SSE Event Emitted |
 |---|---|---|
