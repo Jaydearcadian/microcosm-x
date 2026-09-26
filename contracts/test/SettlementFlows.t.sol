@@ -4,11 +4,14 @@ pragma solidity ^0.8.24;
 import {SettlementRouter} from "../src/SettlementRouter.sol";
 import {ClaimEscrow} from "../src/ClaimEscrow.sol";
 import {MockERC20} from "../src/test/MockERC20.sol";
+import {SpaceBudget} from "../src/SpaceBudget.sol";
 
 interface Vm {
     function prank(address) external;
     function startPrank(address) external;
     function stopPrank() external;
+    function addr(uint256) external returns (address);
+    function sign(uint256, bytes32) external returns (uint8, bytes32, bytes32);
 }
 
 contract Assertions {
@@ -40,13 +43,22 @@ contract SettlementFlowsTest is Assertions {
     ClaimEscrow internal escrow;
     MockERC20 internal token;
 
+    SpaceBudget internal budget;
+    uint256 internal ownerKey = 0xA11CE5EED;
+    address internal spaceOwner;
+
     address internal payer = address(0xA11CE);
     address internal recipient = address(0xB0B);
+    bytes32 internal spaceId = keccak256("space_1");
 
     function setUp() public {
         router = new SettlementRouter(address(this), true);
         escrow = new ClaimEscrow(address(this), true);
         token = new MockERC20();
+        budget = new SpaceBudget();
+        spaceOwner = vm.addr(ownerKey);
+        router.setBudgetContract(address(budget));
+        _bindSpace();
 
         token.mint(payer, 1_000_000_000);
 
@@ -56,11 +68,29 @@ contract SettlementFlowsTest is Assertions {
         vm.stopPrank();
     }
 
+    /// Signs this Space's limits so the router will let a payment through.
+    function _bindSpace() internal {
+        address[] memory allow = new address[](1);
+        allow[0] = recipient;
+        SpaceBudget.Binding memory b = SpaceBudget.Binding({
+            spaceId: spaceId,
+            owner: spaceOwner,
+            maxPerTransaction: 1_000_000_000,
+            dailyBudget: 1_000_000_000,
+            recipients: allow,
+            deadline: block.timestamp + 3650 days,
+            nonce: 0
+        });
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(ownerKey, budget.bindingDigestFor(address(budget), block.chainid, b));
+        budget.bind(b, abi.encodePacked(r, s, v));
+    }
+
     function testSettleDirectTransfersFundsToRecipient() public {
         bytes32 paymentIdHash = keccak256("pay_1");
 
         vm.prank(payer);
-        router.settleDirect(paymentIdHash, address(token), recipient, 25_000_000);
+        router.settleDirect(spaceId, paymentIdHash, address(token), recipient, 25_000_000);
 
         assertEq(token.balanceOf(recipient), 25_000_000);
         assertEq(token.balanceOf(payer), 975_000_000);

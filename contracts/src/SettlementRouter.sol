@@ -3,6 +3,12 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "./interfaces/IERC20.sol";
 
+/// The per-Space limits contract. Every payment is offered to it before any
+/// token moves, so a Space that never signed its limits cannot be paid from.
+interface ISpaceBudget {
+    function enforce(bytes32 spaceId, address recipient, uint256 amount) external;
+}
+
 contract SettlementRouter {
     address public immutable owner;
     bool public immutable storeReceiptAnchors;
@@ -16,6 +22,8 @@ contract SettlementRouter {
     }
 
     mapping(bytes32 => ReceiptAnchor) public receipts;
+
+    event BudgetContractSet(address indexed budget);
 
     event DirectSettlementRecorded(
         bytes32 indexed paymentIdHash,
@@ -74,6 +82,8 @@ contract SettlementRouter {
     mapping(bytes32 => address) public spaceTokens;
     /// Consumed nonces per Space (replay protection).
     mapping(bytes32 => mapping(uint256 => bool)) public usedNonces;
+    /// Per-Space limits contract. Zero means settlement is closed, not open.
+    address public budgetContract;
 
     event ControllerUpdated(address indexed controller, bool authorized);
     event SpaceTokenRegistered(bytes32 indexed spaceId, address indexed token);
@@ -95,6 +105,21 @@ contract SettlementRouter {
         require(controller != address(0), "controller required");
         controllers[controller] = authorized;
         emit ControllerUpdated(controller, authorized);
+    }
+
+    /// Points the router at the limits contract. Only ever set to something
+    /// real: clearing it stops settlement rather than lifting it.
+    function setBudgetContract(address budget) external onlyOwner {
+        require(budget != address(0), "budget required");
+        budgetContract = budget;
+        emit BudgetContractSet(budget);
+    }
+
+    /// Throws unless a limits contract is configured. Left out of the settle
+    /// paths on purpose, so that forgetting to configure one closes the door
+    /// instead of quietly reverting to unchecked payments.
+    function _requireBudget() private view {
+        require(budgetContract != address(0), "budget contract not configured");
     }
 
     function registerSpaceToken(bytes32 spaceId, address token) external onlyOwner {
@@ -158,6 +183,9 @@ contract SettlementRouter {
 
         usedNonces[auth.spaceId][auth.nonce] = true;
 
+        _requireBudget();
+        ISpaceBudget(budgetContract).enforce(auth.spaceId, auth.recipient, auth.amount);
+
         bool ok = IERC20(token).transferFrom(signer, auth.recipient, auth.amount);
         require(ok, "transfer failed");
 
@@ -195,6 +223,7 @@ contract SettlementRouter {
         return signer;
     }
     function settleDirect(
+        bytes32 spaceId,
         bytes32 paymentIdHash,
         address token,
         address recipient,
@@ -205,11 +234,14 @@ contract SettlementRouter {
         require(recipient != address(0), "recipient required");
         require(amount > 0, "amount required");
 
+        _requireBudget();
+        ISpaceBudget(budgetContract).enforce(spaceId, recipient, amount);
+
         bool ok = IERC20(token).transferFrom(msg.sender, recipient, amount);
         require(ok, "transfer failed");
 
         settlementId = keccak256(
-            abi.encode(paymentIdHash, token, msg.sender, recipient, amount)
+            abi.encode(spaceId, paymentIdHash, token, msg.sender, recipient, amount)
         );
 
         emit DirectSettlementRecorded(

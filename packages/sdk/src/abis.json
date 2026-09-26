@@ -29,7 +29,7 @@
   ],
   "SettlementRouter": [
     "function settleWithAttestation((bytes32,address,uint256,uint256,uint256,bytes32),bytes)",
-    "function settleDirect(bytes32,address,address,uint256)",
+    "function settleDirect(bytes32,bytes32,address,address,uint256)",
     "function setController(address,bool)",
     "function registerSpaceToken(bytes32,address)",
     "event DirectSettlementRecorded(bytes32 indexed,address indexed,address indexed,address,uint256)",

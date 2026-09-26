@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {SettlementRouter} from "../src/SettlementRouter.sol";
 import {AgenticCommerce} from "../src/AgenticCommerce.sol";
 import {MockERC20} from "../src/test/MockERC20.sol";
+import {SpaceBudget} from "../src/SpaceBudget.sol";
 
 interface Vm {
     function prank(address) external;
@@ -42,6 +43,9 @@ contract AttestationTest is Assertions {
     MockERC20 internal token;
 
     uint256 internal controllerKey = 0xA11CE5EED;
+    SpaceBudget internal budget;
+    uint256 internal spaceOwnerKey = 0xA11CE5EED;
+    address internal spaceOwner;
     address internal controller;
     address internal recipient = address(0xB0B);
     bytes32 internal spaceId = keccak256("space-procurement-001");
@@ -54,14 +58,37 @@ contract AttestationTest is Assertions {
         commerce = new AgenticCommerce(address(this), address(token));
 
         controller = vm.addr(controllerKey);
+        spaceOwner = vm.addr(spaceOwnerKey);
         router.setController(controller, true);
         commerce.setController(controller, true);
         router.registerSpaceToken(spaceId, address(token));
+
+        budget = new SpaceBudget();
+        router.setBudgetContract(address(budget));
+        _bindSpace();
 
         token.mint(controller, 1_000_000_000);
         vm.startPrank(controller);
         token.approve(address(router), type(uint256).max);
         vm.stopPrank();
+    }
+
+    /// Signs this Space's limits so the router will let a payment through.
+    function _bindSpace() internal {
+        address[] memory allow = new address[](1);
+        allow[0] = recipient;
+        SpaceBudget.Binding memory b = SpaceBudget.Binding({
+            spaceId: spaceId,
+            owner: spaceOwner,
+            maxPerTransaction: 1_000_000_000,
+            dailyBudget: 1_000_000_000,
+            recipients: allow,
+            deadline: block.timestamp + 3650 days,
+            nonce: 0
+        });
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(spaceOwnerKey, budget.bindingDigestFor(address(budget), block.chainid, b));
+        budget.bind(b, abi.encodePacked(r, s, v));
     }
 
     function _routerAuth(
