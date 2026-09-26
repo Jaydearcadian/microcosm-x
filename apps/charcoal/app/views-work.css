@@ -1,0 +1,851 @@
+/* ==========================================================================
+   Work and Audit — the two views' own layout.
+
+   Everything a primitive already ships (.panel*, .stat-row, .stat-card*,
+   .btn, .status-pill, .truncate, .clamp-2, .clamp-3, .tnum, .balance,
+   .ident, .eyebrow, .display) lives in primitives.css and is not restated
+   here. What is here is what the foundation does not ship: the kanban board
+   and its cards, the chain-indexer readout, and the activity stream.
+
+   Ownership: components/app/WorkView.tsx, WorkKanban.tsx, AuditView.tsx,
+   AuditStream.tsx and this file. Nothing else may be edited from here, and
+   nothing in another owner's file is dressed by a rule below.
+
+   Two rules carry most of the weight:
+
+   1. DESIGN.md §4a — every flex/grid child that holds text gets min-width: 0
+      (rule 1), and the text element itself truncates (rules 2 and 3). Rule 1
+      is the one that is always forgotten, and without it the other two are
+      silent no-ops.
+
+   2. DESIGN-REVIEW.md §3 conflict 1 — a horizontal scroller survives only
+      where there is room for it. The board therefore fits five columns
+      without a scroller from 1280px and never scrolls the page; below that
+      it reflows to a two-column grid and then to a single column.
+   ========================================================================== */
+
+/* ── shared: the one-line feedback strip ────────────────────────────────────
+   Both views confirm a write with the same object, so it is one local
+   primitive here rather than two copies. A confirmation is quiet; only a
+   failure gets the danger tone, because a danger that is always on is not a
+   signal (the same reasoning as the indexer panel's RECONCILING state). */
+
+.view-flash {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-3);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.view-flash--danger {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+/* The view header's figure. .status-pill keeps its intrinsic width, so the
+   flexible column beside it is what gives way; the count is a figure, so it
+   is tabular and it does not jitter as it changes. */
+.view-figure {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ==========================================================================
+   WORK — the board
+   ========================================================================== */
+
+/* The board's own head: what the columns are, and the one honest note about
+   the jobs they do not hold. */
+.work-board__head {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.work-board__head > * {
+  min-width: 0;
+}
+
+.work-board__head h2 {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.work-board__note {
+  max-width: 74ch;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* The board's scroll container. `min-width: 0` is what stops the grid from
+   pushing the page wide; `overflow-x: auto` is the deliberate scroller that
+   only ever appears if a column refuses to shrink, and it is confined to the
+   board (the last row of the DESIGN.md §4 table is the only place a cut-off
+   card is intentional, and this is not that row). */
+.work-board__scroller {
+  min-width: 0;
+}
+
+@media (min-width: 1280px) {
+  .work-board__scroller {
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+}
+
+.kanban-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.kanban-grid > * {
+  min-width: 0;
+}
+
+/* Below 1280px nobody scrolls sideways to read a state transition, so the
+   board is a two-column grid and then a single column. Every track is
+   minmax(0, 1fr): a minimum is only ever allowed above the width at which
+   the container starts scroller (DESIGN-REVIEW.md §3, conflict 2). */
+@media (min-width: 640px) {
+  .kanban-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .kanban-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+/* ── a column ─────────────────────────────────────────────────────────────
+   A well, not a card: --surface-1 with the cards raised out of it at
+   --surface-2, which is the same relationship the split stat card has with
+   its inset (DESIGN.md §4). */
+
+.kanban-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+}
+
+.kanban-column__head {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.kanban-column__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kanban-column__top > * {
+  min-width: 0;
+}
+
+/* The status word is the column's name and it is fixed by the test contract,
+   so it is set as a small label rather than a heading: sentence case is for
+   prose, and a state is a status word (the same distinction .status-pill
+   makes). */
+.kanban-column__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The count is the number worth reading at a glance, so it is a figure. */
+.kanban-column__count {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.kanban-column__sum {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The scroll area. 54 funded cards at 104px each is a 5,600px page; the count
+   and the total are on the header, so the column can be a well the reader
+   scrolls inside. It is bounded rather than tall, and the cards inside it
+   carry content-visibility (below), so 54 of them cost far less than 54
+   laid-out rows. */
+.kanban-cards {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  max-height: 420px;
+  padding: 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+@media (min-width: 1280px) {
+  .kanban-cards {
+    max-height: 480px;
+  }
+}
+
+.kanban-cards > * {
+  min-width: 0;
+}
+
+.kanban-empty {
+  display: grid;
+  min-height: 72px;
+  place-content: center;
+  color: var(--text-4);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ── a card ───────────────────────────────────────────────────────────────
+   The human description leads. The identifier is database residue and is
+   demoted to a muted line under it, truncated rather than wrapped
+   (DESIGN.md §4a: an identifier truncates everywhere except a hash chip). */
+
+.work-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-2);
+  /* 91 projected jobs is a list over 50 items, so the off-screen cards are
+     skipped by the renderer and sized from the intrinsic height until they
+     are measured. `auto` keeps the remembered size, so scrolling the well
+     does not make the list jump. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 104px;
+}
+
+.work-card__title {
+  min-width: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.work-card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.work-card__row > * {
+  min-width: 0;
+}
+
+.work-card__amount {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* MM-DD, taken from the ISO string rather than from a locale, so the server
+   render and the client render agree and there is no hydration mismatch. */
+.work-card__stamp {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-card__id {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A proof or settlement hash. These are hashes, not prose, so they wrap
+   inside the card rather than truncating: the one place DESIGN.md §4a allows
+   word-break. */
+.work-card__proof {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.work-card__proof > * {
+  min-width: 0;
+}
+
+.work-card__proof-label {
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.work-card__proof-hash {
+  min-width: 0;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.work-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.work-card__actions > * {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+/* A 44px minimum touch target at mobile widths, where the board is a single
+   column and the buttons are the whole interaction (DESIGN-REVIEW.md §2). */
+@media (max-width: 767.98px) {
+  .work-card__actions > * {
+    min-height: 44px;
+    font-size: 14px;
+  }
+}
+
+/* ==========================================================================
+   AUDIT — the chain indexer
+   ========================================================================== */
+
+.indexer-panel {
+  margin-bottom: 12px;
+}
+
+.indexer-panel > * {
+  min-width: 0;
+}
+
+/* Three readouts in the shape of the reference's metric row: a figure and a
+   label, with the figure reading as a figure. */
+.indexer-readout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.indexer-readout > * {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .indexer-readout {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* A hairline between the readouts, so three figures in a wide panel read as
+     one instrument rather than as three loose numbers. */
+  .indexer-readout > * + * {
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+  }
+}
+
+.indexer-readout__value {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexer-readout__label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The honest state of the tail loop, in words, because the pill alone cannot
+   say it: a pass that is in flight is not a failure. */
+.indexer-note {
+  max-width: 92ch;
+  min-width: 0;
+  margin-bottom: 14px;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.indexer-note--last {
+  margin-bottom: 0;
+}
+
+.indexer-error {
+  min-width: 0;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* The cursor transaction: a hash, so it wraps inside a chip and copies. */
+.audit-hash {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.audit-hash > * {
+  min-width: 0;
+}
+
+.audit-hash__label {
+  flex: none;
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.audit-hash__value {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.audit-copy {
+  flex: none;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  touch-action: manipulation;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+/* Below 640px the hash gets its own full-width line rather than a 200px well
+   wrapped over three rows: it is 66 characters and it is a receipt. */
+@media (max-width: 639.98px) {
+  .audit-hash {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px 10px;
+  }
+
+  .audit-hash__label {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .audit-copy {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .audit-hash__value {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.audit-copy:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* ── the projected jobs ─────────────────────────────────────────────────── */
+
+.indexer-jobs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Two up from 1024px: the projection list is a sample, not a ledger, and
+   stacking six of them turns the panel into most of the first screen. */
+@media (min-width: 1024px) {
+  .indexer-jobs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.indexer-jobs > * {
+  min-width: 0;
+}
+
+.indexer-job {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.indexer-job > * {
+  min-width: 0;
+}
+
+.indexer-job__text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.indexer-job__title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexer-job__id {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The projection's own state. A quiet chip with the geometry primitives give
+   .status-pill, under a local name: `.indexer-panel .status-pill` is the
+   indexer's state in the test contract (DESIGN.md §7) and a second one inside
+   the same panel would make that locator ambiguous. */
+.indexer-job__status {
+  flex: none;
+  min-width: 0;
+  min-height: 22px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+  min-width: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+.indexer-foot > * {
+  min-width: 0;
+  /* A contract address is 42 unbroken hex characters: it has to be allowed to
+     break, because it cannot be truncated without losing the address. */
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+   AUDIT — the live activity stream
+   ========================================================================== */
+
+.audit-list {
+  display: grid;
+  min-width: 0;
+  /* The stream pages in 50s and a Space accumulates hundreds of events, so the
+     list is a bounded well rather than a 9,000px page. */
+  max-height: 560px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) minmax(0, max-content);
+  align-items: center;
+  gap: 3px 14px;
+  min-width: 0;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 56px;
+}
+
+.audit-row > * {
+  min-width: 0;
+}
+
+.audit-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.audit-row__seq {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  align-self: start;
+  padding-top: 1px;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-row__type {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+/* A denial is the one ledger event that is an alarm, so it is the one that
+   gets the danger tone. */
+.audit-row--denial .audit-row__type {
+  color: var(--danger);
+}
+
+.audit-row__amount {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The human line: what happened and to what, in the ledger's own words where
+   it has any (a work order's description, the first policy reason). */
+.audit-row__detail {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* The identifier is the same database residue the Work board demotes, so it
+   is the secondary line here, and it truncates. */
+.audit-row__id {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Below 768px the identifier moves to its own full-width line rather than
+   holding a column against the headline: 26 characters of machine id is not
+   worth 150px of a 326px well. */
+@media (max-width: 767.98px) {
+  .audit-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+  }
+
+  .audit-row__seq {
+    grid-row: 1 / 4;
+  }
+
+  .audit-row__detail {
+    grid-column: 2 / -1;
+  }
+
+  .audit-row__id {
+    grid-column: 2 / -1;
+    grid-row: 3;
+    justify-self: start;
+  }
+}
+
+.audit-empty {
+  display: grid;
+  gap: 6px;
+  min-height: 160px;
+  place-content: center;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.audit-empty strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.audit-empty > * {
+  max-width: 44ch;
+  margin-inline: auto;
+}
+
+.audit-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.audit-foot > * {
+  min-width: 0;
+}
+
+.audit-foot__cursor {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-foot__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.audit-foot__actions > * {
+  min-width: 0;
+}
+
+/* ── motion ───────────────────────────────────────────────────────────────
+   Named properties only, and only colour transitions exist here, so the
+   reduced-motion block has one declaration to stop. The board and the stream
+   have no entry animation: they are the working surface, not a marketing
+   section, and a card that is still invisible because it has not scrolled
+   into view is a card nobody can read. */
+@media (prefers-reduced-motion: reduce) {
+  .audit-copy {
+    transition: none;
+  }
+}
