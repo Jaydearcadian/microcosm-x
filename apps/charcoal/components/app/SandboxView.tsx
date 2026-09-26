@@ -98,7 +98,7 @@ function judge(run: Omit<Run, "verdict">): Run["verdict"] {
 }
 
 export function SandboxView() {
-  const { spaceId, space, bounds, jobs, participants, actorId, refresh } = useAppData();
+  const { spaceId, space, participants, actorId, refresh } = useAppData();
   const [runs, setRuns] = useState<Run[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -115,7 +115,12 @@ export function SandboxView() {
     setBusy(scenario.id);
     setFailure(null);
     try {
-      const before = { balance: bounds?.treasuryBalance ?? "0", escrowed: bounds?.escrowed ?? "0", jobs: jobs.length };
+      // Both sides of the invariant must be server truth. Reading `before` from
+      // the view's own state let it lag the Space selection and its funding, so
+      // the verdict compared a stale balance against a live one and reported a
+      // refusal scenario as having moved money that never left the Space.
+      const [startBounds, startJobs] = await Promise.all([fetchBoundsFor(spaceId, actorId), fetchJobs(spaceId)]);
+      const before = { balance: startBounds.treasuryBalance, escrowed: startBounds.escrowed, jobs: startJobs.length };
       const outcome = await probeWorkOrder(spaceId, {
         actorId: scenario.actor ?? actorId,
         provider: scenario.provider ?? provider,
@@ -135,7 +140,7 @@ export function SandboxView() {
     } finally {
       setBusy(null);
     }
-  }, [spaceId, runnable, bounds, jobs, actorId, provider, refresh]);
+  }, [spaceId, runnable, actorId, provider, refresh]);
 
   if (!spaceId) return <div className="app-state">Create or select a Space to run the Boundary Sandbox.</div>;
   if (!runnable) return <div className="app-view">
