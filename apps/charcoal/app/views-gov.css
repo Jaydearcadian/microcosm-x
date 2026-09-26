@@ -1,0 +1,951 @@
+/* ==========================================================================
+   Governance, Delegation and Agent — the three view bodies' own layout.
+
+   Everything a primitive already ships (.panel*, .stat-row, .stat-card*,
+   .btn, .status-pill, .truncate, .clamp-2, .clamp-3, .tnum, .balance,
+   .ident, .eyebrow, .display) lives in primitives.css and is not restated
+   here. What is here is what the foundation does not ship: the quorum
+   meter, the labelled figure rows, the forms, the request / envelope /
+   intent cards, the delegation nest, and the capability list.
+
+   Ownership: components/app/GovernanceView.tsx, DelegationView.tsx,
+   AgentView.tsx and this file. Nothing else may be edited from here.
+
+   Three rules carry most of the weight:
+
+   1. DESIGN.md §4a — every flex/grid child that holds text gets min-width: 0
+      (rule 1), and the text element itself truncates (rules 2 and 3). Rule 1
+      is the one that is always forgotten, and without it every truncation
+      rule here is a silent no-op. A signature digest, a contract address
+      and an envelope id are the usual offenders, so the hash chip is the one
+      place allowed to wrap (word-break: break-all), and everything else
+      truncates.
+
+   2. No colour outside the token block. There is no accent in this file:
+      the only hues reachable are the four text steps, the three surfaces
+      and --danger for a refusal. The lime accent is gone and is not
+      substituted here.
+
+   3. Plain words beside the jargon. These three views are the most
+      technical in the app, so every unavoidable term — signature,
+      envelope, subset proof, digest — carries a one-line explanation next
+      to it rather than being left for the reader to decode.
+   ========================================================================== */
+
+/* ── the view's own rhythm ───────────────────────────────────────────────────
+   The shell owns .app-view and .app-view__header; the header already carries
+   28px of air and .stat-row carries 16px, so everything after the metric row
+   steps down to a flat 12px, which is what views-command.css does. */
+.gov-grid,
+.gov-stack {
+  margin-bottom: 12px;
+}
+
+.gov-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Two panels side by side from 1024px, one below. Anything that spans both
+   columns says so with gov-grid__full. */
+.gov-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.gov-grid > *,
+.gov-stack > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .gov-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gov-grid__full {
+    grid-column: 1 / -1;
+  }
+}
+
+/* A panel head's meta line: 11px, --text-4, allowed to shrink and truncate.
+   .panel__head gives the title min-width: 0, so the meta can keep its
+   intrinsic width up to a share of the head. */
+.gov-panel__meta {
+  flex: none;
+  max-width: 62%;
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+/* ── the feedback strip ────────────────────────────────────────────────────
+   `.action-flash` / `.action-flash--danger` are part of the test contract
+   (DESIGN.md §7: `.action-flash--danger` must be absent while signed out),
+   so the class names stay on the element. The presentation is declared under
+   .gov-view so it cannot reach another owner's view, and with the extra
+   class of specificity so it still wins if one of them dresses the same
+   legacy name later. */
+.gov-view .action-flash {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-3);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gov-view .action-flash--danger {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── a labelled figure, set larger than a row value ────────────────────────
+   The one number a panel is about: a quorum, a cap, a Space name. 22px is
+   the Command Center's chart figure, so the three families read as one
+   product. */
+.gov-readout {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gov-readout__figure {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gov-readout__note {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* A caption: 11px, --text-4, capped to a readable measure. Never a heading. */
+.gov-note {
+  max-width: 78ch;
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.gov-note--tight {
+  margin-top: 10px;
+}
+
+/* One step of air between two blocks inside a panel body. A class rather than
+   an inline style, so the rhythm lives with the rest of it. */
+.gov-block {
+  margin-top: 16px;
+}
+
+.gov-block--tight {
+  margin-top: 8px;
+}
+
+/* ── labelled figure rows ───────────────────────────────────────────────────
+   One primitive for every "label on the left, figure on the right" line in
+   the three views: the Space policy, an envelope's limits, the manifest's
+   published figures. The figure is the thing being read, so it is right
+   aligned, tabular and never truncated; the label is prose and truncates. */
+.gov-rows {
+  display: grid;
+  min-width: 0;
+}
+
+.gov-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  min-width: 0;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gov-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.gov-row > * {
+  min-width: 0;
+}
+
+.gov-row__label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.gov-row__value {
+  flex: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* The parent figure a child limit is measured against: "of $500.00 parent".
+   It is the whole point of the Delegation view, so it is never dropped. */
+.gov-row__of {
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+/* ── forms ───────────────────────────────────────────────────────────────────
+   A label is 11px --text-4 (the eyebrow is gone), and the helper copy sits
+   outside the <label> so the label's own text stays exactly the field name —
+   `getByLabel('AMOUNT')` resolves against that text. */
+.gov-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.gov-form > * {
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .gov-form--pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.gov-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+}
+
+.gov-field__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gov-field input,
+.gov-field select {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  /* Explicit, so a native control is never painted from the UA default. */
+  background-color: var(--surface-ghost);
+  color: var(--text);
+  font: 500 14px var(--font-body);
+  letter-spacing: -0.01em;
+  appearance: none;
+}
+
+.gov-field select {
+  /* A native select needs its own affordance once appearance is off. */
+  padding-right: 30px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-3) 50%),
+    linear-gradient(135deg, var(--text-3) 50%, transparent 50%);
+  background-position: right 14px center, right 9px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.gov-field select option {
+  background-color: var(--surface-1);
+  color: var(--text);
+}
+
+.gov-field input::placeholder {
+  color: var(--text-4);
+}
+
+.gov-field input:focus,
+.gov-field select:focus {
+  border-color: var(--border-strong);
+  outline: none;
+}
+
+/* 16px at mobile widths is the anti-zoom rule (DESIGN-REVIEW.md §3,
+   conflict 3): it is what stops iOS scaling the page when a field is
+   focused. Nothing in the app is ever below 11px. */
+@media (max-width: 767.98px) {
+  .gov-field input,
+  .gov-field select {
+    height: 44px;
+    font-size: 16px;
+    letter-spacing: 0;
+  }
+}
+
+.gov-field__hint {
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.gov-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gov-actions > * {
+  min-width: 0;
+}
+
+/* A 44px touch target at mobile widths, where these buttons are the whole
+   interaction (DESIGN-REVIEW.md §2). */
+@media (max-width: 767.98px) {
+  .gov-view .btn {
+    min-height: 44px;
+  }
+}
+
+/* ── a refusal, stated before it is submitted ───────────────────────────────
+   The Delegation form mirrors the server's subset proof, so an operator sees
+   the escalation blocked here rather than after a round trip. */
+.gov-alert {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.gov-alert > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gov-alert__label {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+/* ── the quorum meter ───────────────────────────────────────────────────────
+   Threshold and signatures as a row of cells: filled once an allowlisted
+   signer has approved this request, hollow until then. The count beside it
+   is the same fact in figures, for the reader who does not want to count. */
+.gov-quorum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gov-quorum__dots {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gov-quorum__dot {
+  width: 14px;
+  height: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.gov-quorum__dot.is-met {
+  border-color: var(--border-strong);
+  background: var(--text);
+}
+
+.gov-quorum__count {
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── the allowlist ──────────────────────────────────────────────────────────
+   Who may sign, one row each: the address truncates, the state is a pill
+   because it is a status word and not prose. */
+.gov-signers {
+  display: grid;
+  min-width: 0;
+}
+
+.gov-signer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gov-signer:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.gov-signer > * {
+  min-width: 0;
+}
+
+.gov-signer__address {
+  flex: 1;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+/* ── a hash, in a chip ──────────────────────────────────────────────────────
+   The one place DESIGN.md §4a allows word-break: a 66-character digest cannot
+   be truncated without losing the hash, so it wraps inside its own chip and
+   the chip itself is capped at its column's width. */
+.gov-hash {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.gov-hash__label {
+  flex: none;
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.gov-hash__value {
+  flex: 1;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* ── request / envelope / intent cards ───────────────────────────────────────
+   One card for all three lists: a raised row on --surface-1, the same
+   relationship the split stat card has with its inset. */
+.gov-items {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.gov-items > * {
+  min-width: 0;
+}
+
+.gov-item {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.gov-item__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.gov-item__head > * {
+  min-width: 0;
+}
+
+.gov-item__title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* The request / envelope / intent id is database residue: it truncates, and
+   it sits under the figure rather than holding the row open. */
+.gov-item__id {
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.gov-item__figure {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.gov-item__figure > * {
+  min-width: 0;
+}
+
+/* The unit beside a figure — an asset, a role, a counterparty. */
+.gov-item__figure-unit {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* An item whose headline is a name rather than a figure: a delegation's
+   parent and child. It still truncates, because two 42-character addresses
+   will not fit in a 280px card at any width. */
+.gov-item__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gov-item__pills {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gov-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-width: 0;
+}
+
+.gov-item__meta > * {
+  max-width: 100%;
+  color: var(--text-4);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gov-item__memo {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.gov-item__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.gov-item__foot > * {
+  min-width: 0;
+}
+
+.gov-item__actions {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.gov-item__actions > * {
+  min-width: 0;
+}
+
+/* "waiting on 1 more approval" is a state, not a button, so it is set as the
+   quiet caption the row's actions would otherwise occupy. */
+.gov-item__waiting {
+  flex: none;
+  color: var(--text-4);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.gov-empty {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 96px;
+  place-content: center;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.gov-empty > * {
+  max-width: 48ch;
+  margin-inline: auto;
+}
+
+.gov-empty__title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   DELEGATION — the nest
+   --------------------------------------------------------------------------
+   The containment is the point of this view, so it is drawn rather than
+   described: the parent's limits are the card, and the child's narrower
+   limits are an inset panel inside it — the same relationship the split stat
+   card has with its own inset (DESIGN.md §4). Every child figure carries the
+   parent figure it is measured against, so the narrowing is legible without
+   arithmetic. Below 768px the two stack and the inset becomes a full-width
+   block under a hairline.
+   ========================================================================== */
+
+.deleg-nest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  /* Clips the inset's square corners to this card's radius. */
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.deleg-nest__limits,
+.deleg-nest__child {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.deleg-nest__child {
+  border-top: 1px solid var(--border);
+  background: var(--surface-3);
+}
+
+@media (min-width: 768px) {
+  .deleg-nest {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* The negative bleed is what makes the child read as inset: it reaches the
+     parent's top, right and bottom edges, and the parent's own hairline is
+     the only thing still drawn over it. */
+  .deleg-nest__child {
+    margin: -1px -1px -1px 0;
+    padding: 14px;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+}
+
+.deleg-nest__note {
+  grid-column: 1 / -1;
+  min-width: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.deleg-env__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.deleg-env__label > * {
+  min-width: 0;
+}
+
+/* The arrow between the two limits is a glyph, not an icon set: 2px of
+   --text-3, no colour. */
+.deleg-env__arrow {
+  flex: none;
+  color: var(--text-4);
+}
+
+/* An envelope with nothing in it yet still has to hold its half of the
+   comparison, or the nest loses its shape. */
+.deleg-env__empty {
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* ==========================================================================
+   AGENT — the manifest and the verdict
+   ========================================================================== */
+
+/* The manifest's own identity line. The schema identifier is a machine
+   string, so it is set as an identifier and it wraps rather than truncating:
+   it is the one thing a reader has to be able to copy exactly. */
+.gov-manifest__id {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.gov-manifest__id > * {
+  min-width: 0;
+}
+
+.gov-manifest__id-label {
+  flex: none;
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.gov-manifest__id-value {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* A capability is a permission with a name, so it is a list of permissions,
+   not a JSON dump: the id is a chip, the sentence says what it may do, and
+   the bound underneath says what stops it. */
+.agent-caps {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-cap {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.agent-cap:first-child {
+  padding-top: 0;
+}
+
+.agent-cap:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.agent-cap__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-cap__top > * {
+  min-width: 0;
+}
+
+.agent-cap__id {
+  flex: none;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.agent-cap__copy {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* The probe's verdict. A refusal is the only thing in the three views that
+   is allowed the danger tone, and it changes the rule and the text, never
+   the panel. */
+.agent-verdict {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 16px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-3);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.agent-verdict.is-blocked {
+  border-left-color: var(--danger);
+}
+
+.agent-verdict__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.agent-verdict__head > * {
+  min-width: 0;
+}
+
+.agent-verdict__line {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* The API's own refusal reasons, verbatim. They are machine strings, so they
+   break rather than truncate: an operator has to be able to read the whole
+   reason. `.agent-verdict__reasons` is asserted by tests/agent.spec.ts. */
+.agent-verdict__reasons {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* ── the raw document, behind a disclosure ───────────────────────────────────
+   The summary above is the human-readable capability list; this is the
+   machine document it came from, for an operator who needs the exact field
+   names. Closed by default, and never the primary reading of the panel. */
+.gov-disclosure {
+  min-width: 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.gov-disclosure__summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+  touch-action: manipulation;
+  transition: color 150ms ease;
+}
+
+.gov-disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.gov-disclosure__summary::before {
+  content: "▸";
+  flex: none;
+  color: var(--text-4);
+}
+
+.gov-disclosure[open] .gov-disclosure__summary::before {
+  content: "▾";
+}
+
+.gov-disclosure__summary:hover {
+  color: var(--text);
+}
+
+.gov-disclosure__code {
+  min-width: 0;
+  max-height: 260px;
+  margin-top: 10px;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-ghost);
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.5;
+  /* A document is a scroller rather than a 2,000px page, and it wraps
+     instead of truncating because a field name cannot be shortened. */
+  white-space: pre;
+}
+
+/* ── motion ─────────────────────────────────────────────────────────────────
+   Named properties only, and only the disclosure's colour animates, so the
+   reduced-motion block has one declaration to stop. */
+@media (prefers-reduced-motion: reduce) {
+  .gov-disclosure__summary {
+    transition: none;
+  }
+}
