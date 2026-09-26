@@ -30,7 +30,7 @@
                                │
                                ▼
  ┌─────────────────────────────────────────────────────────────┐
- │             OPENRAILS FINANCIAL KERNEL                      │
+ │                  SETTLEMENT KERNEL                         │
  │                                                             │
  │   - Authorization & Intent Evaluation                       │
  │   - Payment Lifecycle Machine                               │
@@ -42,11 +42,11 @@
  ┌─────────────────────────────────────────────────────────────┐
  │             ONCHAIN SUBSTRATE: OKX X LAYER                  │
  │                                                             │
- │   - Chain ID: 195 (Testnet) / 196 (Mainnet)                 │
- │   - Native USDC Asset Contract                              │
- │   - SettlementRouter.sol (Direct disburse & permit)         │
- │   - ClaimEscrow.sol (Unclaimed / conditional payouts)       │
- │   - SpaceVault.sol (Onchain treasury custody & bounds)      │
+ │   - Chain ID: 1952 (Testnet) / 196 (Mainnet)                │
+ │   - Native USDC Asset Contract                             │
+ │   - SettlementRouter.sol (Direct disburse & permit)        │
+ │   - ClaimEscrow.sol (Unclaimed / conditional payouts)      │
+ │   - EnvelopeRegistry.sol (anchors signed policy envelopes)  │
  └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -71,13 +71,12 @@
 - If all rules pass → generates an approved `PaymentIntent`.
 - If any rule fails → generates an auditable `DenialProof`.
 
-### 3. OpenRails Financial Kernel
-- Imported and refined from `mcosm-OpenRails`.
+### 3. Settlement Kernel
 - Converts approved `PaymentIntent` into an onchain settlement transaction.
 - Supports gasless execution (relayer-sponsored gas on X Layer) and dual-signature claim escrows.
 - Emits standardized `PaymentReceipt` containing full provenance.
 
 ### 4. OKX X Layer Settlement
 - Deployed Solidity contracts compiled for standard EVM (Cancun / Shanghai):
-  - `SettlementRouter.sol`: Routes funds directly from the Space vault to recipients upon presentation of valid EIP-712 authorizations.
+  - `SettlementRouter.sol`: Routes funds directly to recipients upon presentation of valid EIP-712 authorizations.
   - `ClaimEscrow.sol`: Holds funds for recipients without provisioned wallets until claimed via verified attestation.

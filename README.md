@@ -78,7 +78,7 @@ SPACE
   ├─ Participants: Clients, Contractors, Evaluators, Dispute Courts, Autonomous Delegates
   ├─ Rules & Bounds: Max per-transaction caps, rolling daily velocity, counterparty allowlist
   ├─ Work State Machine: Open → Funded → Submitted → Completed / Rejected / Adjudicating
-  ├─ Exception Engine: OpenRails Gaia 100% restitution refunds & Internet Court resolution
+  ├─ Exception Engine: 100% restitution refunds on rejected or expired work, plus court resolution
   └─ Audit & Provenance: Immutable event stream, EIP-712 attestations & settlement receipts
 ```
 
@@ -118,7 +118,7 @@ Every commercial engagement inside a Space progresses through an explicit, audit
 [APPROVED]              [REJECTED]              [CONTESTED]
    │                        │                        │
    ▼                        ▼                        ▼
-5a. ATOMIC SETTLEMENT   5b. GAIA EXCEPTION       5c. INTERNET COURT
+5a. ATOMIC SETTLEMENT   5b. FULL REFUND          5c. ADJUDICATION
 SettlementRouter        Structured restitution:  Referred to IAdjudicator;
 releases USDC to        100% of escrow returned  payouts halted; neutral court
 provider on X Layer     to Space treasury;       verdict settles or refunds;
@@ -140,9 +140,9 @@ with EIP-712 proof.     $0 capital stranded.     time-lock escape prevents locku
 ### Boundary Vocabulary
 * **`INTENT != SETTLEMENT`** — An action request or intent is not an executed onchain transfer.
 * **`DELIVERABLE SUBMITTED != ESCROW RELEASED`** — Submitting proof locks evidence onchain; funds release only upon verified evaluation.
-* **`WORK REJECTED != CAPITAL LOST`** — Rejected or expired work triggers an OpenRails Gaia exception; 100% of escrow returns to the Space treasury ($0 lost).
-* **`DISPUTE != FROZEN CAPITAL`** — Contested deliverables route to an Internet Court (`IAdjudicator.sol`) with time-lock escape hatches preventing stranded escrows.
-* **`EIP-712 SIGNATURE != CROSS-CHAIN REPLAYABLE`** — Attestations bind chain ID (195/196) and verifying contract; execution on foreign chains is cryptographically invalid.
+* **`WORK REJECTED != CAPITAL LOST`** — Rejected or expired work triggers a full refund; 100% of escrow returns to the Space treasury ($0 lost).
+* **`DISPUTE != FROZEN CAPITAL`** — Contested deliverables route to an external adjudicator (`IAdjudicator.sol`) with time-lock escape hatches preventing stranded escrows.
+* **`EIP-712 SIGNATURE != CROSS-CHAIN REPLAYABLE`** — Attestations bind chain ID (1952 testnet / 196 mainnet) and verifying contract; execution on foreign chains is cryptographically invalid.
 
 ---
 
@@ -157,7 +157,7 @@ The verified demonstration scenario (`scripts/demo-procurement-space.mjs`) exerc
 | **Daily Velocity Limit** | `$2,000.00` | Rolling 24-hour spending budget |
 | **Work Order #1 (GPU Compute)** | `$350.00` | Compliant work escrow; deliverable verified; settled on X Layer |
 | **Adversarial Attempt** | `$900.00` | Out-of-bounds request; deterministically blocked (`DenialProof`) |
-| **Work Order #2 (Rejected Work)** | `$200.00` | Quality failure; Gaia exception refunds 100% to Space ($0 lost) |
+| **Work Order #2 (Rejected Work)** | `$200.00` | Quality failure; the refund path returns 100% to Space ($0 lost) |
 | **Work Order #3 (Court Dispute)** | `$300.00` | Subjective research; referred to Internet Court; settled upon verdict |
 | **Final Space Treasury** | `$4,350.00` | Exactly `$650` settled for verified work; `$0` lost to failure or theft |
 
@@ -168,7 +168,7 @@ The verified demonstration scenario (`scripts/demo-procurement-space.mjs`) exerc
 Microcosm contracts are compiled with Solidity 0.8.30 for EVM Cancun/Shanghai compatibility on OKX X Layer:
 
 * **`SettlementRouter.sol`**: Nonce-ordered direct settlement with EIP-712 cryptographic attestation and replay defense.
-* **`AgenticCommerce.sol`**: Work Order state machine, deliverable proof binding, Gaia restitution refunds, and Internet Court adjudication adapter.
+* **`AgenticCommerce.sol`**: Work Order state machine, deliverable proof binding, full refunds on rejection or expiry, and an external adjudication adapter.
 * **`ClaimEscrow.sol`**: Conditional, non-custodial escrow holding funds during active work execution.
 * **`EnvelopeRegistry.sol`**: Anchors Space policy commitments and controller key rotations onchain.
 * **`IAdjudicator.sol`**: Standard interface for decentralized dispute resolution (compatible with GenLayer Internet Court).

@@ -19,7 +19,7 @@ This repository is under the **FORGE 1.4** control plane for the **OKX Dev Day 2
 
 1. [`/forge/PRODUCT.md`](forge/PRODUCT.md) — what Microcosm is and the load-bearing mechanism.
 2. [`/forge/INVARIANTS.md`](forge/INVARIANTS.md) — the system invariants that must never break.
-3. [`/forge/ARCHITECTURE.md`](forge/ARCHITECTURE.md) — the components (Space runtime, OpenRails financial kernel, X Layer settlement, MCP server).
+3. [`/forge/ARCHITECTURE.md`](forge/ARCHITECTURE.md) — the components (Space runtime, policy engine, X Layer settlement, MCP server).
 4. [`/forge/EXECUTION_PLAN.md`](forge/EXECUTION_PLAN.md) — the active phase, scope, and deliverables.
 5. [`/forge/PROOF_LEDGER.md`](forge/PROOF_LEDGER.md) — what is actually proven vs untested.
 
@@ -39,7 +39,7 @@ Every component must be runnable and verifiable locally without external hidden 
 
 ```bash
 make test             # Run entire test suite (contracts + runtime + MCP)
-make test-contracts   # Run Foundry suite on X Layer contracts (SettlementRouter, ClaimEscrow, SpaceVault)
+make test-contracts   # Run Foundry suite on X Layer contracts (AgenticCommerce, SettlementRouter, ClaimEscrow, EnvelopeRegistry)
 make test-runtime     # Run Node.js tests on Space runtime and policy engine
 make test-mcp         # Run MCP tool execution and boundary tests
 make verify           # Full gate: lint + typecheck + tests + proof ledger check
