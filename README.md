@@ -7,7 +7,7 @@
 [![OKX X Layer](https://img.shields.io/badge/Network-OKX_X_Layer_(195/196)-blue.svg)](https://www.okx.com/xlayer)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.30-orange.svg)](https://soliditylang.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io/)
-[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(185_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
+[![FORGE 1.4](https://img.shields.io/badge/FORGE_1.4-Verified_(189_tests)-brightgreen.svg)](forge/PROOF_LEDGER.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
@@ -20,7 +20,7 @@
 | **Demo video** | **[2:00 walkthrough](https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4)** (1920x1080) |
 | **Proof ledger** | **[41 claims, 8 gates](forge/PROOF_LEDGER.md)** — every claim has an executable command |
 | **Settlement** | `0xbd1957ffcc4ce1d57b10cc785ae5c41ec329169ea2cda1ee9695fc9dd7c47556` on OKX X Layer testnet, chain `1952`, receipt status `1`, block `41894186` |
-| **Tests** | `185` unit/integration + `41` Playwright end-to-end, all green |
+| **Tests** | `189` unit/integration + `41` Playwright end-to-end, all green |
 
 **Try it in one click, no wallet required.** Open the live app, go to **Sandbox**, and press
 *Run scenario* on *Request above the per-transaction cap*. The app calls the live API, is
@@ -32,7 +32,7 @@ the work orders it has projected from OKX X Layer.
 Verify it yourself:
 
 ```bash
-make test                          # 185 tests
+make test                          # 189 tests
 node scripts/verify-proof-ledger.mjs   # 41 claims, 8 gates
 ```
 
@@ -183,7 +183,7 @@ Microcosm operates under the **FORGE 1.4** control plane. Every component is loc
 # 0. Install dependencies first — the workspace links @microcosm/* packages and viem
 npm install
 
-# 1. Run full test suite (185 tests: 36 contracts, 20 policy engine, 95 MCP, 23 server, 11 SDK)
+# 1. Run full test suite (189 tests: 36 contracts, 20 policy engine, 98 MCP, 24 server, 11 SDK)
 make test
 
 # 2. Run contracts suite alone (Foundry)

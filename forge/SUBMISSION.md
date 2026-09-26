@@ -8,7 +8,7 @@
 * **Live Demo Video**: https://raw.githubusercontent.com/Jaydearcadian/microcosm-x/main/evidence/video/microcosm-okx-demo.mp4 (2:00, 1920x1080, follows `forge/DEMO_SCRIPT.md`; shot list in `forge/DEMO_SHOT_LIST.md`)
 * **Live App**: https://mcosm.vercel.app/app (production, Vercel) — eight surfaces: Command, Work, Governance, Delegation, Agent, Sandbox, Onboarding, Audit
 * **Failover App**: https://reputation-university-abstract-gotta.trycloudflare.com/app (self-hosted on the submission host)
-* **Status**: Complete & Verified — 185 tests (36 Solidity, 20 policy, 95 MCP, 23 server, 11 SDK), 41 Playwright end-to-end, 41 verified proof claims across 8 gates
+* **Status**: Complete & Verified — 189 tests (36 Solidity, 20 policy, 98 MCP, 24 server, 11 SDK), 41 Playwright end-to-end, 41 verified proof claims across 8 gates
 
 ---
 
@@ -91,7 +91,7 @@ Instead of handing private keys to LLMs, humans and agents operate inside progra
 Microcosm adheres to the **FORGE 1.4** control plane. Every single claim is backed by executed command evidence in `forge/PROOF_LEDGER.md`.
 
 ```bash
-# Run entire test suite (185 tests: 36 contracts + 20 policy + 95 MCP + 23 server + 11 SDK)
+# Run entire test suite (189 tests: 36 contracts + 20 policy + 98 MCP + 24 server + 11 SDK)
 make test
 
 # Run full verification gate & proof ledger audit
