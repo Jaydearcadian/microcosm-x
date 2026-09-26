@@ -3,6 +3,7 @@
  * Evidence: no acknowledged state is dropped when the process dies.
  */
 
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -17,13 +18,27 @@ function tmpFile(name) {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'm4-')), name);
 }
 
+let cookie = null;
+
 async function api(base, method, p, body) {
   const res = await fetch(`${base}${p}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  const set = res.headers.get('set-cookie');
+  if (set) cookie = set.split(';')[0];
   return { status: res.status, json: await res.json().catch(() => ({})) };
+}
+
+/** The founder is a real wallet, so the suite can sign in like the browser. */
+async function signIn(base, account) {
+  const challenge = await api(base, 'GET', `/api/auth/challenge?address=${account.address}`);
+  const res = await api(base, 'POST', '/api/auth/session', {
+    address: account.address,
+    signature: await account.signMessage({ message: challenge.json.message }),
+  });
+  if (res.status !== 200) throw new Error(`sign-in failed: ${JSON.stringify(res.json)}`);
 }
 
 test('M4-1: snapshot round-trip preserves spaces, jobs, requests, counters', async () => {
@@ -88,10 +103,12 @@ test('M4-2: state survives SIGKILL and reboot (kill → restart → intact)', as
 
   // Boot 1: create + fund, then murder the process mid-life.
   const first = await boot();
-  const created = await api(first.url, 'POST', '/api/spaces', { name: 'Kill Test', actorId: 'Ada' });
+  const ada = privateKeyToAccount(generatePrivateKey());
+  await signIn(first.url, ada);
+  const created = await api(first.url, 'POST', '/api/spaces', { name: 'Kill Test', actorId: ada.address });
   assert.equal(created.status, 201);
   const spaceId = created.json.space.id;
-  const funded = await api(first.url, 'POST', `/api/spaces/${spaceId}/fund`, { amount: '1000.00', actorId: 'Ada' });
+  const funded = await api(first.url, 'POST', `/api/spaces/${spaceId}/fund`, { amount: '1000.00', actorId: ada.address });
   assert.equal(funded.status, 200);
   assert.equal(funded.json.space.balance, '1000.000000');
   first.child.kill('SIGKILL');

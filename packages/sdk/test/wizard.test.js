@@ -20,12 +20,14 @@ import { SpaceClient, PolicyDenial } from '../src/client.js';
 import { ensureChain } from '../../../mcp/test/helpers/chain.mjs';
 import { XLayerAdapter } from '../../../mcp/src/xlayer.js';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { signIn } from './helpers-auth.mjs';
 
 let chain;
 let adapter;
 let client;
 let ctx;
 let store;
+let founderAccount;
 
 const F = (d = 7) => new Date(Date.now() + d * 86400000).toISOString();
 const txOk = (h) => typeof h === 'string' && /^0x[0-9a-fA-F]{64}$/.test(h);
@@ -35,7 +37,10 @@ test.before(async () => {
   adapter = new XLayerAdapter();
   store = new SpaceStore();
   ctx = await start({ port: 0, store });
-  client = new SpaceClient(ctx.url);
+  founderAccount = privateKeyToAccount(generatePrivateKey());
+  // The human founder signs in. The treasury agent below acts on a delegation
+  // this same wallet signed, which is the whole onboarding shape.
+  client = new SpaceClient(ctx.url, { cookie: await signIn(ctx.url, founderAccount) });
 });
 
 test.after(async () => {
@@ -48,13 +53,14 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
   const P = chain.addrs.provider;
 
   // 1. Founder (human) creates + capitalizes the Space.
-  const { space } = await client.createSpace({ name: 'Onboard Co', actorId: 'Founder-Ada', chainId: chain.chainId });
+  const { space } = await client.createSpace({ name: 'Onboard Co', actorId: founderAccount.address, chainId: chain.chainId });
   const spaceId = space.id;
   const founderMember = (await client.getSpace(spaceId)).space.members[0].id;
 
   // 2. Multi-agent roster: provider + treasury operator, both key-backed
   // (member records carry wallet addresses; Space identity stays human-
   // readable while onchain calls resolve to keys).
+  store.bindMemberAddress(spaceId, founderMember, founderAccount.address);
   await client.addParticipant(spaceId, { kind: 'Agent', displayName: 'ProviderBot', address: P });
   await client.addParticipant(spaceId, { kind: 'Agent', displayName: 'TreasuryOp', address: D });
   await client.fundSpace(spaceId, { amount: '5000.00', actorId: founderMember });
@@ -62,7 +68,7 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
   // 2b. The founder's own wallet, and a delegation from it to the treasury
   // agent. An agent holds no authority of its own: without this signature the
   // escrow below is refused, which is the whole point of the onboarding path.
-  const founderWallet = privateKeyToAccount(generatePrivateKey());
+  const founderWallet = founderAccount;
   store.bindMemberAddress(spaceId, founderMember, founderWallet.address);
   const delegation = store.createDelegation({
     spaceId,

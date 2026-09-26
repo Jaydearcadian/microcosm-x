@@ -17,9 +17,33 @@ function paymentRequired(overrides = {}) {
   };
 }
 
+
+// The x402 validate route is a spending-policy check, so it now needs a
+// principal. These suites sign in as a wallet bound to the seeded admin.
+let cookie = null;
+
+async function signIn(url, store, account) {
+  store.bindMemberAddress(SPACE_ID, 'admin-01', account.address);
+  const challenge = await (await fetch(`${url}/api/auth/challenge?address=${account.address}`)).json();
+  const res = await fetch(`${url}/api/auth/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: JSON.stringify({ address: account.address, signature: await account.signMessage({ message: challenge.message }) }),
+  });
+  const set = res.headers.get('set-cookie');
+  if (set) cookie = set.split(';')[0];
+  if (!cookie) throw new Error(`sign-in failed: ${res.status}`);
+}
+
+async function asSession(extra = {}) {
+  return { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...extra };
+}
+
 test('M14-SERVER-1: manifest and x402 validation routes are read-only', async () => {
   const store = new SpaceStore();
   const ctx = await start({ port: 0, store });
+  const account = privateKeyToAccount(generatePrivateKey());
+  await signIn(ctx.url, store, account);
   try {
     const before = JSON.stringify({ space: store.getSpace(SPACE_ID), activity: store.getActivity(SPACE_ID) });
     const manifestResponse = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/capability-manifest`);
@@ -30,7 +54,7 @@ test('M14-SERVER-1: manifest and x402 validation routes are read-only', async ()
 
     const validResponse = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await asSession(),
       body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET }),
     });
     assert.equal(validResponse.status, 200);
@@ -40,7 +64,7 @@ test('M14-SERVER-1: manifest and x402 validation routes are read-only', async ()
 
     const invalidResponse = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await asSession(),
       body: JSON.stringify({ paymentRequired: paymentRequired({ accepts: [{ ...paymentRequired().accepts[0], amount: '0' }] }), selectedAcceptIndex: 0, actorId: 'admin-01', expectedAssetAddress: ASSET }),
     });
     assert.equal(invalidResponse.status, 200);
@@ -55,10 +79,12 @@ test('M14-SERVER-1: manifest and x402 validation routes are read-only', async ()
 test('M14-SERVER-2: x402 route requires explicit expected asset configuration', async () => {
   const store = new SpaceStore();
   const ctx = await start({ port: 0, store });
+  const account = privateKeyToAccount(generatePrivateKey());
+  await signIn(ctx.url, store, account);
   try {
     const response = await fetch(`${ctx.url}/api/spaces/${SPACE_ID}/payments/x402/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await asSession(),
       body: JSON.stringify({ paymentRequired: paymentRequired(), selectedAcceptIndex: 0, actorId: 'admin-01' }),
     });
     assert.equal(response.status, 400);

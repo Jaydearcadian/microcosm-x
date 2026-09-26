@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { start } from '../../server/src/server.js';
 import { SpaceClient } from '../src/client.js';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { signIn } from './helpers-auth.mjs';
 
 const SPACE_ID = 'space-procurement-001';
 const ASSET = '0x6176287b2E80374B41388029f0b87Eb6eeE289e7';
@@ -20,7 +22,11 @@ function paymentRequired(overrides = {}) {
 test('M14-SDK-1: SDK exposes manifest and x402 validation without settlement', async () => {
   const store = new SpaceStore();
   const ctx = await start({ port: 0, store });
-  const client = new SpaceClient(ctx.url);
+  // x402 validation runs the spending policy, so it needs a principal. The
+  // seeded admin gets a real wallet bound to it for the length of the suite.
+  const account = privateKeyToAccount(generatePrivateKey());
+  store.bindMemberAddress(SPACE_ID, 'admin-01', account.address);
+  const client = new SpaceClient(ctx.url, { cookie: await signIn(ctx.url, account) });
   try {
     const before = JSON.stringify({ space: store.getSpace(SPACE_ID), activity: store.getActivity(SPACE_ID), receipts: [...store.receipts.entries()] });
     const manifestResponse = await client.getCapabilityManifest(SPACE_ID);

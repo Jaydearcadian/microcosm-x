@@ -490,6 +490,29 @@ export class SpaceStore {
     };
   }
 
+  /**
+   * Find an active participant by display name, participant id, or address.
+   *
+   * Addresses are matched case-insensitively and are matched at all: a
+   * participant backed by a wallet could not previously be found by that
+   * wallet's address, because only displayName and participantId were
+   * considered. Combined with sessions storing a lowercased address while
+   * wallets hand back a checksummed one, that made a founder who signed in
+   * with a real wallet unable to create a Request under their own address.
+   */
+  _findActiveParticipant(spaceId, actorId) {
+    const wanted = String(actorId ?? '').toLowerCase();
+    const active = [...this.participants.values()].filter(
+      (p) => p.spaceId === spaceId && p.status === 'Active',
+    );
+    return active.find(
+      (p) =>
+        p.displayName === actorId ||
+        p.participantId === actorId ||
+        (!!p.address && String(p.address).toLowerCase() === wanted),
+    );
+  }
+
   async requestPayment({ spaceId, actorId, recipient, amount, memo, delegationId }) {
     const space = this.spaces.get(spaceId);
     if (!space) throw new Error(`Space '${spaceId}' not found`);
@@ -592,10 +615,7 @@ export class SpaceStore {
     const space = this._getSpaceOrThrow(spaceId);
     const request = this._getRequestOrThrow(spaceId, requestId);
 
-    const active = [...this.participants.values()].filter(
-      (p) => p.spaceId === spaceId && p.status === 'Active'
-    );
-    const me = active.find((p) => p.displayName === actorId || p.participantId === actorId);
+    const me = this._findActiveParticipant(spaceId, actorId);
     if (!me) {
       throw new Error(`'${actorId}' is not an active participant of Space '${spaceId}'`);
     }
@@ -627,9 +647,8 @@ export class SpaceStore {
 
     // Relevant Space information: the participants involved and the current
     // Work/Result linkage if it exists.
-    const involved = request.assignee
-      ? [active.find((p) => p.participantId === request.createdBy), me].filter(Boolean)
-      : [active.find((p) => p.participantId === request.createdBy), me].filter(Boolean);
+    const creator = this._findActiveParticipant(spaceId, request.createdBy);
+    const involved = [creator, me].filter(Boolean);
     const work = request.workId ? this.jobs.get(request.workId) : null;
 
     return {
@@ -2734,13 +2753,10 @@ export class SpaceStore {
     if (!title || typeof title !== 'string' || !title.trim()) {
       throw new Error("'title' must be a non-empty string");
     }
-    const active = [...this.participants.values()].filter(
-      (p) => p.spaceId === spaceId && p.status === 'Active'
-    );
-    const assigner = active.find((p) => p.displayName === createdBy || p.participantId === createdBy);
+    const assigner = this._findActiveParticipant(spaceId, createdBy);
     if (!assigner) throw new Error(`Request creator '${createdBy}' is not an active participant`);
     if (assignee) {
-      const t = active.find((p) => p.displayName === assignee || p.participantId === assignee);
+      const t = this._findActiveParticipant(spaceId, assignee);
       if (!t) throw new Error(`Assignee '${assignee}' is not an active participant`);
       assignee = t.participantId;
     }
@@ -2782,10 +2798,7 @@ export class SpaceStore {
   }
 
   _requestParticipant(requestId, name) {
-    const active = [...this.participants.values()].filter(
-      (p) => p.spaceId === this.requests.get(requestId).spaceId && p.status === 'Active'
-    );
-    const match = active.find((p) => p.displayName === name || p.participantId === name);
+    const match = this._findActiveParticipant(this.requests.get(requestId).spaceId, name);
     if (!match) throw new Error(`'${name}' is not an active participant`);
     return match;
   }

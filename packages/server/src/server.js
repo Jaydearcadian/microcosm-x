@@ -316,6 +316,47 @@ async function dispatch(app, req, res) {
     return session;
   };
 
+  /**
+   * Who is making this call, and under what authority.
+   *
+   * Two kinds of caller reach the same routes. A person arrives with a wallet
+   * session. An agent arrives over MCP with no cookie at all, so a session
+   * check alone would lock agents out of the product — but the previous
+   * arrangement, which accepted a bare actorId string, let anyone who learned
+   * an agent's name spend the Space's money.
+   *
+   * So a principal is either a session, or a delegation id that the Space owner
+   * signed. The delegation is not merely present: it is resolved through the
+   * store, which refuses one that is unsigned, revoked, expired, or issued by
+   * somebody outside this Space. A caller who is neither is refused here,
+   * before the business logic runs at all.
+   */
+  const requirePrincipal = (spaceId, body) => {
+    if (session) {
+      return { kind: 'session', address: session.address, actorId: session.address };
+    }
+    const delegationId = body?.delegationId;
+    if (!delegationId) {
+      throw Object.assign(
+        new Error('Authentication is required: sign in with a wallet, or present a delegationId your Space owner signed for this agent'),
+        { httpStatus: 401, httpCode: 'AUTH_REQUIRED' },
+      );
+    }
+    // The store is the authority on which delegations exist, so it answers
+    // directly rather than through the route's own space lookup.
+    const space = store.spaces.get(spaceId);
+    if (!space) {
+      throw Object.assign(new Error(`Space '${spaceId}' not found`), { httpStatus: 404, httpCode: 'NOT_FOUND' });
+    }
+    let delegation;
+    try {
+      delegation = store.resolveAgentDelegation(space, delegationId);
+    } catch (err) {
+      throw Object.assign(new Error(`Delegation rejected: ${err.message}`), { httpStatus: 403, httpCode: 'DELEGATION_REJECTED' });
+    }
+    return { kind: 'agent', address: delegation.child, delegationId, delegation };
+  };
+
   const fail = (status, code, message, details) => {
     sendJson(res, status, apiError(status, code, message, details), headers);
   };
@@ -363,7 +404,7 @@ async function dispatch(app, req, res) {
       return;
     }
 
-    const body = req.method === 'POST' ? await readBody(req) : {};
+    const body = ['POST','PUT','PATCH','DELETE'].includes(req.method) ? await readBody(req) : {};
     const ok = (status, responseBody) => sendJson(res, status, responseBody, headers);
 
     if (req.method === 'GET' && path === '/api/auth/session') {
@@ -543,6 +584,7 @@ async function dispatch(app, req, res) {
     if (req.method === 'POST' && m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       requireFields(body, ['paymentRequired', 'selectedAcceptIndex', 'actorId', 'expectedAssetAddress']);
       const validation = await store.validateX402PaymentIntent({ spaceId, ...body });
       return ok(200, { validation });
@@ -709,6 +751,7 @@ async function dispatch(app, req, res) {
       requireFields(body, ['amount', 'actorId']);
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       try {
         const space = await app.mutate(spaceId, async () => store.fundSpace({ spaceId, amount: body.amount, actorId: body.actorId }));
         return ok(200, { space });
@@ -735,6 +778,7 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         return ok(200, { participants: store.listParticipants({ spaceId, kind: query.kind || null, status: query.status || null }) });
       }
@@ -752,6 +796,7 @@ async function dispatch(app, req, res) {
     if (req.method === 'POST' && m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       try {
         const participant = await app.mutate(spaceId, async () => store.deactivateParticipant({ spaceId, participantId: decodeURIComponent(m[2]), actorId: body.actorId || null }));
         return ok(200, { participant });
@@ -765,6 +810,7 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         return ok(200, { requests: store.listRequests({ spaceId, status: query.status || null, assignee: query.assignee || null, createdBy: query.createdBy || null }) });
       }
@@ -802,6 +848,7 @@ async function dispatch(app, req, res) {
       const spaceId = decodeURIComponent(m[1]);
       const requestId = decodeURIComponent(m[2]);
       const action = m[3];
+      requirePrincipal(spaceId, body);
       if (action === 'accept') {
         requireFields(body, ['actorId']);
         const request = await requestAction(spaceId, requestId, () => store.acceptRequest({ spaceId, requestId, actorId: body.actorId }));
@@ -860,6 +907,7 @@ async function dispatch(app, req, res) {
     if (m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       if (req.method === 'GET') {
         const jobs = [...store.jobs.values()].filter((j) => j.spaceId === spaceId).map((j) => ({ ...j }));
         return ok(200, { jobs });
@@ -891,6 +939,7 @@ async function dispatch(app, req, res) {
       const spaceId = decodeURIComponent(m[1]);
       const jobId = decodeURIComponent(m[2]);
       const action = m[3];
+      requirePrincipal(spaceId, body);
       if (action === 'submit') {
         requireFields(body, ['actorId', 'deliverableHash']);
         const result = await workAction(spaceId, () => store.submitDeliverable({ spaceId, jobId, actorId: body.actorId, deliverableHash: body.deliverableHash, evidenceUri: body.evidenceUri }));
@@ -918,6 +967,7 @@ async function dispatch(app, req, res) {
     if (req.method === 'POST' && m) {
       const spaceId = decodeURIComponent(m[1]);
       needSpace(spaceId);
+      requirePrincipal(spaceId, body);
       requireFields(body, ['actorId', 'recipient', 'amount']);
       const result = await workAction(spaceId, () => store.requestPayment({ spaceId, actorId: body.actorId, recipient: body.recipient, amount: body.amount, memo: body.memo, delegationId: body.delegationId }));
       if (result.status === 'REJECTED') {

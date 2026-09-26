@@ -11,6 +11,7 @@ import { SpaceStore } from '../../../mcp/src/space-store.js';
 import { start } from '../src/server.js';
 import { ensureChain } from '../../../mcp/test/helpers/chain.mjs';
 import { XLayerAdapter } from '../../../mcp/src/xlayer.js';
+import { privateKeyToAccount } from 'viem/accounts';
 
 const FOUNDER = 'Ada Founder';
 const AGENT = 'ConformanceBot';
@@ -25,13 +26,19 @@ let ctx;
 let chain;
 let adapter;
 
+// Every spending route now needs a principal, so the suite signs in as the
+// Space founder rather than sending a bare actorId.
+let cookie = null;
+
 async function api(method, path, body) {
   const res = await fetch(`${base}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
+  const set = res.headers.get('set-cookie');
+  if (set) cookie = set.split(';')[0];
   return { status: res.status, json };
 }
 
@@ -67,6 +74,14 @@ test('M3-1: health + space lifecycle (create → fund → bounds)', async () => 
   // settlement. Agent authority has its own coverage in
   // mcp/test/agent-authority.test.js and WORK-10.
   store.bindMemberAddress(spaceId, FOUNDER, OP);
+
+  // Sign in as that founder, the way the browser does.
+  const challenge = await api('GET', `/api/auth/challenge?address=${OP}`);
+  const session = await api('POST', '/api/auth/session', {
+    address: OP,
+    signature: await privateKeyToAccount(chain.keys.deployer).signMessage({ message: challenge.json.message }),
+  });
+  assert.equal(session.status, 200, `sign-in failed: ${JSON.stringify(session.json)}`);
 
   // Onchain-backed operator roster (live settlement resolves these).
   const op = await api('POST', `/api/spaces/${spaceId}/participants`, { kind: 'Agent', displayName: 'TreasuryOp', address: OP });
