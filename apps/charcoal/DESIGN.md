@@ -220,9 +220,16 @@ Views are being rebuilt in parallel. Stay inside the files you were given.
 | governance family | `components/app/GovernanceView.tsx`, `DelegationView.tsx`, `AgentView.tsx`, `app/views-gov.css` |
 | sandbox + onboarding | `components/app/SandboxView.tsx`, `OnboardingView.tsx`, `OnboardingWizard.tsx`, `app/views-sbx.css` |
 
-Nobody edits another owner's files. If you need a primitive that does not
-exist, build it locally in your own CSS file with your own class prefix rather
-than reaching into `components/ui/`.
+Nobody edits another owner's files, and **views do not import from
+`components/ui/`**. The foundation ships CSS classes, not React components, so
+a view is plain markup wearing those classes. That keeps every view readable on
+its own, and it means a change to a primitive cannot break a view that is
+halfway through being rebuilt.
 
-`next build` will fail on a CSS `@import` of a file that does not exist, so
-create your CSS file in the same commit as the view that uses it.
+If you need a primitive that does not exist, build it locally in your own CSS
+file under your own class prefix. If it turns out more than one view needs it,
+say so in your final report and it will be promoted afterwards.
+
+`next build` fails on a CSS `@import` of a file that does not exist, so create
+your CSS file in the same change as the view that uses it. Only the foundation
+may add an `@import` to `app/globals.css`.
