@@ -541,6 +541,25 @@ async function dispatch(app, req, res) {
       needSpace(spaceId);
       return ok(200, { intent: store.getX402Intent({ spaceId, intentId, sessionAddress: current.address }) });
     }
+    // A Space's own spending limits. Session-gated and admin-checked in the
+    // store, same as the governance config below.
+    m = path.match(/^\/api\/spaces\/([^/]+)\/limits$/);
+    if (m && req.method === 'POST') {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      try {
+        const result = await app.mutate(spaceId, async () => store.configureSpaceLimits({
+          spaceId,
+          actorAddress: current.address,
+          maxPerTransaction: body.maxPerTransaction,
+          dailyBudget: body.dailyBudget,
+        }));
+        return ok(200, result);
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
     m = path.match(/^\/api\/spaces\/([^/]+)\/governance\/config$/);
     if (m && req.method === 'POST') {
       const current = requireSession();

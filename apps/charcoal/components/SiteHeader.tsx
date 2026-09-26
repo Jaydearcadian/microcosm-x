@@ -46,7 +46,11 @@ export function SiteHeader({
           {links.map(([label, hash, view]) => { const href = isApp && view === "onboarding" ? "/app/onboarding#onboarding" : `${prefix}${hash}`; return <a key={hash} href={href} className="site-header__link truncate" onClick={(event) => { if (isApp && view && onNavigate) { event.preventDefault(); onNavigate(view); const path = view === "onboarding" ? "/app/onboarding" : "/app"; window.history.replaceState(null, "", `${path}#${view}`); } }}>{label}</a>; })}
         </nav>
         <div className="site-header__end">
-          {isApp ? actions : <a className="site-header__action truncate" href="/#cta">Open on Microcosm<span aria-hidden="true" className="site-header__action-mark">↗</span></a>}
+          {/* This link said "Open on Microcosm" and pointed at #cta, an anchor
+              further down the same page, so it scrolled instead of opening
+              anything. Whatever the section renames to, the control has to go to
+              the app. */}
+          {isApp ? actions : <a className="site-header__action truncate" href="/app">Open on Microcosm<span aria-hidden="true" className="site-header__action-mark">↗</span></a>}
         </div>
       </div>
     </header>

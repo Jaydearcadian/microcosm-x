@@ -2312,6 +2312,46 @@ export class SpaceStore {
     return { ...config, signerAllowlist: [...config.signerAllowlist] };
   }
 
+  /**
+   * Sets a Space's own spending limits.
+   *
+   * These were seeded at 500 / 2000 and could never be changed, which made the
+   * product's central claim untestable by the person using it: you could not
+   * lower a cap to prove the boundary holds, and you could not raise one to run
+   * real work. An admin may set them, and the new values are validated before
+   * they are stored so a typo cannot silently unbind the policy.
+   *
+   * Returns the rules as they now stand, plus what changed, so the caller can
+   * show the operator rather than assert that it worked.
+   */
+  configureSpaceLimits({ spaceId, actorAddress, maxPerTransaction, dailyBudget }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    const admin = (space.members || []).find(
+      (member) => String(member.address || '').toLowerCase() === String(actorAddress || '').toLowerCase() && member.role === 'admin',
+    );
+    if (!admin) throw new Error(`Only an admin of Space '${spaceId}' can set spending limits`);
+
+    const next = { ...(space.rules || {}) };
+    const changed = [];
+
+    for (const [field, value] of [['maxPerTransaction', maxPerTransaction], ['dailyBudget', dailyBudget]]) {
+      if (value === undefined || value === null || value === '') continue;
+      const text = String(value).trim();
+      // Round-trip through base units: this rejects anything that is not a
+      // non-negative amount with at most 6 decimal places, which is what
+      // toBaseUnits already enforces.
+      const base = toBaseUnits(text);
+      if (base < 0n) throw new Error(`'${field}' must be a non-negative amount, got '${text}'`);
+      const normalised = fromBaseUnits(base);
+      if (String(next[field] || '') !== normalised) changed.push(`${field}: ${next[field] ?? 'unset'} -> ${normalised}`);
+      next[field] = normalised;
+    }
+
+    if (!changed.length) return { rules: { ...next }, changed: [] };
+    space.rules = next;
+    return { rules: { ...next }, changed };
+  }
+
   configureSpaceGovernance({ spaceId, actorAddress, threshold, signerAllowlist, enabled = true }) {
     const space = this._getSpaceOrThrow(spaceId);
     const admin = (space.members || []).find((member) => String(member.address || '').toLowerCase() === String(actorAddress || '').toLowerCase() && member.role === 'admin');

@@ -14,6 +14,18 @@ test('the landing page connects to the app', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Try it/ })).toBeVisible();
 });
 
+test('every control on the landing page actually goes somewhere', async ({ page }) => {
+  // The header action read "Open on Microcosm" and pointed at #cta, an anchor
+  // further down the same page. It scrolled instead of opening the app, which is
+  // the one thing a control labelled "Open" must not do.
+  await page.goto('/');
+  const open = page.getByRole('link', { name: 'Open on Microcosm' });
+  await expect(open).toHaveAttribute('href', '/app');
+  await open.click();
+  await expect(page).toHaveURL(/\/app/);
+  expect(new URL(page.url()).pathname).toBe('/app');
+});
+
 test('the onboarding route is still reachable and still explains itself', async ({ page }) => {
   await page.goto('/app/onboarding');
   await expect(page).toHaveURL(/\/app\/onboarding/);
