@@ -693,6 +693,24 @@ button {
 .site-header__toggle { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 13px; line-height: 1; }
 .site-header__toggle:hover { background: var(--surface-2); color: var(--text); }
 .site-header__end { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+/* Onboarding: the parts a first-time reader needs before touching a field. */
+.wizard-lede { margin-bottom: 22px; }
+.wizard-lede h1 { margin-top: 10px; }
+.wizard-lede > p { max-width: 62ch; margin-top: 12px; color: var(--muted); }
+.wizard-lede .wizard-readout { margin-top: 18px; }
+
+.wizard-intro { margin-bottom: 20px; padding: 18px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface-2); }
+.wizard-intro h4 { font-size: 15px; }
+.wizard-intro p { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.wizard-intro__note { color: var(--dim) !important; font-size: 12px !important; }
+.wizard-intro__steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; margin-top: 14px; padding-left: 18px; color: var(--muted); font-size: 12px; }
+.wizard-intro__steps li::marker { color: var(--dim); }
+.wizard-goal { margin-top: 14px; padding: 12px 14px; border-left: 2px solid rgba(202, 254, 92, 0.5); border-radius: 0 8px 8px 0; background: var(--surface-2); color: var(--muted); font-size: 13px; line-height: 1.55; }
+.wizard-goal strong { display: block; margin-bottom: 4px; color: var(--text); font-family: var(--font-ui); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.wizard-hint { margin-top: 10px; color: var(--dim); font-size: 12px; line-height: 1.6; }
+.wizard-hint em { color: var(--muted); font-style: normal; text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 560px) { .wizard-intro__steps { grid-template-columns: 1fr; } }
+
 .app-wallet { display: flex; align-items: center; gap: 8px; }
 /* This RainbowKit build exposes no style props on ConnectButton and styles it
    through emotion, so the wallet control is matched to the app's surface scale
