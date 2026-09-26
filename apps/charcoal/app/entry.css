@@ -1,0 +1,37 @@
+/* Entry gate: the first thing someone with no Space sees. Two choices, both
+   phrased as something you do rather than as a concept to understand. */
+.entry-gate { margin-bottom: 26px; padding: 22px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-2); }
+.entry-gate__head h2 { margin-top: 8px; font-size: 28px; }
+.entry-gate__head p { max-width: 66ch; margin-top: 10px; font-size: 14px; line-height: 1.6; }
+.entry-gate__connect { display: grid; gap: 8px; justify-items: start; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--hairline-soft); }
+.entry-gate__connect .btn { margin-top: 6px; }
+.entry-gate__choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--hairline-soft); }
+.entry-gate__choice { display: grid; gap: 10px; align-content: start; min-width: 0; padding: 18px; border: 1px solid var(--hairline); border-radius: var(--radius-card); background: var(--surface); }
+.entry-gate__choice h3 { font-size: 16px; }
+.entry-gate__choice p { font-size: 13px; line-height: 1.55; }
+.entry-gate__choice .btn { justify-self: start; }
+.entry-gate__field { display: grid; gap: 6px; }
+.entry-gate__field span { color: var(--text-4); font-family: var(--font-ui); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.entry-gate__field input { min-height: 40px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); background: var(--bg-app); color: var(--text); font: 14px var(--font-body); }
+.entry-gate__field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.entry-gate__error { color: var(--danger); font-size: 12px; }
+.entry-gate__ok { color: var(--text-2); font-size: 12px; }
+.entry-gate__as { color: var(--text-4); font-size: 11px; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .entry-gate__choices { grid-template-columns: 1fr; } }
+
+/* Settings tabs: the four former rail destinations, one level down. */
+.settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 22px; }
+.settings-tab { display: grid; gap: 4px; min-width: 0; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-ctl); background: var(--surface); text-align: left; }
+.settings-tab strong { font-size: 13px; }
+.settings-tab span { font-size: 11px; }
+.settings-tab:hover { background: var(--surface-3); }
+.settings-tab.is-active { border-color: var(--border-strong); background: var(--surface-1); }
+.settings-tab.is-active strong { color: var(--text); }
+.settings-stack { display: grid; gap: 30px; }
+@media (max-width: 760px) { .settings-tabs { grid-template-columns: 1fr; } }
+
+/* The "Try it" shortcut in the header. */
+.app-wallet__try { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 14px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface); color: var(--text-2); font-family: var(--font-ui); font-size: 10px; letter-spacing: .08em; white-space: nowrap; }
+.app-wallet__try span { font-size: 8px; }
+.app-wallet__try:hover { border-color: rgba(202, 254, 92, .42); color: var(--accent); }
+.app-wallet__try.is-current { border-color: rgba(202, 254, 92, .42); background: rgba(202, 254, 92, .1); color: var(--accent); }

@@ -369,7 +369,15 @@ async function dispatch(app, req, res) {
 
     // --- spaces ---
     if (req.method === 'GET' && path === '/api/spaces') {
-      return ok(200, { spaces: store.listSpaces(query.actorId || undefined) });
+      // Bounded by default. The list is a picker, and an unbounded one grows for
+      // as long as the process does, because every e2e test creates a Space. The
+      // count comes back so a client can tell that it is looking at a page of a
+      // larger set rather than the whole thing. Pass ?all=1 when you genuinely
+      // need every Space, such as an export.
+      if (query.all === '1') return ok(200, { spaces: store.listSpaces(query.actorId || undefined), total: store.listSpaces(query.actorId || undefined).length });
+      const all = store.listSpaces(query.actorId || undefined);
+      const limit = Math.max(1, Math.min(Number(query.limit) || 200, 1000));
+      return ok(200, { spaces: all.slice(0, limit), total: all.length });
     }
     if (req.method === 'POST' && path === '/api/spaces') {
       requireFields(body, ['name']);

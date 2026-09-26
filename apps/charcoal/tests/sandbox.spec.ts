@@ -17,7 +17,7 @@ async function openSandbox(page: import('@playwright/test').Page, request: APIRe
   const spaceId = await provisionSpace(request);
   await page.goto('/app');
   await page.getByLabel('Active Space').selectOption(spaceId);
-  await page.getByRole('button', { name: /Sandbox/ }).first().click();
+  await page.getByRole('button', { name: /Test/ }).first().click();
   await expect(page.getByRole('heading', { name: 'One click. One verdict.' })).toBeVisible({ timeout: 20000 });
   return spaceId;
 }

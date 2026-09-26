@@ -32,11 +32,13 @@ for (const route of routes) {
 test("app view navigation stays overflow-free and exposes wallet controls", async ({ page }) => {
   await page.goto("/app");
   const navigation = page.getByRole("navigation", { name: "App views" });
+  // The four destinations, after the rail came down from eight peers. The
+  // heading each one leads with is what proves the click actually navigated.
   const views = [
-    { button: "Command Center", heading: "The Space at a glance." },
+    { button: "Overview", heading: "The Space at a glance." },
     { button: "Work", heading: "Proof before payout." },
-    { button: "Onboarding", heading: "Connect" },
-    { button: "Audit", heading: "Proof has a trail." },
+    { button: "Test", heading: "One click. One verdict." },
+    { button: "Settings", heading: "Rules move by signature." },
   ];
 
   for (const view of views) {

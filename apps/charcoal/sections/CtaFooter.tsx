@@ -32,11 +32,16 @@ export function CtaFooter() {
             ]}
           />
           <div style={{ display: "flex", gap: 16, marginTop: 32, flexWrap: "wrap", alignItems: "center" }}>
-            <PillButton href="/app/onboarding" variant="primary" revealDelay={0.5}>
-              Create your Space
+            {/* These two used to be "Create your Space" and "Read the API
+                contract", and the second one pointed at a raw markdown file that
+                the browser renders as plain text. It was the clearest signal on
+                the page that this product was for engineers. Both are now things
+                a person can actually do: open the app, or try the scenarios. */}
+            <PillButton href="/app" variant="primary" revealDelay={0.5}>
+              Open the app
             </PillButton>
-            <PillButton href="/docs/API_CONTRACT.md" variant="ghost" revealDelay={0.6}>
-              Read the API contract
+            <PillButton href="/app#test" variant="ghost" revealDelay={0.6}>
+              Try the four scenarios
             </PillButton>
             {/* boundary demo survives only as a secondary text link (brief §4 #7) */}
             <a

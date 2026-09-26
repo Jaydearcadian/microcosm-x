@@ -1,8 +1,21 @@
 import { test, expect } from '@playwright/test';
 
-test('landing CTA opens the onboarding route', async ({ page }) => {
+test('the landing page connects to the app', async ({ page }) => {
+  // The landing CTA used to read "Create your Space" and open /app/onboarding,
+  // which put a six-step jargon wizard between a visitor and the product. It now
+  // opens the app, where the entry gate asks whether they were invited or are
+  // starting one.
   await page.goto('/');
-  await page.getByRole('link', { name: 'Create your Space' }).click();
+  await page.getByRole('link', { name: 'Open the app' }).first().click();
+  await expect(page).toHaveURL(/\/app/);
+  await expect(page.getByRole('button', { name: /Connect Wallet/i }).first()).toBeVisible({ timeout: 15000 });
+  // the header swaps the marketing link for the session controls once inside
+  // the app, and carries the shortcut to the scenarios from every page
+  await expect(page.getByRole('button', { name: /Try it/ })).toBeVisible();
+});
+
+test('the onboarding route is still reachable and still explains itself', async ({ page }) => {
+  await page.goto('/app/onboarding');
   await expect(page).toHaveURL(/\/app\/onboarding/);
   await expect(page.getByRole('heading', { name: 'Connect' })).toBeVisible({ timeout: 15000 });
   await expect(page.getByRole('button', { name: /Connect Wallet/i }).first()).toBeVisible({ timeout: 15000 });

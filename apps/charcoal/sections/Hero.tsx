@@ -66,11 +66,14 @@ export function Hero() {
               className="muted"
             />
             <div style={{ display: "flex", gap: 16, marginTop: 36, flexWrap: "wrap" }}>
-              <PillButton href="#cta" revealDelay={1.1}>
-                Create a Space
+              {/* The first thing offered on the page is now the app itself.
+                  Anchoring to #cta made someone read four sections before they
+                  could touch anything. */}
+              <PillButton href="/app" revealDelay={1.1}>
+                Open the app
               </PillButton>
-              <PillButton href="#work" variant="ghost" revealDelay={1.2}>
-                See a Space run
+              <PillButton href="/app#test" variant="ghost" revealDelay={1.2}>
+                Try it in one click
               </PillButton>
             </div>
           </div>

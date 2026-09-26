@@ -31,7 +31,7 @@ async function openAgentSurface(page: import('@playwright/test').Page, request: 
   const space = await provisionSpace(request);
   await page.goto('/app');
   await page.getByLabel('Active Space').selectOption(space.id);
-  await page.getByRole('button', { name: /Agent/ }).first().click();
+  await page.goto('/app#settings=people');
   await expect(page.getByRole('heading', { name: 'What an agent may do, published.' })).toBeVisible({ timeout: 20000 });
   return space;
 }

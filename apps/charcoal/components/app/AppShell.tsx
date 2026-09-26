@@ -7,26 +7,33 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { useAppData } from "@/lib/app-data";
 import { useWalletSession } from "@/lib/wallet-session";
 
-export type AppView = "command" | "work" | "governance" | "delegation" | "agent" | "sandbox" | "onboarding" | "audit";
+export type AppView =
+  | "overview" | "work" | "test" | "settings"
+  | "command" | "governance" | "delegation" | "agent" | "sandbox" | "audit" | "onboarding";
 
+/* Four destinations, in the order someone actually needs them.
+   The old rail had eight peers of equal weight, which put the Boundary Sandbox
+   sixth and buried the one screen that lets a visitor prove the product works
+   without reading anything. It is now third, and the header carries a shortcut
+   to it from every page. */
 const NAV: Array<{ id: AppView; label: string; hint: string; icon: IconName }> = [
-  { id: "command", label: "Command Center", hint: "Bounds & roster", icon: "command" },
-  { id: "work", label: "Work", hint: "Escrow & delivery", icon: "work" },
-  { id: "governance", label: "Governance", hint: "Quorum & approvals", icon: "governance" },
-  { id: "delegation", label: "Delegation", hint: "Narrower authority", icon: "delegation" },
-  { id: "agent", label: "Agent", hint: "Capabilities & x402", icon: "agent" },
-  { id: "sandbox", label: "Sandbox", hint: "One-click verdicts", icon: "sandbox" },
-  { id: "onboarding", label: "Onboarding", hint: "Six-step setup", icon: "onboarding" },
-  { id: "audit", label: "Audit", hint: "Activity & SSE", icon: "audit" },
+  { id: "overview", label: "Overview", hint: "Money and rules", icon: "command" },
+  { id: "work", label: "Work", hint: "Requests and orders", icon: "work" },
+  { id: "test", label: "Test", hint: "Four scenarios", icon: "sandbox" },
+  { id: "settings", label: "Settings", hint: "People, approvals, proof", icon: "settings" },
 ];
 
-/* Two groups, split by a hairline: the surfaces an operator opens constantly,
-   then the ones they open deliberately (DESIGN.md §3). */
-const NAV_GROUPS: AppView[][] = [
-  ["command", "work", "governance", "delegation"],
-  ["agent", "sandbox", "onboarding", "audit"],
-];
-
+/* Legacy ids still resolve so an old bookmark or a shared #sandbox link does not
+   dead-end. They redirect to wherever that surface lives now. */
+const ALIASES: Partial<Record<string, AppView>> = {
+  command: "overview",
+  sandbox: "test",
+  governance: "settings",
+  delegation: "settings",
+  agent: "settings",
+  audit: "settings",
+  onboarding: "settings",
+};
 /* Below 1024px the rail DEFAULTS to the collapsed 64px icon rail: at 768px a
    264px rail was 34% of the viewport, which is the measured complaint in
    DESIGN-REVIEW.md §4. "auto" means "whatever the breakpoint says"; an explicit
@@ -80,6 +87,17 @@ export function AppShell({ active, onChange, children }: { active: AppView; onCh
 
   const wallet = (
     <div className="app-wallet">
+      {/* The Boundary Sandbox is the screen a visitor actually comes to try, so
+          it gets a shortcut from every page instead of only a rail position. */}
+      <button
+        type="button"
+        className={`app-wallet__try${active === "test" ? " is-current" : ""}`}
+        onClick={() => onChange("test")}
+        title="Run the four boundary scenarios against the live API"
+      >
+        <span aria-hidden="true">&#9654;</span>
+        Try it
+      </button>
       <ConnectButton showBalance={false} chainStatus="icon" />
       {isConnected && !isAuthenticated ? (
         <button className="app-wallet__session" type="button" onClick={() => void authenticate().catch(() => undefined)} disabled={isAuthenticating}>
@@ -127,31 +145,26 @@ export function AppShell({ active, onChange, children }: { active: AppView; onCh
               <span className="app-rail__keycap">/</span>
             </div>
             <nav className="app-rail__nav" aria-label="App views">
-              {NAV_GROUPS.map((group, index) => (
-                <div className="app-rail__group" key={group[0]}>
-                  {index > 0 ? <div className="app-rail__divider" role="presentation" /> : null}
-                  {NAV.filter((item) => group.includes(item.id)).map((item) => {
-                    const current = active === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`app-rail__link${current ? " is-active" : ""}`}
-                        aria-current={current ? "page" : undefined}
-                        // The label is display:none on the collapsed icon rail, so
-                        // the name is stated here and stays the same at every
-                        // width. title stays for the hover affordance.
-                        aria-label={item.label}
-                        title={item.hint}
-                        onClick={() => onChange(item.id)}
-                      >
-                        <span className="app-rail__icon"><Icon name={item.icon} /></span>
-                        <span className="app-rail__label truncate">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+              {NAV.map((item) => {
+                const current = active === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`app-rail__link${current ? " is-active" : ""}`}
+                    aria-current={current ? "page" : undefined}
+                    // The label is display:none on the collapsed icon rail, so the
+                    // name is stated here and stays the same at every width.
+                    // title stays for the hover affordance.
+                    aria-label={item.label}
+                    title={item.hint}
+                    onClick={() => onChange(item.id)}
+                  >
+                    <span className="app-rail__icon"><Icon name={item.icon} /></span>
+                    <span className="app-rail__label truncate">{item.label}</span>
+                  </button>
+                );
+              })}
             </nav>
             <div className="app-rail__foot">
               <span className="app-rail__status">

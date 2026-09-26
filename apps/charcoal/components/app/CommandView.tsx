@@ -6,6 +6,7 @@ import "@/app/views-command.css";
 
 import { HashChip } from "@/components/HashChip";
 import { StatusPill } from "@/components/app/StatusPill";
+import { EntryGate } from "@/components/app/EntryGate";
 import { SpaceAccess } from "@/components/app/SpaceAccess";
 import { useAppData } from "@/lib/app-data";
 import type { Activity } from "@/lib/contract";
@@ -160,8 +161,27 @@ export function CommandView() {
     return () => observer.disconnect();
   }, [chartable]);
 
+  const startHere = () => window.location.assign("/app#settings=setup");
+
   if (loading && !space) return <div className="app-state">Loading Command Center…</div>;
-  if (error || !space || !bounds)
+
+  /* No Space is not an error, it is the starting position, and it used to render
+     as a red "Command Center unavailable" panel. Someone arriving for the first
+     time was told the product was broken. The gate now leads the page; the error
+     panel is only for a Space that was selected and then failed to load. */
+  if (!space) {
+    return (
+      <div className="app-view">
+        <EntryGate onCreate={startHere} />
+        <div className="app-state">
+          <strong>Nothing to show yet</strong>
+          <p>Once you are in a Space, its money, rules and work appear here.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !bounds)
     return (
       <div className="app-state app-state--danger">
         <strong>Command Center unavailable</strong>

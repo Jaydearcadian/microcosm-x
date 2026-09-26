@@ -6,7 +6,7 @@ test('landing does not claim simulated hashes', async ({ page }) => {
 });
 
 test('Space access requires an authenticated wallet', async ({ page }) => {
-  await page.goto('/app#command');
+  await page.goto('/app');
   await expect(page.getByText('Connect a wallet to enter a Space.')).toBeVisible();
 });
 test('bearer invite URL opens the redemption surface', async ({ page }) => {
@@ -23,7 +23,7 @@ test('onboarding surfaces API failures instead of hanging', async ({ page }) => 
 });
 
 test('command center exposes policy and roster semantics', async ({ page }) => {
-  await page.goto('/app#command');
+  await page.goto('/app');
   await expect(page.getByRole('heading', { name: 'The Space at a glance.' })).toBeVisible();
   await expect(page.getByText('SPACE-WIDE AUTHORITY')).toBeVisible();
   await expect(page.getByText('ROSTER', { exact: true })).toBeVisible();
@@ -40,7 +40,7 @@ test('work view exposes lifecycle board and explicit state surface', async ({ pa
 });
 
 test('audit view exposes paginated activity and stream state', async ({ page }) => {
-  await page.goto('/app#audit');
+  await page.goto('/app#settings=proof');
   await expect(page.getByRole('heading', { name: 'Proof has a trail.' })).toBeVisible();
   await expect(page.getByText('LIVE ACTIVITY')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Load older activity' })).toBeEnabled();
