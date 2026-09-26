@@ -1,0 +1,994 @@
+/* ==========================================================================
+   Boundary Sandbox and Onboarding — the two views' own layout.
+
+   Everything a primitive already ships (.panel*, .btn, .status-pill, .truncate,
+   .clamp-2, .clamp-3, .tnum, .balance, .ident, .eyebrow, .display, .muted) lives
+   in primitives.css or globals.css and is not restated here. What is here is
+   what the foundation does not ship: the scenario grid and its verdict lines,
+   the denial-proof block, and the onboarding wizard's two-column layout.
+
+   Ownership: components/app/SandboxView.tsx, OnboardingView.tsx,
+   OnboardingWizard.tsx and this file. Nothing else may be edited from here.
+
+   Three rules carry most of the weight:
+
+   1. DESIGN.md §4a — every flex/grid child that holds text gets min-width: 0
+      (rule 1) and the text element itself truncates or clamps (rules 2 and 3).
+      Rule 1 is the one that is always forgotten, and without it the other two
+      are silent no-ops. A DenialProof hash and a manifest identifier are the
+      two places this view is most likely to break out.
+
+   2. A refusal is a result, not an error. The only thing on this view that
+      wears the danger tone is a run whose invariant did not hold. EXPECT
+      REFUSED, and a refusal that passed every check, are quiet or plain.
+
+   3. Nothing here invents a colour. Every value below is a token from
+      globals.css. The lime accent is gone and is not coming back.
+   ========================================================================== */
+
+/* ── shared: the one-line feedback strip ────────────────────────────────────
+   Both views report a failed write with the same object. Only a failure gets
+   the danger tone, because a danger that is always on is not a signal. */
+
+.sbx-flash {
+  min-width: 0;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-3);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.sbx-flash--danger {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ==========================================================================
+   BOUNDARY SANDBOX
+   ========================================================================== */
+
+/* Four cards, two-up from 1024px and one-up below it. Every track is
+   minmax(0, 1fr): a minimum is only ever allowed above the width at which the
+   container starts scroller, and this container never does (DESIGN-REVIEW.md §3,
+   conflict 2). The cards stretch, so the amount and the button line up across a
+   row however tall the neighbouring card is. */
+.sandbox-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.sandbox-grid > * {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .sandbox-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* Top-aligned, not stretched: a card that has been run grows a verdict
+       block, and stretching its neighbour would open a hole in the middle of
+       an empty card. A short card next to a tall one is a card that has
+       nothing to say yet. */
+    align-items: start;
+  }
+}
+
+.sandbox-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.sandbox-card > * {
+  min-width: 0;
+}
+
+/* A card that has been run reads as slightly raised, which is the only signal
+   a passed run gets. A broken run gets the danger hairline, because that is
+   the one state on this view that is actually wrong. */
+.sandbox-card[data-state="pass"] {
+  border-color: var(--border-strong);
+}
+
+.sandbox-card[data-state="fail"] {
+  border-color: var(--danger);
+}
+
+.sandbox-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sandbox-card__head > * {
+  min-width: 0;
+}
+
+/* The scenario name is the card's title, so it is a card title: 19px in the
+   primitive, one step down here because these names are long sentences. */
+.sandbox-card__title {
+  min-width: 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.sandbox-card__intent {
+  min-width: 0;
+  margin-top: -4px;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The invariant the card claims: an inset, because it is the claim rather than
+   the subject. A 1px rule on the left is the only decoration it gets. */
+.sandbox-card__invariant {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.sandbox-card__invariant > * {
+  min-width: 0;
+}
+
+.sandbox-card__label {
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.sandbox-card__invariant-text {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* The amount and the one button. `margin-top: auto` keeps the button line on
+   the same baseline as the other cards whenever the grid does stretch a row. */
+.sandbox-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px 14px;
+  min-width: 0;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.sandbox-card__foot > * {
+  min-width: 0;
+}
+
+.sandbox-card__amount {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sandbox-card__amount > .tnum {
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+/* ── the verdict, inside the card ────────────────────────────────────────── */
+
+.sandbox-card__result {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.sandbox-card__result > * {
+  min-width: 0;
+}
+
+.sandbox-card__verdict-title {
+  min-width: 0;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.sandbox-card__verdict-title.is-fail {
+  color: var(--danger);
+}
+
+/* One row per claim. The pill is the verdict, the label is the claim, and the
+   figure is what the API said — so a row can be read on its own. */
+.sandbox-checks {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sandbox-checks__line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sandbox-checks__line:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.sandbox-checks__line > * {
+  min-width: 0;
+}
+
+.sandbox-checks__label {
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The API's own words: a status and a code, a figure, an identifier. The
+   proof hash is 66 characters of machine output, so the row truncates it the
+   way DESIGN.md §4a says an identifier is handled everywhere except inside a
+   hash chip — and the chip is directly below, with the full value and a copy
+   button. The full string is also the row's title attribute. */
+.sandbox-checks__detail {
+  grid-column: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .sandbox-checks__line {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 44%);
+  }
+
+  .sandbox-checks__detail {
+    grid-column: 3;
+    text-align: right;
+  }
+}
+
+/* ── the API readback: the two snapshots the judge compared ─────────────── */
+
+.sandbox-readback {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sandbox-readback > * {
+  min-width: 0;
+}
+
+.sandbox-readback__title {
+  margin-bottom: 4px;
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.sandbox-readback__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.sandbox-readback__row > * {
+  min-width: 0;
+}
+
+.sandbox-readback__label {
+  color: var(--text-4);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sandbox-readback__pair {
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ── the DenialProof, and the receipt for an accepted order ────────────────
+   Both are the evidence for the verdict above them, so both are inset panels
+   with the same shape. The proof hash is the longest string in the app and is
+   the one thing that is allowed to wrap here. */
+
+.sandbox-proof,
+.sandbox-receipt {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+/* The hash chip is not this file's component and it is wider than its text, so
+   it is explicitly allowed to shrink and is capped at the panel's width. */
+.sandbox-proof > *,
+.sandbox-receipt > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sandbox-proof__label,
+.sandbox-receipt__label {
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.sandbox-receipt__label {
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sandbox-proof__reasons {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sandbox-proof__reasons > * {
+  min-width: 0;
+}
+
+.sandbox-proof__reasons li {
+  position: relative;
+  min-width: 0;
+  padding-left: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  /* A reason quotes the counterparty address in full. That is an identifier,
+     so it breaks here rather than pushing the card wider (DESIGN.md §4a). */
+  overflow-wrap: anywhere;
+}
+
+.sandbox-proof__reasons li::before {
+  position: absolute;
+  left: 0;
+  color: var(--text-4);
+  content: "—";
+}
+
+.sandbox-proof__message {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sandbox-receipt__detail {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* The closing note under the grid: 11px --text-4, capped, never a headline. */
+.sandbox-note {
+  max-width: 88ch;
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.sandbox-state {
+  min-height: 180px;
+}
+
+/* ==========================================================================
+   ONBOARDING
+   ========================================================================== */
+
+/* The wizard is the view, so it adds no padding of its own: the shell's
+   .app-content already insets it, and the shell's .app-view already caps the
+   measure. The landing-page variant keeps .container's own rhythm. */
+.app-section--wizard {
+  min-width: 0;
+}
+
+.app-section--embedded {
+  padding: 0;
+}
+
+.app-section--embedded > .container {
+  max-width: none;
+  padding-inline: 0;
+}
+
+/* ── the lede: what this is, and the promise it makes ───────────────────── */
+
+.wizard-lede {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-bottom: 24px;
+}
+
+.wizard-lede > * {
+  min-width: 0;
+}
+
+.wizard-lede > p {
+  max-width: 74ch;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* ── the readout: the step's current state, and the lede's promise ────────
+   A single inset with a strong line over a note. Used in the lede and in each
+   step, so it is one object rather than two. */
+
+.wizard-readout {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+}
+
+.wizard-readout > * {
+  min-width: 0;
+}
+
+.wizard-readout strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.wizard-readout span {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.wizard-lede .wizard-readout {
+  max-width: 96ch;
+  margin-top: 4px;
+}
+
+.wizard-lede .wizard-readout strong {
+  font-size: 16px;
+}
+
+/* ── the two columns ──────────────────────────────────────────────────────
+   The step list is the index, the panel is the step. Stacked below 768px,
+   where the list becomes a full-width column above the panel. */
+
+.wizard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.wizard-grid > * {
+  min-width: 0;
+}
+
+/* Proportional, not a fixed 320px: between 768 and 1023 the rail is an icon
+   rail that the operator can still widen, so the panel's own width is not knowable
+   from the viewport. A 2fr/3fr split keeps the step at the majority at every
+   width in the range and never lets the index starve the work. */
+@media (min-width: 768px) {
+  .wizard-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  }
+}
+
+@media (min-width: 1280px) {
+  .wizard-grid {
+    grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  }
+}
+
+/* ── the step list ────────────────────────────────────────────────────────
+   A well: --surface-1 with the rows raised out of it at --surface-2, which is
+   the same relationship the split stat card has with its inset (DESIGN.md §4).
+   The current step is the only one that gets a border, exactly as the rail's
+   current row does. */
+
+.wizard-steps {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+}
+
+.wizard-step-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wizard-step-list > * {
+  min-width: 0;
+}
+
+.wizard-step {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 3px 12px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-ctl);
+  text-align: left;
+  touch-action: manipulation;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.wizard-step:hover {
+  background: var(--surface-2);
+}
+
+.wizard-step.is-active {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.wizard-step > * {
+  min-width: 0;
+}
+
+.wizard-step__index {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-ctl);
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.wizard-step.is-active .wizard-step__index,
+.wizard-step.is-done .wizard-step__index {
+  color: var(--text);
+}
+
+.wizard-step.is-done .wizard-step__index {
+  background: var(--surface-btn);
+}
+
+.wizard-step__text {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.wizard-step__text > * {
+  min-width: 0;
+}
+
+.wizard-step__title {
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-step.is-active .wizard-step__title {
+  color: var(--text);
+}
+
+.wizard-step__copy {
+  color: var(--text-4);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* The step's own result, under a hairline so it reads as a reply rather than
+   as more description. It carries API wording and an address, so it clamps. */
+.wizard-step__status {
+  margin-top: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* ── the step panel ─────────────────────────────────────────────────────── */
+
+.wizard-panel {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.wizard-panel > * {
+  min-width: 0;
+}
+
+.wizard-panel > .panel__body {
+  min-width: 0;
+}
+
+.wizard-panel .panel__head {
+  /* The title is a step name and must never truncate, so the pill wraps to a
+     second line instead of the title shrinking to nothing. */
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.wizard-panel__heading {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wizard-panel__heading > * {
+  min-width: 0;
+}
+
+/* The panel's own inline size is the thing the inner grids have to fit into,
+   and it is not derivable from the viewport because the rail is resizable. So
+   the body is the query container, and the two-column grids below ask it. */
+.wizard-panel__body {
+  container-type: inline-size;
+  container-name: step;
+}
+
+.wizard-panel__copy {
+  max-width: 68ch;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* "You end up with" is the promise the step makes, so it is a rule and a line
+   rather than another inset panel: the readout already owns that shape. */
+.wizard-goal {
+  min-width: 0;
+  margin-top: 14px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.wizard-goal strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-4);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+/* The step's own content. Everything inside is this file's, which is what lets
+   the form rules below stay scoped here and leave the SpaceAccess panel alone. */
+.wizard-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin-top: 18px;
+}
+
+.wizard-body > * {
+  min-width: 0;
+}
+
+/* ── the opening orientation block ────────────────────────────────────────
+   The only long-form prose in the view, so it is the one object that gets a
+   card of its own: a reader who has never seen a Space reads this first. */
+
+.wizard-intro {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-1);
+}
+
+.wizard-intro > * {
+  min-width: 0;
+}
+
+.wizard-intro h4 {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.wizard-intro p {
+  min-width: 0;
+  max-width: 82ch;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* The two notes are the aside to the paragraph above them: why this matters,
+   and what "real" means here. */
+.wizard-intro__note {
+  color: var(--text-4) !important;
+  font-size: 12px !important;
+}
+
+.wizard-intro__steps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px 20px;
+  min-width: 0;
+  margin-top: 2px;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@container step (min-width: 420px) {
+  .wizard-intro__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wizard-intro__steps > * {
+  min-width: 0;
+}
+
+.wizard-intro__steps li::marker {
+  color: var(--text-4);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+/* ── fields ─────────────────────────────────────────────────────────────── */
+
+.wizard-body .wizard-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+@container step (min-width: 420px) {
+  .wizard-body .wizard-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wizard-body .wizard-fields > * {
+  min-width: 0;
+}
+
+.wizard-body .wizard-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.wizard-body .wizard-field input,
+.wizard-body .wizard-field select {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-ghost);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.wizard-body .wizard-field select {
+  /* color-scheme: dark is on the root (globals.css), so the native popup and
+     the dropdown arrow follow the theme instead of rendering light. */
+  appearance: auto;
+  cursor: pointer;
+}
+
+.wizard-body .wizard-field input::placeholder {
+  color: var(--text-4);
+}
+
+.wizard-body .wizard-field input:focus-visible,
+.wizard-body .wizard-field select:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.wizard-hint {
+  min-width: 0;
+  max-width: 82ch;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-4);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.wizard-hint em {
+  color: var(--text-2);
+  font-style: italic;
+}
+
+/* ── actions and the step's result ──────────────────────────────────────── */
+
+/* Scoped to this file's own markup. SpaceAccess reuses .wizard-actions and is
+   dressed by views-command.css under .access-panel, which is not this file's
+   to reach, so the bare class name is deliberately not selected here. */
+.wizard-body .wizard-actions,
+.wizard-actions--nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wizard-actions--nav {
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.wizard-actions--nav > * {
+  min-width: 0;
+}
+
+.wizard-result {
+  min-width: 0;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--text-3);
+  border-radius: var(--radius-ctl);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* A step that finished gets a white rule instead of a grey one. It is not a
+   different colour, because nothing here is. */
+.wizard-result.is-done {
+  border-left-color: var(--text);
+}
+
+/* SpaceAccess is not this file's component: its rules live in views-command.css
+   under .access-panel. Only its placement inside the wizard is ours, and this
+   scope reaches no further than the wizard. */
+.wizard-panel .access-panel {
+  /* Nested one level down, a card is a well: the same relationship the split
+     stat card has with its inset and the Work board's columns have with their
+     cards (DESIGN.md §4). */
+  margin-top: 4px;
+  background: var(--surface-1);
+}
+
+/* ── touch: 44px minimum below 768px ──────────────────────────────────────
+   Every control in the two views, in one place. Above 768px the pointer is
+   exact and the 36px control from DESIGN.md §6 is the right size. */
+
+@media (max-width: 767.98px) {
+  .sandbox-card .btn,
+  .wizard-body .btn,
+  .wizard-actions--nav .btn {
+    min-height: 44px;
+  }
+
+  .wizard-step {
+    min-height: 44px;
+  }
+
+  /* 16px inputs below 768px: that is the anti-zoom rule (DESIGN-REVIEW.md §3,
+     conflict 3), and it outranks the 13–14px body scale. */
+  .wizard-body .wizard-field input,
+  .wizard-body .wizard-field select {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* ── motion ─────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wizard-step {
+    transition: none;
+  }
+}
