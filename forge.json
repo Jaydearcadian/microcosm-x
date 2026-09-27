@@ -64,12 +64,12 @@
         "broadcastArtifact": "contracts/broadcast/DeployXLayer.s.sol/1952/run-latest.json",
         "oklinkVerifiedAll": false,
         "contracts": {
-          "EnvelopeRegistry": "0xce5577609405a16b3ad43387c079ffc24f74fbe2",
-          "SettlementRouter": "0xc1ad34e735486a0966bfc8bf5a0cd5cea54c73d7",
-          "ClaimEscrow": "0xf9b0bf4f1eeec43183bdb4b047f5e37e0a9c741c",
+          "EnvelopeRegistry": "0x37f497d5ca8937bce851a61c1b551b06686060f8",
+          "SettlementRouter": "0x0be3f0a25a72274a11f37957a5667a9af41d441a",
+          "ClaimEscrow": "0xd70ffaa2c51552689ebf9cb2851d85417664b4ee",
           "MockERC20": "0x6176287b2E80374B41388029f0b87Eb6eeE289e7",
-          "AgenticCommerce": "0xddd9d4fdf33b8a736f98470a243d9fd7735f0818",
-          "SpaceBudget": "0x1f765cc5affc71b2457b0a7b3e357e6cf05219d4"
+          "AgenticCommerce": "0xc3eedd58a21049bff480ce9cf34b6ac9a9ead89d",
+          "SpaceBudget": "0x184aba4bcbb40b2545bae66724cc0fc763eaf6d6"
         },
         "receipts": {
           "EnvelopeRegistry": "0xd0dda2376e383e3c09f8a782be26c9ada8b407e6a07b2d1358959820be467115",
