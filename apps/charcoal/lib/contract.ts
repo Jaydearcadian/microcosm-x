@@ -244,6 +244,8 @@ export interface Reconciliation {
     claimTotal: string; heldTotal: string; routerTokenBalance: string;
     totalAccounted: string; excess: string; unbacked: string; unrecorded: string;
   };
+  /** Whether the router has a per-Space pool at all. False means it cannot hold funds. */
+  poolDeployed: boolean;
   /** Whether the router's own books add up. False means a contract problem. */
   chainBalances: boolean;
   agrees: boolean;

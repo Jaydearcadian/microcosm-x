@@ -105,7 +105,9 @@ function readNote(state: IndexerHealth, label: string): string {
 function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
   if (!state) return null;
   const { summary } = state;
-  const verdict = !state.chainBalances
+  const verdict = !state.poolDeployed
+    ? { label: "THIS ROUTER HAS NO PER-SPACE POOL", tone: "bad" }
+    : !state.chainBalances
     ? { label: "THE ROUTER\u2019S BOOKS DO NOT ADD UP", tone: "bad" }
     : state.agrees
       ? { label: "THE CHAIN MATCHES OUR BOOKS", tone: "good" }
@@ -118,7 +120,13 @@ function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
         <span className="recon__verdict">{verdict.label}</span>
       </header>
 
-      {!state.chainBalances ? (
+      {!state.poolDeployed ? (
+        <p className="muted">
+          The settlement router this deployment points at was built before per-Space pools existed,
+          so it cannot hold a Space\u2019s funds at all. Every balance below is still sitting in the
+          broadcaster wallet, and this check cannot pass until the router is redeployed.
+        </p>
+      ) : !state.chainBalances ? (
         <p className="muted">
           The settlement router holds less than it says it owes Spaces. That is a problem with a
           contract, not with this page, and nothing should draw funds from a pool until it is fixed.
@@ -156,6 +164,8 @@ function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
 
       <p className="muted recon__foot">
         Checked {new Date(state.checkedAt).toLocaleString()}
+        {" · "}this checks the chain holds what we claim, not that the tokens were earned rather
+        than minted — an ERC-20 transfer cannot tell those apart
         {Number(summary.excess) > 0 ? ` · ${summary.excess} USDC was sent to the router by mistake and is sweepable` : ""}
         {" · "}funding from the pool is {state.readyToFundFromPool ? "unblocked" : "blocked until the books agree"}.
       </p>

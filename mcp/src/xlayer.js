@@ -245,28 +245,36 @@ export class XLayerAdapter {
     const router = addresses().SettlementRouter;
     const token = addresses().MockERC20;
 
-    // Reads, not transactions. A router deployed before the pool existed has no
-    // such method, and "nothing is accounted for" is a real answer rather than a
-    // failure — so an unreadable value is zero, not an exception.
+    // Reads, not transactions.
     const read = (to, sig, args = []) => {
       try {
         const out = cast(['call', to, sig, ...args, '--rpc-url', rpcUrl()]);
         return BigInt(String(out).split(' ')[0]);
       } catch {
-        return 0n;
+        return null;
       }
     };
+
+    // A router deployed before the pool existed has no such method at all, and
+    // treating that as "zero" made it indistinguishable from a funded router
+    // holding nothing — the difference between a working pool and no pool. The
+    // first live run of this reported chainBalances true against a router that
+    // could not hold funds by design. So the absence is read, not swallowed.
+    const totalAccountedRaw = read(router, 'totalAccounted()(uint256)');
+    const poolDeployed = totalAccountedRaw !== null;
+    const zero = (v) => (v === null ? 0n : v);
 
     const perSpace = {};
     let sumOfSpaceBalances = 0n;
     for (const spaceId of spaceIds) {
-      const held = read(router, 'spaceBalance(bytes32)(uint256)', [spaceIdToBytes32(spaceId)]);
+      const held = zero(read(router, 'spaceBalance(bytes32)(uint256)', [spaceIdToBytes32(spaceId)]));
       perSpace[spaceId] = held;
       sumOfSpaceBalances += held;
     }
-    const totalAccounted = read(router, 'totalAccounted()(uint256)');
-    const routerTokenBalance = read(token, 'balanceOf(address)(uint256)', [router]);
+    const totalAccounted = zero(totalAccountedRaw);
+    const routerTokenBalance = zero(read(token, 'balanceOf(address)(uint256)', [router]));
     return {
+      poolDeployed,
       perSpace,
       sumOfSpaceBalances,
       totalAccounted,

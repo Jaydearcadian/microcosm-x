@@ -154,3 +154,46 @@ test('R2-5: a mistaken transfer shows up as excess, not as a Space having money'
     proto.heldBalances = before;
   }
 });
+
+test('R2-6: a router with no pool at all is not a router holding nothing', async () => {
+  const { store, spaceId } = setup();
+  const { XLayerAdapter } = await import('../src/xlayer.js');
+  const proto = XLayerAdapter.prototype;
+  const before = proto.heldBalances;
+  // poolDeployed false is what heldBalances reports when totalAccounted() is not
+  // callable — a router built before the pool existed. Every number is zero, so
+  // the arithmetic is "consistent" and says nothing.
+  proto.heldBalances = async () => ({
+    poolDeployed: false,
+    perSpace: { [spaceId]: 0n }, sumOfSpaceBalances: 0n, totalAccounted: 0n,
+    routerTokenBalance: 0n, excess: 0n,
+  });
+  try {
+    const report = await store.reconcileOnchainBalances();
+    assert.equal(report.poolDeployed, false, 'the absence of a pool must be visible');
+    assert.equal(report.chainBalances, false, '0 == 0 is not a passing invariant when there is no pool');
+    assert.equal(report.readyToFundFromPool, false, 'and there is nothing to fund from');
+  } finally {
+    proto.heldBalances = before;
+  }
+});
+
+test('R2-7: a fully backed ledger with a real pool is the only thing that unblocks', async () => {
+  const { store, spaceId } = setup();
+  const { XLayerAdapter } = await import('../src/xlayer.js');
+  const proto = XLayerAdapter.prototype;
+  const before = proto.heldBalances;
+  const one = 1_000_000_000n;
+  proto.heldBalances = async () => ({
+    poolDeployed: true,
+    perSpace: { [spaceId]: one }, sumOfSpaceBalances: one,
+    totalAccounted: one, routerTokenBalance: one, excess: 0n,
+  });
+  try {
+    const report = await store.reconcileOnchainBalances();
+    assert.equal(report.poolDeployed, true);
+    assert.equal(report.readyToFundFromPool, true);
+  } finally {
+    proto.heldBalances = before;
+  }
+});

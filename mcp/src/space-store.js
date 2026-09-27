@@ -801,11 +801,16 @@ export class SpaceStore {
 
     // The chain's own invariant first: what it holds for Spaces should equal
     // what it says it owes, and the difference should be the excess it can sweep.
-    const chainBalances = held.routerTokenBalance === held.totalAccounted
+    // Skipped when there is no pool to have an invariant about, because
+    // "0 == 0" is true of a router that was never built to hold funds.
+    const poolDeployed = held.poolDeployed !== false;
+    const chainBalances = poolDeployed
+      && held.routerTokenBalance === held.totalAccounted
       && held.sumOfSpaceBalances === held.totalAccounted;
 
     const agrees = perSpace.every((row) => row.agrees);
     return {
+      poolDeployed,
       perSpace,
       summary: {
         claimTotal: fromBaseUnits(claimTotal),
@@ -820,7 +825,9 @@ export class SpaceStore {
       // separating: one is a bug in us, the other would be a bug in a contract.
       chainBalances,
       agrees,
-      readyToFundFromPool: agrees && chainBalances,
+      // Agreement is not enough on its own: if the router has no pool, there is
+      // nothing to fund from however well the numbers line up.
+      readyToFundFromPool: poolDeployed && agrees && chainBalances,
       checkedAt: new Date().toISOString(),
     };
   }
