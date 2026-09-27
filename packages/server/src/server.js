@@ -493,6 +493,37 @@ async function dispatch(app, req, res) {
         throwMapped(err);
       }
     }
+    m = path.match(/^\/api\/spaces\/([^/]+)\/reconciliation$/);
+    if (req.method === 'GET' && m) {
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      try {
+        // Session-gated: it reports what our books claim, which is not public
+        // information about a Space's position.
+        requireSession();
+        return ok(200, { reconciliation: await store.reconcileOnchainBalances({ spaceIds: [spaceId] }) });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/reconciliation$/);
+    if (req.method === 'GET' && m) {
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      try {
+        // A Space's onchain position is not public information, so this needs a
+        // principal. An agent is allowed too, and should be: verifying that the
+        // books agree is exactly what it should do before it moves a Space's
+        // money, so the delegation comes from the query string rather than a
+        // body, since this is a read.
+        requirePrincipal(spaceId, { delegationId: url.searchParams.get('delegationId') });
+        return ok(200, { reconciliation: await store.reconcileOnchainBalances({ spaceIds: [spaceId] }) });
+      } catch (err) {
+        throwMapped(err);
+      }
+    }
+
     m = path.match(/^\/api\/spaces\/([^/]+)\/indexer$/);
     if (m && req.method === 'GET') {
       const spaceId = decodeURIComponent(m[1]);

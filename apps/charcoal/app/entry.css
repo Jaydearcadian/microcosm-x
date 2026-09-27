@@ -82,3 +82,19 @@
 .entry-gate__demo h3 { margin: 0 0 6px; font-size: 15px; color: var(--text-2); }
 .entry-gate__demo p { max-width: 66ch; margin: 0; font-size: 13px; line-height: 1.6; }
 .entry-gate__demo-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+
+/* Balance reconciliation. Deliberately plain: this panel exists to say when our
+   books and the chain disagree, so it should read as a statement of fact
+   rather than as a dashboard. */
+.recon { margin: 18px 0; padding: 16px 18px; border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius-card); background: var(--surface-2); }
+.recon--good { border-left-color: var(--success, #2f9e6f); }
+.recon--warn { border-left-color: var(--warning, #c08a2e); }
+.recon--bad { border-left-color: var(--danger); }
+.recon header { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between; }
+.recon h3 { margin: 0; font-size: 15px; }
+.recon__verdict { font-size: 11px; letter-spacing: 0.06em; color: var(--text-2); }
+.recon p { max-width: 74ch; margin: 10px 0 0; font-size: 13px; line-height: 1.6; }
+.recon__table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12px; }
+.recon__table th { text-align: left; padding: 6px 8px; color: var(--text-4); font-weight: 500; border-bottom: 1px solid var(--hairline-soft); }
+.recon__table td { padding: 6px 8px; border-bottom: 1px solid var(--hairline-soft); }
+.recon__foot { font-size: 12px; color: var(--text-4); }

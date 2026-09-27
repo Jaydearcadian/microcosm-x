@@ -231,6 +231,31 @@ export interface IndexerStatus {
   reconciliation?: { status: string; error: string | null };
   projectedJobs?: Array<{ jobId: string; status: string; onchainJobId: string | null }>;
 }
+// ---- Does the chain back what our books claim? Session-gated: it reports a
+// ---- Space's position, which is not public information.
+export type ReconciliationState = "AGREES" | "UNBACKED" | "UNRECORDED";
+
+export interface Reconciliation {
+  perSpace: Array<{
+    spaceId: string; claimed: string; heldOnChain: string; difference: string;
+    agrees: boolean; state: ReconciliationState;
+  }>;
+  summary: {
+    claimTotal: string; heldTotal: string; routerTokenBalance: string;
+    totalAccounted: string; excess: string; unbacked: string; unrecorded: string;
+  };
+  /** Whether the router's own books add up. False means a contract problem. */
+  chainBalances: boolean;
+  agrees: boolean;
+  /** The gate on funding payments from a Space's own onchain pool. */
+  readyToFundFromPool: boolean;
+  checkedAt: string;
+}
+
+export async function fetchReconciliation(spaceId: string, signal?: AbortSignal): Promise<Reconciliation> {
+  return (await request<{ reconciliation: Reconciliation }>(`/api/spaces/${q(spaceId)}/reconciliation`, { signal })).reconciliation;
+}
+
 export async function fetchIndexerStatus(spaceId: string, signal?: AbortSignal): Promise<IndexerStatus> {
   return (await request<{ indexer: IndexerStatus }>(`/api/spaces/${q(spaceId)}/indexer`, { signal })).indexer;
 }

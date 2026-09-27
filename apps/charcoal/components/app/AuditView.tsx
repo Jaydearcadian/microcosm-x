@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuditStream } from "@/components/app/AuditStream";
 import { useAppData } from "@/lib/app-data";
-import { fetchIndexerStatus, type IndexerStatus, type Job } from "@/lib/contract";
+import { fetchIndexerStatus, fetchReconciliation, type IndexerStatus, type Job, type Reconciliation } from "@/lib/contract";
 
 import "@/app/views-work.css";
 
@@ -93,6 +93,75 @@ function readNote(state: IndexerHealth, label: string): string {
 }
 
 /* ── the panel ────────────────────────────────────────────────────────────── */
+
+/**
+ * What our books claim against what the chain is holding.
+ *
+ * This exists because the balances the product quotes are, today, funded by the
+ * broadcaster's wallet rather than by a per-Space onchain pool. The report says
+ * so plainly instead of leaving it to be found during an incident — and it is
+ * the gate on making payments draw from a Space's own funds.
+ */
+function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
+  if (!state) return null;
+  const { summary } = state;
+  const verdict = !state.chainBalances
+    ? { label: "THE ROUTER\u2019S BOOKS DO NOT ADD UP", tone: "bad" }
+    : state.agrees
+      ? { label: "THE CHAIN MATCHES OUR BOOKS", tone: "good" }
+      : { label: "OUR BOOKS ARE NOT BACKED BY THE CHAIN", tone: "warn" };
+
+  return (
+    <section className={`recon recon--${verdict.tone}`} aria-label="Balance reconciliation">
+      <header>
+        <h3>Do the chain and our books agree?</h3>
+        <span className="recon__verdict">{verdict.label}</span>
+      </header>
+
+      {!state.chainBalances ? (
+        <p className="muted">
+          The settlement router holds less than it says it owes Spaces. That is a problem with a
+          contract, not with this page, and nothing should draw funds from a pool until it is fixed.
+        </p>
+      ) : state.agrees ? (
+        <p className="muted">
+          Every Space below has exactly as much held on chain as our books claim. Payments can be
+          funded from the Space\u2019s own pool.
+        </p>
+      ) : (
+        <p className="muted">
+          Our books say Spaces hold {summary.claimTotal} USDC. The settlement router is holding{" "}
+          {summary.routerTokenBalance} USDC in total, and owes {summary.totalAccounted} of it to
+          Spaces. Until those two numbers meet, a balance here is our claim rather than a fact —
+          the money has been held in one shared wallet, not per Space.
+        </p>
+      )}
+
+      <table className="recon__table">
+        <thead>
+          <tr><th>Space</th><th>Our books claim</th><th>Chain holds for it</th><th>Difference</th><th>State</th></tr>
+        </thead>
+        <tbody>
+          {state.perSpace.map((row) => (
+            <tr key={row.spaceId}>
+              <td className="ident">{row.spaceId}</td>
+              <td className="tnum">{row.claimed}</td>
+              <td className="tnum">{row.heldOnChain}</td>
+              <td className="tnum">{row.difference}</td>
+              <td>{row.state}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <p className="muted recon__foot">
+        Checked {new Date(state.checkedAt).toLocaleString()}
+        {Number(summary.excess) > 0 ? ` · ${summary.excess} USDC was sent to the router by mistake and is sweepable` : ""}
+        {" · "}funding from the pool is {state.readyToFundFromPool ? "unblocked" : "blocked until the books agree"}.
+      </p>
+    </section>
+  );
+}
 
 function IndexerPanel({ state }: { state: IndexerHealth | null }) {
   const { jobs } = useAppData();
@@ -251,6 +320,7 @@ function CopyButton({ value }: { value: string }) {
 export function AuditView() {
   const { spaceId, activity } = useAppData();
   const [indexer, setIndexer] = useState<IndexerHealth | null>(null);
+  const [reconciliation, setReconciliation] = useState<Reconciliation | null>(null);
 
   const load = useCallback(async () => {
     if (!spaceId) return;
@@ -258,6 +328,13 @@ export function AuditView() {
       setIndexer(await fetchIndexerStatus(spaceId));
     } catch {
       setIndexer({ enabled: false, reason: "Indexer status is unavailable." });
+    }
+    // The reconciliation needs a wallet session, so it fails quietly when there
+    // is not one. Its absence must not be read as agreement.
+    try {
+      setReconciliation(await fetchReconciliation(spaceId));
+    } catch {
+      setReconciliation(null);
     }
   }, [spaceId]);
 
@@ -279,6 +356,8 @@ export function AuditView() {
         </div>
         <span className="status-pill view-figure">{activity.length} EVENTS LOADED</span>
       </header>
+
+      <ReconciliationPanel state={reconciliation} />
 
       <IndexerPanel state={indexer} />
       <AuditStream />
