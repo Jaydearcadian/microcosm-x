@@ -4,6 +4,16 @@ pragma solidity ^0.8.24;
 import {IERC20} from "./interfaces/IERC20.sol";
 import {IAdjudicator} from "./IAdjudicator.sol";
 
+/**
+ * The per-Space limits contract. Escrow is spending — the money leaves the
+ * client's wallet and is held — so it has to clear the same signed caps a
+ * direct payment does. Without this, a Work Order was a way to move a Space's
+ * money without the limits ever being consulted.
+ */
+interface ISpaceBudget {
+    function enforce(bytes32 spaceId, address recipient, uint256 amount) external;
+}
+
 contract AgenticCommerce {
     address public immutable owner;
     IERC20 public immutable paymentToken;
@@ -28,6 +38,12 @@ contract AgenticCommerce {
     uint256 private _nextJobId = 1;
     mapping(uint256 => Job) public jobs;
 
+    /// The Space each Work Order spends from, and the key its signed limits are
+    /// held under. Kept beside the Job rather than inside it: the struct is
+    /// already at the edge of what the compiler can build without via-ir, and
+    /// growing it also changes the jobs() getter every consumer reads.
+    mapping(uint256 => bytes32) public jobSpace;
+
     event JobCreated(
         uint256 indexed jobId,
         address indexed client,
@@ -40,6 +56,7 @@ contract AgenticCommerce {
     event ProviderSet(uint256 indexed jobId, address indexed provider);
     event BudgetSet(uint256 indexed jobId, uint256 amount);
     event JobFunded(uint256 indexed jobId, uint256 amount);
+    event SpaceBudgetSet(address indexed budget);
     event JobSubmitted(uint256 indexed jobId, bytes32 deliverable);
     event JobCompleted(uint256 indexed jobId, bytes32 reason);
     event JobRejected(uint256 indexed jobId, address rejector, bytes32 reason);
@@ -98,6 +115,10 @@ contract AgenticCommerce {
         bytes32 deliverableHash;
     }
 
+    /// Limits contract consulted before any escrow is taken. Zero means escrow
+    /// is closed: the kernel will not hold money it cannot check.
+    address public spaceBudget;
+
     mapping(address => bool) public controllers;
     mapping(uint256 => bool) public usedAttestationNonces;
 
@@ -111,6 +132,14 @@ contract AgenticCommerce {
 
     mapping(uint256 => address) public jobAdjudicator;
     mapping(uint256 => bytes32) public jobCaseId;
+
+    /// Points the kernel at the limits contract. Only ever set to something
+    /// real: clearing it stops escrow rather than lifting the check.
+    function setSpaceBudget(address budget) external onlyOwner {
+        require(budget != address(0), "budget required");
+        spaceBudget = budget;
+        emit SpaceBudgetSet(budget);
+    }
 
     function setController(address controller, bool authorized) external onlyOwner {
         require(controller != address(0), "controller required");
@@ -305,6 +334,7 @@ contract AgenticCommerce {
     }
 
     function createJob(
+        bytes32 spaceId,
         address provider,
         address evaluator,
         uint256 expiredAt,
@@ -312,6 +342,9 @@ contract AgenticCommerce {
     ) external returns (uint256 jobId) {
         require(evaluator != address(0), "evaluator required");
         require(expiredAt > block.timestamp, "expiredAt not future");
+        // A job with no Space has no signed limits behind it, so it could never
+        // be funded. Refusing here makes the mistake visible at creation.
+        require(spaceId != bytes32(0), "spaceId required");
 
         jobId = _nextJobId;
         _nextJobId = jobId + 1;
@@ -330,6 +363,7 @@ contract AgenticCommerce {
             status: JobStatus.Open,
             createdAt: block.timestamp
         });
+        jobSpace[jobId] = spaceId;
 
         emit JobCreated(jobId, msg.sender, evaluator, provider, description, expiredAt);
     }
@@ -364,6 +398,12 @@ contract AgenticCommerce {
         if (job.provider == address(0)) revert ProviderRequired();
         if (job.budget != expectedBudget) revert BudgetMismatch();
         if (job.budget == 0) revert BudgetMismatch();
+
+        // Same gate a direct payment passes, and for the same reason: the cap,
+        // the daily budget and the allowlist were signed by whoever owns the
+        // Space, and escrowing the money is spending it.
+        require(spaceBudget != address(0), "space budget not configured");
+        ISpaceBudget(spaceBudget).enforce(jobSpace[jobId], job.provider, job.budget);
 
         bool ok = paymentToken.transferFrom(msg.sender, address(this), job.budget);
         require(ok, "transfer failed");

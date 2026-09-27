@@ -29,16 +29,16 @@ function txHashOk(h) {
 }
 
 /** Fresh Space whose treasury triangle is real, funded key-holder addresses. */
-async function makeLiveSpace(store, name, { balance = '5000.00', bindOnchain = false } = {}) {
+async function makeLiveSpace(store, name, { balance = '5000.00', bindOnchain = true } = {}) {
   const D = chain.addrs.deployer;
   const P = chain.addrs.provider;
   const space = store.createSpace({ name, actorId: D, chainId: chain.chainId });
   store.fundSpace({ spaceId: space.id, amount: balance, actorId: D });
   store.addParticipant({ spaceId: space.id, kind: 'Agent', displayName: 'ProviderBot', address: P, actorId: D });
   if (bindOnchain) {
-    // A direct payment goes through SettlementRouter, which refuses an unbound
-    // Space: nobody has signed for that money leaving it. Signing for it here is
-    // what an owner does, and it is why the payment can proceed at all.
+    // Both instruments refuse an unbound Space: the router for a disbursement,
+    // and the kernel for escrow. Signing for it here is what an owner does, and
+    // it is why any of it can proceed at all.
     const { spaceIdToBytes32 } = await import('../src/xlayer.js');
     const { bindSpaceOnchain } = await import('./helpers/bind-space.mjs');
     await bindSpaceOnchain({

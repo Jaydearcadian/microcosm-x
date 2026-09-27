@@ -82,7 +82,7 @@ contract DeployXLayer {
         agenticCommerceAddr = address(agenticCommerce);
 
         // 6. Deploy the per-Space limits contract and point the router at it.
-        spaceBudgetAddr = _deployAndWireLimits(settlementRouter);
+        spaceBudgetAddr = _deployAndWireLimits(settlementRouter, agenticCommerce);
 
         emit Deployed(
             envelopeRegistryAddr,
@@ -104,9 +104,13 @@ contract DeployXLayer {
      * script left it unset, which is why the live router looked deployed and was
      * in fact inert — and nothing about the deployment itself said so.
      */
-    function _deployAndWireLimits(SettlementRouter router) internal returns (address) {
+    function _deployAndWireLimits(SettlementRouter router, AgenticCommerce kernel) internal returns (address) {
         SpaceBudget spaceBudget = new SpaceBudget();
         router.setBudgetContract(address(spaceBudget));
+        kernel.setSpaceBudget(address(spaceBudget));
+        // Escrow is spending too, so the kernel asks the same limits contract.
+        // Leaving this unset does not disable the check — it stops escrow
+        // entirely, because the kernel refuses to hold money it cannot check.
         emit SpaceBudgetDeployed(address(spaceBudget), address(router), address(0));
         return address(spaceBudget);
     }

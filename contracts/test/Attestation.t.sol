@@ -56,15 +56,17 @@ contract AttestationTest is Assertions {
         router = new SettlementRouter(address(this), true);
         token = new MockERC20();
         commerce = new AgenticCommerce(address(this), address(token));
-
         controller = vm.addr(controllerKey);
         spaceOwner = vm.addr(spaceOwnerKey);
         router.setController(controller, true);
         commerce.setController(controller, true);
         router.registerSpaceToken(spaceId, address(token));
 
+        // One limits contract, shared by the router and the escrow kernel, and
+        // one signed binding for this Space. Both paths now ask it.
         budget = new SpaceBudget();
         router.setBudgetContract(address(budget));
+        commerce.setSpaceBudget(address(budget));
         _bindSpace();
 
         token.mint(controller, 1_000_000_000);
@@ -73,10 +75,16 @@ contract AttestationTest is Assertions {
         vm.stopPrank();
     }
 
-    /// Signs this Space's limits so the router will let a payment through.
+    /// Signs this Space's limits so the router will let a payment through, and
+    /// so escrow will: the kernel asks the same contract before it takes money.
+    ///
+    /// Two addresses are paid in this suite — the fixture's `recipient`, and a
+    /// provider declared locally inside the two attested-settlement tests — so
+    /// the allowlist names both.
     function _bindSpace() internal {
-        address[] memory allow = new address[](1);
+        address[] memory allow = new address[](2);
         allow[0] = recipient;
+        allow[1] = address(0xBD);
         SpaceBudget.Binding memory b = SpaceBudget.Binding({
             spaceId: spaceId,
             owner: spaceOwner,
@@ -223,7 +231,7 @@ contract AttestationTest is Assertions {
         token.mint(client, 500_000_000);
         vm.startPrank(client);
         token.approve(address(commerce), type(uint256).max);
-        uint256 jobId = commerce.createJob(provider, evaluator, block.timestamp + 7 days, "attested work");
+        uint256 jobId = commerce.createJob(spaceId, provider, evaluator, block.timestamp + 7 days, "attested work");
         commerce.setBudget(jobId, 100_000_000);
         commerce.fund(jobId, 100_000_000);
         vm.stopPrank();
@@ -256,7 +264,7 @@ contract AttestationTest is Assertions {
         token.mint(client, 500_000_000);
         vm.startPrank(client);
         token.approve(address(commerce), type(uint256).max);
-        uint256 jobId = commerce.createJob(provider, evaluator, block.timestamp + 7 days, "attested work");
+        uint256 jobId = commerce.createJob(spaceId, provider, evaluator, block.timestamp + 7 days, "attested work");
         commerce.setBudget(jobId, 100_000_000);
         commerce.fund(jobId, 100_000_000);
         vm.stopPrank();

@@ -75,6 +75,22 @@ test('M3-1: health + space lifecycle (create → fund → bounds)', async () => 
   // mcp/test/agent-authority.test.js and WORK-10.
   store.bindMemberAddress(spaceId, FOUNDER, OP);
 
+  // Every Space this suite provisions gets signed limits onchain. Both
+  // instruments refuse an unbound Space: the router for a disbursement, and the
+  // escrow kernel for a Work Order. The bind is per Space and the nonce lives
+  // inside the signed payload, so each one gets its own.
+  const { spaceIdToBytes32 } = await import('../../../mcp/src/xlayer.js');
+  const { bindSpaceOnchain } = await import('../../../mcp/test/helpers/bind-space.mjs');
+  await bindSpaceOnchain({
+    rpc: chain.rpc,
+    spaceId: spaceIdToBytes32(spaceId),
+    owner: OP,
+    key: chain.keys.deployer,
+    chainId: chain.chainId,
+    asset: chain.contracts.MockERC20,
+    recipients: [OP, VENDOR],
+  });
+
   // Sign in as that founder, the way the browser does.
   const challenge = await api('GET', `/api/auth/challenge?address=${OP}`);
   const session = await api('POST', '/api/auth/session', {
@@ -214,17 +230,6 @@ test('M3-6: SSE stream delivers live payment settlement', async () => {
   // A direct payment goes through SettlementRouter, which refuses an unbound
   // Space — correctly, since nobody has signed for that money leaving. The
   // Space this suite provisions has to be bound before its payment can settle.
-  const { spaceIdToBytes32 } = await import('../../../mcp/src/xlayer.js');
-  const { bindSpaceOnchain } = await import('../../../mcp/test/helpers/bind-space.mjs');
-  await bindSpaceOnchain({
-    rpc: chain.rpc,
-    spaceId: spaceIdToBytes32(spaceId),
-    owner: OP,
-    key: chain.keys.deployer,
-    chainId: chain.chainId,
-    asset: chain.contracts.MockERC20,
-    recipients: [VENDOR],
-  });
   const res = await fetch(`${base}/api/spaces/${spaceId}/events`);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/event-stream/);

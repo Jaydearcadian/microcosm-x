@@ -1,7 +1,7 @@
 {
   "_note": "Curated minimal ABIs, parameter names intentionally omitted so selectors are comparable by string equality (drift test enforces it). Human-readable form, parseable by ethers/viem/cast.",
   "AgenticCommerce": [
-    "function createJob(address,address,uint256,string)",
+    "function createJob(bytes32,address,address,uint256,string)",
     "function setBudget(uint256,uint256)",
     "function fund(uint256,uint256)",
     "function submit(uint256,bytes32)",

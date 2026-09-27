@@ -293,8 +293,11 @@ export class XLayerAdapter {
     const deployerKey = privKey();
     const sendD = makeSequencer(deployerKey);
 
-    const create = sendD(kernel, 'createJob(address,address,uint256,string)', [
-      provider, evaluator, String(expiredAt), description || `Work ${jobIdLabel}`,
+    // The Work Order names the Space it spends from, because the kernel asks
+    // that Space's signed limits before it holds the money.
+    const create = sendD(kernel, 'createJob(bytes32,address,address,uint256,string)', [
+      spaceIdToBytes32(spaceId), provider, evaluator, String(expiredAt),
+      description || `Work ${jobIdLabel}`,
     ]);
     const jobId = this._readCreatedJobId(create.txHash);
 

@@ -17,9 +17,30 @@ function cast(...args) {
   return execFileSync("cast", args, { encoding: "utf8" }).trim();
 }
 
+/// Bind the indexed Space's limits once. The nonce lives inside the signed
+/// payload, so binding twice is refused — that is the replay protection, not a
+/// bug to work around.
+async function bindOnce() {
+  if (spaceBoundOn === chain.rpc) return;
+  spaceBoundOn = chain.rpc;
+  const { bindSpaceOnchain } = await import("./helpers/bind-space.mjs");
+  await bindSpaceOnchain({
+    rpc: chain.rpc,
+    spaceId: spaceIdOnChain,
+    owner: chain.addrs.deployer,
+    key: chain.keys.deployer,
+    chainId: chain.chainId,
+    asset: chain.contracts.MockERC20,
+    recipients: [chain.addrs.provider],
+  });
+}
+
 async function createJob(description) {
   const expiry = String(Math.floor(Date.now() / 1000) + 86_400);
-  const output = cast("send", chain.contracts.AgenticCommerce, "createJob(address,address,uint256,string)", chain.addrs.provider, chain.addrs.deployer, expiry, description, "--private-key", chain.keys.deployer, "--rpc-url", chain.rpc);
+  // Awaited: unawaited, the binding races the createJob transaction and the
+  // first fund reverts NotBound, which reads like a contract bug.
+  await bindOnce();
+  const output = cast("send", chain.contracts.AgenticCommerce, "createJob(bytes32,address,address,uint256,string)", spaceIdOnChain, chain.addrs.provider, chain.addrs.deployer, expiry, description, "--private-key", chain.keys.deployer, "--rpc-url", chain.rpc);
   const match = output.match(/transaction\s*hash\s*:?\s*(0x[0-9a-fA-F]{64})/i);
   if (!match) throw new Error(`Could not parse createJob transaction hash from cast output: ${output}`);
   const receipt = await publicClient.getTransactionReceipt({ hash: match[1] });
@@ -36,6 +57,14 @@ function fundJob(jobId, amount) {
 
 const indexedContract = "0x4444444444444444444444444444444444444444";
 const spaceId = "space-procurement-001";
+// Which chain the Space is currently bound on. Keyed rather than a bare
+// boolean because each test boots its own anvil: a flag that outlives the
+// chain it was set for silently skips the binding on the next one.
+let spaceBoundOn = null;
+
+// The onchain key a Space is known by. Imported once here rather than inside each
+// helper, because both need it and one of them is called from a sync context.
+const spaceIdOnChain = (await import("../src/xlayer.js")).spaceIdToBytes32(spaceId);
 
 function createdLog({ jobId = 7n, provider = "0x3333333333333333333333333333333333333333", blockNumber = 10, logIndex = 0, txDigit = "1" } = {}) {
   return {

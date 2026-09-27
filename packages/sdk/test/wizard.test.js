@@ -93,6 +93,25 @@ test('WIZARD: multi-agent onboarding settles REAL USDC, denials stay free', asyn
     signature: await founderWallet.signTypedData(delegation.typedData),
   });
 
+  // 2c. The Space signs its limits onchain. Escrow asks them before it holds
+  // any money, so a Work Order cannot be funded without them — which is the
+  // whole point, and is why this is here rather than assumed.
+  const { spaceIdToBytes32 } = await import('../../../mcp/src/xlayer.js');
+  const { bindSpaceOnchain } = await import('../../../mcp/test/helpers/bind-space.mjs');
+  // Signed by the deployer, which is the Space authority this harness holds a
+  // key for. The founder above is a client-side identity whose key is generated
+  // inside the test process and never leaves it, so it cannot sign anything
+  // onchain — which is the honest boundary of what this proves.
+  await bindSpaceOnchain({
+    rpc: chain.rpc,
+    spaceId: spaceIdToBytes32(spaceId),
+    owner: D,
+    key: chain.keys.deployer,
+    chainId: chain.chainId,
+    asset: chain.contracts.MockERC20,
+    recipients: [P],
+  });
+
   // 3. Request: human asks, provider agent accepts.
   const { request } = await client.createRequest(spaceId, { createdBy: founderMember, title: 'Onboard GPU run' });
   assert.equal(request.status, 'Open');

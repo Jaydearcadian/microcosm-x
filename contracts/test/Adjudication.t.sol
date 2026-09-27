@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {AgenticCommerce} from "../src/AgenticCommerce.sol";
+import {SpaceBudget} from "../src/SpaceBudget.sol";
 import {IAdjudicator} from "../src/IAdjudicator.sol";
 import {MockERC20} from "../src/test/MockERC20.sol";
 import {MockAdjudicator} from "../src/test/MockAdjudicator.sol";
@@ -11,6 +12,8 @@ interface Vm {
     function startPrank(address) external;
     function stopPrank() external;
     function warp(uint256) external;
+    function addr(uint256) external returns (address);
+    function sign(uint256, bytes32) external returns (uint8, bytes32, bytes32);
 }
 
 contract Assertions {
@@ -40,6 +43,9 @@ contract AdjudicationTest is Assertions {
         Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
 
     AgenticCommerce internal commerce;
+    SpaceBudget internal budget;
+    uint256 internal spaceOwnerKey = 0xA11CE5EED;
+    address internal spaceOwner;
     MockERC20 internal token;
     MockAdjudicator internal court;
 
@@ -54,6 +60,12 @@ contract AdjudicationTest is Assertions {
     function setUp() public {
         token = new MockERC20();
         commerce = new AgenticCommerce(address(this), address(token));
+        // Escrow is spending, so the kernel consults the Space's signed limits
+        // before it holds any money.
+        budget = new SpaceBudget();
+        spaceOwner = vm.addr(spaceOwnerKey);
+        commerce.setSpaceBudget(address(budget));
+        _bindSpace();
         court = new MockAdjudicator(address(commerce));
 
         token.mint(client, 1_000_000_000);
@@ -67,7 +79,7 @@ contract AdjudicationTest is Assertions {
         uint256 expiry = block.timestamp + 7 days;
 
         vm.prank(client);
-        jobId = commerce.createJob(provider, evaluator, expiry, "court-gated work");
+        jobId = commerce.createJob(bytes32(keccak256("test-space")), provider, evaluator, expiry, "court-gated work");
 
         vm.prank(client);
         commerce.setAdjudicator(jobId, address(court));
@@ -87,6 +99,27 @@ contract AdjudicationTest is Assertions {
         vm.prank(provider);
         commerce.attachEvidence(jobId, evidence);
     }
+    /// The Space every fixture here spends from, and a limits contract that has
+    /// actually been signed for it. Escrow asks SpaceBudget before it takes the
+    /// money, so a fixture without this is not testing escrow — it is testing
+    /// that escrow refuses, which it does.
+    function _bindSpace() internal {
+        address[] memory allow = new address[](1);
+        allow[0] = provider;
+        SpaceBudget.Binding memory b = SpaceBudget.Binding({
+            spaceId: bytes32(keccak256("test-space")),
+            owner: spaceOwner,
+            maxPerTransaction: 1_000_000e18,
+            dailyBudget: 10_000_000e18,
+            recipients: allow,
+            deadline: block.timestamp + 3650 days,
+            nonce: 0
+        });
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(spaceOwnerKey, budget.bindingDigestFor(address(budget), block.chainid, b));
+        budget.bind(b, abi.encodePacked(r, s, v));
+    }
+
 
     function testCourtApprovalSettlesEscrowToProvider() public {
         uint256 jobId = _courtBoundSubmittedJob(200_000_000);
@@ -167,7 +200,7 @@ contract AdjudicationTest is Assertions {
         uint256 expiry = block.timestamp + 7 days;
 
         vm.prank(client);
-        uint256 jobId = commerce.createJob(provider, evaluator, expiry, "no proof yet");
+        uint256 jobId = commerce.createJob(bytes32(keccak256("test-space")), provider, evaluator, expiry, "no proof yet");
 
         vm.prank(client);
         commerce.setAdjudicator(jobId, address(court));
