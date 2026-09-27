@@ -85,7 +85,41 @@ export function load(store, filePath) {
   store._nextInviteSeq = data.counters?.invite ?? 1;
   store._nextGovernanceRequestSeq = data.counters?.governanceRequest ?? 1;
   store._nextX402IntentSeq = data.counters?.x402Intent ?? 1;
+  const repaired = repairDemoFlags(store);
+  if (repaired.length > 0) {
+    console.log(`[persist] repaired demo flag on ${repaired.length} Space(s) from an older snapshot: ${repaired.join(', ')}`);
+  }
   return true;
+}
+
+/** The seed key the demo Space carries, and the legacy id it was seeded under. */
+const DEMO_SEED_KEY = 'acme-procurement';
+const LEGACY_DEMO_ID = /^space-acme-procurement-/;
+
+/**
+ * Restore the demo flag onto a Space that an older snapshot lost it from.
+ *
+ * A snapshot written before `demo` existed has no such field on any Space, and
+ * a missing field is indistinguishable from a false one to everything
+ * downstream. The entry gate then offers no demo Spaces, and a visitor who is
+ * not already a member is left looking at "nothing to show yet" — which is
+ * exactly what happened in production after a routine restart. Nothing errored,
+ * because a missing flag and a false one look the same all the way down.
+ *
+ * Matching is by the stable seed key, falling back to the legacy generated id
+ * for snapshots too old to carry a key. It only ever adds the flag back, never
+ * clears one, so it cannot quietly unpublish a Space someone marked by hand.
+ */
+function repairDemoFlags(store) {
+  const repaired = [];
+  for (const [spaceId, space] of store.spaces) {
+    if (space?.demo === true) continue;
+    if (space?.seedKey !== DEMO_SEED_KEY && !LEGACY_DEMO_ID.test(spaceId)) continue;
+    space.demo = true;
+    if (!space.seedKey) space.seedKey = DEMO_SEED_KEY;
+    repaired.push(spaceId);
+  }
+  return repaired;
 }
 
 export function describe(filePath) {

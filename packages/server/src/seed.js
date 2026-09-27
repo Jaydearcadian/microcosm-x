@@ -39,7 +39,11 @@ export async function buildDemoSpace(store = new SpaceStore()) {
   // Marked so the entry gate can offer this as a deliberate demo rather than
   // offering every Space the visitor happens not to be a member of — which
   // swept up everything the test suite had ever created.
-  store.markSpaceAsDemo(spaceId);
+  //
+  // The key is what makes this survive a restart. The generated id and the
+  // description have both changed since this Space was first seeded, so an
+  // older snapshot can only be repaired by matching something stable.
+  store.markSpaceAsDemo(spaceId, 'acme-procurement');
 
   const signer = privateKeyToAccount(DEMO_SIGNER_KEY);
   store.bindMemberAddress(spaceId, founder, signer.address);

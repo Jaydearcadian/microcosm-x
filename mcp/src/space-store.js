@@ -832,10 +832,21 @@ export class SpaceStore {
     };
   }
 
-  /** Flags a Space as a worked example the entry gate may offer. */
-  markSpaceAsDemo(spaceId) {
+  /**
+   * Flags a Space as a worked example the entry gate may offer.
+   *
+   * The seedKey is the durable half, and it exists because of a live outage. A
+   * Space's id is generated, and its name and description have both been edited
+   * since the seed was written, so neither survives as a way to recognise this
+   * Space in an older snapshot. A snapshot written before the demo flag existed
+   * therefore restored with no demo Space at all, and the entry gate dead-ended
+   * every visitor who was not already a member — with no error anywhere, since
+   * a missing flag and a false one look identical to everything downstream.
+   */
+  markSpaceAsDemo(spaceId, seedKey = null) {
     const space = this._getSpaceOrThrow(spaceId);
     space.demo = true;
+    if (seedKey) space.seedKey = seedKey;
     return space;
   }
 

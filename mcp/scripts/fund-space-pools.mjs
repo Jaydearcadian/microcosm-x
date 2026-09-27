@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: MIT
+import fs from 'node:fs';
 import { createPublicClient, createWalletClient, http, parseAbi, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { SpaceStore } from '../src/space-store.js';
@@ -103,7 +104,21 @@ async function keccakText(text) {
   return keccak256(toBytes(text));
 }
 
-const store = new SpaceStore({ seed: true });
+// Which ledger to back. The default is the snapshot the service actually boots
+// from, because funding a store the seed just built in memory is how this script
+// first reported success having touched one Space out of nine: it agreed with
+// its own fresh seed rather than with production. Pass a path to be explicit.
+const snapshotPath = process.argv.find((a) => a.endsWith('.json'));
+const PRODUCTION = '/var/lib/microcosm/microcosm-data.json';
+const store = new SpaceStore({ seed: false });
+if (snapshotPath || fs.existsSync(PRODUCTION)) {
+  const file = snapshotPath || PRODUCTION;
+  const { load } = await import('../../packages/server/src/persist.js');
+  load(store, file);
+  console.log(`  ledger: ${file} (${store.spaces.size} space(s))`);
+} else {
+  throw new Error('fund-space-pools: no ledger found. Pass a snapshot path explicitly rather than funding a seeded store.');
+}
 const spaces = [...store.spaces.entries()].filter(([, s]) => Number(s.balance || 0) > 0);
 
 console.log(`${apply ? 'APPLYING' : 'DRY RUN'} · router ${router} · asset ${asset} (${decimals}dp)`);
