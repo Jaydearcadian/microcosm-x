@@ -211,6 +211,20 @@ test('M3-5: activity pagination with seq cursors', async () => {
 
 test('M3-6: SSE stream delivers live payment settlement', async () => {
   const { spaceId } = ctx;
+  // A direct payment goes through SettlementRouter, which refuses an unbound
+  // Space — correctly, since nobody has signed for that money leaving. The
+  // Space this suite provisions has to be bound before its payment can settle.
+  const { spaceIdToBytes32 } = await import('../../../mcp/src/xlayer.js');
+  const { bindSpaceOnchain } = await import('../../../mcp/test/helpers/bind-space.mjs');
+  await bindSpaceOnchain({
+    rpc: chain.rpc,
+    spaceId: spaceIdToBytes32(spaceId),
+    owner: OP,
+    key: chain.keys.deployer,
+    chainId: chain.chainId,
+    asset: chain.contracts.MockERC20,
+    recipients: [VENDOR],
+  });
   const res = await fetch(`${base}/api/spaces/${spaceId}/events`);
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/event-stream/);

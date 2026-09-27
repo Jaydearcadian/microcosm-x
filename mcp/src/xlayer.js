@@ -63,8 +63,13 @@ function addresses() {
   CACHED = {
     AgenticCommerce: process.env.XLAYER_COMMERCE_ADDRESS || testnet.AgenticCommerce,
     MockERC20: process.env.XLAYER_USDC_ADDRESS || testnet.MockERC20,
+    // The router is what a direct payment goes through, and what consults the
+    // Space's signed limits. Without it the adapter would fall back to the
+    // escrow path, which is the bypass this split exists to close.
+    SettlementRouter: process.env.XLAYER_ROUTER_ADDRESS || testnet.SettlementRouter,
+    SpaceBudget: process.env.XLAYER_BUDGET_ADDRESS || testnet.SpaceBudget,
   };
-  if (!CACHED.AgenticCommerce || !CACHED.MockERC20) {
+  if (!CACHED.AgenticCommerce || !CACHED.MockERC20 || !CACHED.SettlementRouter) {
     throw new Error('XLayerAdapter: missing contract addresses (forge.json or XLAYER_*_ADDRESS overrides)');
   }
   return CACHED;
@@ -224,6 +229,48 @@ export class XLayerAdapter {
       rpc: this.rpc,
       kernel: addresses().AgenticCommerce,
       usdc: addresses().MockERC20,
+    };
+  }
+
+  /**
+   * REAL onchain settlement of a plain disbursement.
+   *
+   * This is the instrument a direct payment should use, and it is a different
+   * one from the Work Order path below. A disbursement has no deliverable, so
+   * routing it through createJob/fund/submit/complete meant inventing a job and
+   * submitting a deliverable hash that was a constant — and, because that path
+   * goes through AgenticCommerce, it bypassed the Space's signed limits
+   * entirely. SettlementRouter asks SpaceBudget first, so a cap the owner
+   * signed actually stops the payment here.
+   *
+   * Fails closed: an unbound Space, an unregistered asset, an unlisted
+   * recipient or an over-cap amount all revert rather than settle.
+   */
+  settleDirectOnchain({ spaceId, paymentIdHash, recipient, amount }) {
+    requireAddress('recipient', recipient);
+    requireBytes32('paymentIdHash', paymentIdHash);
+    const amountBase = toBaseUnitsExact(amount);
+    if (amountBase <= 0n) throw new Error(`XLayerAdapter: amount must be positive, got '${amount}'`);
+
+    const router = addresses().SettlementRouter;
+    const usdc = addresses().MockERC20;
+    const send = makeSequencer(privKey());
+    // The router pulls with transferFrom, so the broadcaster has to approve it
+    // first — the same step the escrow path takes for the kernel. Without this
+    // the settlement reverts "allowance too low", which says nothing about the
+    // cause.
+    send(usdc, 'approve(address,uint256)', [router, String(amountBase)]);
+    const receipt = send(router, 'settleDirect(bytes32,bytes32,address,address,uint256)', [
+      spaceIdToBytes32(spaceId),
+      paymentIdHash,
+      usdc,
+      recipient,
+      String(amountBase),
+    ]);
+    return {
+      txHash: receipt.txHash,
+      txHashes: { direct: receipt.txHash },
+      spaceIdOnChain: spaceIdToBytes32(spaceId),
     };
   }
 

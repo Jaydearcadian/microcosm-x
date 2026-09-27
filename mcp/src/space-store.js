@@ -362,10 +362,26 @@ export class SpaceStore {
   async _liveSettle(args) {
     if (this.settlement) return this.settlement(args);
     const { XLayerAdapter } = await import('./xlayer.js');
-    const { space, jobIdLabel, provider, evaluatorId, evaluatorAddr, description, budget, deliverableHash } = args;
+    const { space, jobIdLabel, provider, evaluatorId, evaluatorAddr, description, budget, deliverableHash, kind } = args;
     const adapter = new XLayerAdapter();
     if (adapter.chainId !== space.chainId) {
       throw new Error(`Chain mismatch: Space '${space.id}' expects chain ${space.chainId}, adapter targets ${adapter.chainId} (${adapter.rpc})`);
+    }
+
+    // A plain disbursement and a Work Order are different instruments. They used
+    // to share one, which meant a payment with no deliverable was modelled as a
+    // job with a fabricated deliverable hash — and because that path runs
+    // through AgenticCommerce, it never asked the Space's signed limits whether
+    // the payment was allowed. This is the fix: the payment goes to the router,
+    // which asks SpaceBudget first.
+    if (kind === 'payment') {
+      const { spaceIdToBytes32 } = await import('./xlayer.js');
+      return adapter.settleDirectOnchain({
+        spaceId: space.id,
+        paymentIdHash: deliverableHash,
+        recipient: provider,
+        amount: budget,
+      });
     }
     const { providerKey } = await import('./provider-key.js');
     const evaluator = evaluatorAddr || evaluatorId;
@@ -387,6 +403,7 @@ export class SpaceStore {
     try {
       live = await this._liveSettle({
         space,
+        kind: 'payment',
         jobIdLabel: actionId,
         provider: recipient,
         evaluatorId: actorId,
@@ -1163,6 +1180,13 @@ export class SpaceStore {
     try {
       live = await this._liveSettle({
         space,
+        // Escrow genuinely belongs on AgenticCommerce: the money is held
+        // against a deliverable until the evaluator releases it. It is the one
+        // path that has no SpaceBudget check, because escrow was written before
+        // the limits contract existed and has no spaceId on a Job at all. Until
+        // that is added, a Work Order is a way to move a Space's money without
+        // the signed caps being consulted.
+        kind: 'work',
         jobIdLabel: job.jobId,
         provider: job.provider,
         evaluatorId: job.evaluator,

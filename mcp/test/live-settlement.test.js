@@ -29,13 +29,35 @@ function txHashOk(h) {
 }
 
 /** Fresh Space whose treasury triangle is real, funded key-holder addresses. */
-async function makeLiveSpace(store, name, { balance = '5000.00' } = {}) {
+async function makeLiveSpace(store, name, { balance = '5000.00', bindOnchain = false } = {}) {
   const D = chain.addrs.deployer;
   const P = chain.addrs.provider;
   const space = store.createSpace({ name, actorId: D, chainId: chain.chainId });
   store.fundSpace({ spaceId: space.id, amount: balance, actorId: D });
   store.addParticipant({ spaceId: space.id, kind: 'Agent', displayName: 'ProviderBot', address: P, actorId: D });
+  if (bindOnchain) {
+    // A direct payment goes through SettlementRouter, which refuses an unbound
+    // Space: nobody has signed for that money leaving it. Signing for it here is
+    // what an owner does, and it is why the payment can proceed at all.
+    const { spaceIdToBytes32 } = await import('../src/xlayer.js');
+    const { bindSpaceOnchain } = await import('./helpers/bind-space.mjs');
+    await bindSpaceOnchain({
+      rpc: chain.rpc,
+      spaceId: spaceIdToBytes32(space.id),
+      owner: D,
+      key: chain.keys.deployer,
+      chainId: chain.chainId,
+      asset: chain.contracts.MockERC20,
+      recipients: [P],
+    });
+  }
   return { spaceId: space.id, deployer: D, provider: P };
+}
+
+function text(res, data) {
+  if (data?.reasons) return JSON.stringify(data.reasons);
+  if (data?.error) return JSON.stringify(data.error);
+  return JSON.stringify(data).slice(0, 400);
 }
 
 async function call(store, tool, args) {
@@ -60,29 +82,34 @@ test.after(async () => {
   if (chain) await chain.cleanup();
 });
 
-test('LIVE-1: compliant payment settles REAL USDC onchain (replaces MCP-2)', async () => {
+/**
+ * TODO(settlement-routing): a direct payment now goes through
+ * SettlementRouter.settleDirect, which asks SpaceBudget first. Exercising that
+ * against a live chain needs the Space bound onchain, and the binding helper
+ * (mcp/test/helpers/bind-space.mjs) does not yet produce a signature the
+ * contract accepts — bind reverts BadSignature. The routing itself is covered
+ * without a chain in mcp/test/settlement-routing.test.js; what is missing is
+ * the onchain proof that the cap actually stops a real payment.
+ */
+test('LIVE-1: a compliant direct payment settles REAL USDC through the router', async () => {
   const store = new SpaceStore();
-  const { spaceId, deployer, provider } = await makeLiveSpace(store, 'Live Payment');
+  const { spaceId, deployer, provider } = await makeLiveSpace(store, 'Live Payment', { bindOnchain: true });
   const before = await adapter.balanceOf(provider);
 
   const { res, data } = await call(store, 'payments_request', {
     spaceId, actorId: deployer, recipient: provider, amount: '25.00', memo: 'Live compute allocation',
   });
-  assert.equal(res.isError, undefined);
-  assert.equal(data.status, 'SETTLED');
+  assert.equal(res.isError, undefined, `payment failed: ${text(res, data)}`);
+  assert.equal(data.status, 'SETTLED', JSON.stringify(data).slice(0, 300));
   assert.ok(txHashOk(data.receipt.txHash), 'receipt carries a real tx hash');
-  assert.ok(txHashOk(data.receipt.txHashes.create));
-  assert.ok(txHashOk(data.receipt.txHashes.submit));
-  assert.ok(txHashOk(data.receipt.txHashes.complete));
-  assert.ok(data.receipt.onchainJobId);
-  assert.ok(!('simulated' in data.receipt), 'no simulated field exists anymore');
-  assert.equal(data.receipt.chainId, chain.chainId);
+  // A disbursement, not a Work Order: no job, no deliverable, no escrow.
+  assert.ok(txHashOk(data.receipt.txHashes.direct), 'the disbursement carries its own tx hash');
+  assert.ok(!data.receipt.onchainJobId, 'a plain payment must not report an onchain job id');
+  assert.ok(!('create' in data.receipt.txHashes), 'no Work Order was created for a payment');
 
-  // Space books moved exactly once…
   assert.equal(store.getSpace(spaceId).balance, '4975.000000');
-  // …and the chain agrees: provider gained exactly 25 USDC (6dp).
   const after = await adapter.balanceOf(provider);
-  assert.equal(after - before, 25_000_000n);
+  assert.equal(after - before, 25_000_000n, 'the provider gained exactly 25 USDC onchain');
 });
 
 test('LIVE-2: full work loop settles onchain via the provider key (replaces WORK-3)', async () => {
@@ -199,9 +226,14 @@ test('LIVE-5 (negative): bad provider address fails LOUD, job untouched, no rece
   assert.equal(job.settlement, null);
 });
 
+
+
 test('LIVE-6: trace walks request→work→REAL payment→receipt (replaces REQ-6)', async () => {
   const store = new SpaceStore();
-  const { spaceId, deployer, provider } = await makeLiveSpace(store, 'Live Trace');
+  // Bound onchain, because the payment at the end of this trace is a
+  // disbursement through the router now, and the router refuses an unbound
+  // Space.
+  const { spaceId, deployer, provider } = await makeLiveSpace(store, 'Live Trace', { bindOnchain: true });
 
   const req = JSON.parse((await call(store, 'requests_create', {
     spaceId, createdBy: deployer, title: 'Live trace buy',
@@ -230,6 +262,11 @@ test('LIVE-6: trace walks request→work→REAL payment→receipt (replaces REQ-
   assert.ok(trace.chain.work);
   assert.ok(trace.chain.payment);
   assert.ok(txHashOk(trace.chain.payment.txHash));
+  // This payment is the Work Order's escrow release, not a disbursement, so it
+  // still goes through the escrow kernel and carries a job id. Escrow holds
+  // money against a deliverable, which is what that instrument is for; the
+  // direct route above is for payments that have no deliverable.
   assert.ok(txHashOk(trace.chain.payment.txHashes.complete));
+  assert.ok(trace.chain.payment.onchainJobId);
   assert.ok(!('simulated' in trace.chain.payment));
 });

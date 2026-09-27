@@ -141,10 +141,20 @@ function deployKernel(rpc, deployerKey) {
   data.transactions.forEach((t, i) => {
     if (t.contractName && data.receipts[i]?.contractAddress) byName[t.contractName] = data.receipts[i].contractAddress;
   });
-  for (const name of ['AgenticCommerce', 'MockERC20']) {
+  // The router and the limits contract are captured too. A direct payment goes
+  // through SettlementRouter, which consults SpaceBudget, so a harness that
+  // only knew about the escrow kernel would leave the payment path pointing at
+  // whatever forge.json happened to name — a different chain entirely.
+  for (const name of ['AgenticCommerce', 'MockERC20', 'SettlementRouter', 'SpaceBudget']) {
     if (!byName[name]) throw new Error(`chain harness: deploy did not produce ${name} (artifact ${artifact})`);
   }
-  return { chainId: Number(chainId), AgenticCommerce: byName.AgenticCommerce, MockERC20: byName.MockERC20 };
+  return {
+    chainId: Number(chainId),
+    AgenticCommerce: byName.AgenticCommerce,
+    MockERC20: byName.MockERC20,
+    SettlementRouter: byName.SettlementRouter,
+    SpaceBudget: byName.SpaceBudget,
+  };
 }
 
 function mintUsdc(rpc, usdc, key, to, amountBase) {
@@ -176,6 +186,8 @@ export async function ensureChain({ port = 8545 } = {}) {
     process.env.XLAYER_CHAIN_ID = String(chainId);
     process.env.XLAYER_COMMERCE_ADDRESS = contracts.AgenticCommerce;
     process.env.XLAYER_USDC_ADDRESS = contracts.MockERC20;
+    process.env.XLAYER_ROUTER_ADDRESS = contracts.SettlementRouter;
+    process.env.XLAYER_BUDGET_ADDRESS = contracts.SpaceBudget;
     const { resetAddressCache } = await import('../../src/xlayer.js');
     resetAddressCache();
     return {
@@ -238,6 +250,8 @@ function applyChainEnv(booted) {
   process.env.XLAYER_CHAIN_ID = String(booted.chainId);
   process.env.XLAYER_COMMERCE_ADDRESS = booted.contracts.AgenticCommerce;
   process.env.XLAYER_USDC_ADDRESS = booted.contracts.MockERC20;
+  process.env.XLAYER_ROUTER_ADDRESS = booted.contracts.SettlementRouter;
+  process.env.XLAYER_BUDGET_ADDRESS = booted.contracts.SpaceBudget;
   process.env.PRIVATE_KEY = booted.keys.deployer;
   process.env.PROVIDER_KEY = booted.keys.provider;
 }
@@ -314,7 +328,16 @@ async function bootLocalChain(port, rpc) {
       child,
       rpc,
       chainId: deployed.chainId,
-      contracts: { AgenticCommerce: deployed.AgenticCommerce, MockERC20: deployed.MockERC20 },
+      // Carried through from deployKernel rather than rebuilt, so the router and
+      // the limits contract are not dropped on the way out. A direct payment
+      // goes through the router, so losing it here pointed the payment path at
+      // whatever forge.json named instead.
+      contracts: {
+        AgenticCommerce: deployed.AgenticCommerce,
+        MockERC20: deployed.MockERC20,
+        SettlementRouter: deployed.SettlementRouter,
+        SpaceBudget: deployed.SpaceBudget,
+      },
       keys: { deployer: deployerKey, provider: providerKey },
       addrs: { deployer, provider },
       cleanup: async () => {
