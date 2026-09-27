@@ -755,6 +755,76 @@ export class SpaceStore {
     return { ...space };
   }
 
+  /**
+   * Compare what our ledger claims each Space holds against what the chain says
+   * the router is actually holding for it.
+   *
+   * Until the router funds payments from a Space's own pool, these two numbers
+   * are expected to disagree — the ledger is a claim and the chain has nothing
+   * behind it. That is worth saying out loud rather than leaving to be
+   * discovered during an incident, so the report names the gap rather than
+   * hiding it behind a boolean.
+   *
+   * Three outcomes, and they mean different things:
+   *   AGREES   — the ledger and the chain match. Safe to fund from the pool.
+   *   UNBACKED  — the ledger claims money the chain is not holding for anyone.
+   *   UNRECORDED— the chain holds funds for a Space the ledger says are empty,
+   *               which usually means a deposit nobody told the server about.
+   */
+  async reconcileOnchainBalances({ spaceIds = null } = {}) {
+    const ids = spaceIds || [...this.spaces.keys()];
+    const claims = {};
+    for (const id of ids) {
+      const space = this.spaces.get(id);
+      if (space) claims[id] = toBaseUnits(space.balance || '0');
+    }
+    const { XLayerAdapter } = await import('./xlayer.js');
+    const held = await new XLayerAdapter().heldBalances(ids);
+
+    const perSpace = [];
+    let claimTotal = 0n;
+    let heldTotal = 0n;
+    for (const id of ids) {
+      const claim = claims[id] ?? 0n;
+      const actual = held.perSpace[id] ?? 0n;
+      claimTotal += claim;
+      heldTotal += actual;
+      perSpace.push({
+        spaceId: id,
+        claimed: fromBaseUnits(claim),
+        heldOnChain: fromBaseUnits(actual),
+        difference: fromBaseUnits(claim > actual ? claim - actual : actual - claim),
+        agrees: claim === actual,
+        state: claim === actual ? 'AGREES' : claim > actual ? 'UNBACKED' : 'UNRECORDED',
+      });
+    }
+
+    // The chain's own invariant first: what it holds for Spaces should equal
+    // what it says it owes, and the difference should be the excess it can sweep.
+    const chainBalances = held.routerTokenBalance === held.totalAccounted
+      && held.sumOfSpaceBalances === held.totalAccounted;
+
+    const agrees = perSpace.every((row) => row.agrees);
+    return {
+      perSpace,
+      summary: {
+        claimTotal: fromBaseUnits(claimTotal),
+        heldTotal: fromBaseUnits(heldTotal),
+        routerTokenBalance: fromBaseUnits(held.routerTokenBalance),
+        totalAccounted: fromBaseUnits(held.totalAccounted),
+        excess: fromBaseUnits(held.excess),
+        unbacked: fromBaseUnits(claimTotal > heldTotal ? claimTotal - heldTotal : 0n),
+        unrecorded: fromBaseUnits(heldTotal > claimTotal ? heldTotal - claimTotal : 0n),
+      },
+      // The chain is internally consistent even when our ledger is not. Worth
+      // separating: one is a bug in us, the other would be a bug in a contract.
+      chainBalances,
+      agrees,
+      readyToFundFromPool: agrees && chainBalances,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   /** Flags a Space as a worked example the entry gate may offer. */
   markSpaceAsDemo(spaceId) {
     const space = this._getSpaceOrThrow(spaceId);

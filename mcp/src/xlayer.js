@@ -233,6 +233,50 @@ export class XLayerAdapter {
   }
 
   /**
+   * What the chain says is held, per Space and in total.
+   *
+   * This is the other half of the reconciliation: our ledger says what each
+   * Space has, the chain says what the router is actually holding for it, and
+   * until those agree the ledger is a claim rather than a fact. Reading it is
+   * deliberately one call per Space plus one for the total, so the report can be
+   * produced without trusting anything we compute ourselves.
+   */
+  async heldBalances(spaceIds) {
+    const router = addresses().SettlementRouter;
+    const token = addresses().MockERC20;
+
+    // Reads, not transactions. A router deployed before the pool existed has no
+    // such method, and "nothing is accounted for" is a real answer rather than a
+    // failure — so an unreadable value is zero, not an exception.
+    const read = (to, sig, args = []) => {
+      try {
+        const out = cast(['call', to, sig, ...args, '--rpc-url', rpcUrl()]);
+        return BigInt(String(out).split(' ')[0]);
+      } catch {
+        return 0n;
+      }
+    };
+
+    const perSpace = {};
+    let sumOfSpaceBalances = 0n;
+    for (const spaceId of spaceIds) {
+      const held = read(router, 'spaceBalance(bytes32)(uint256)', [spaceIdToBytes32(spaceId)]);
+      perSpace[spaceId] = held;
+      sumOfSpaceBalances += held;
+    }
+    const totalAccounted = read(router, 'totalAccounted()(uint256)');
+    const routerTokenBalance = read(token, 'balanceOf(address)(uint256)', [router]);
+    return {
+      perSpace,
+      sumOfSpaceBalances,
+      totalAccounted,
+      routerTokenBalance,
+      // Sent to the router that no Space has a claim to.
+      excess: routerTokenBalance > totalAccounted ? routerTokenBalance - totalAccounted : 0n,
+    };
+  }
+
+  /**
    * REAL onchain settlement of a plain disbursement.
    *
    * This is the instrument a direct payment should use, and it is a different
