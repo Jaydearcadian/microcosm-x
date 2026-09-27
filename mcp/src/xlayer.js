@@ -21,6 +21,7 @@
  * Requires: cast (foundry), network access to the RPC.
  */
 
+import { privateKeyToAccount } from 'viem/accounts';
 import { execFileSync } from 'node:child_process';
 import { keccak256, toBytes } from 'viem';
 import { readFileSync, existsSync } from 'node:fs';
@@ -254,8 +255,21 @@ export class XLayerAdapter {
     sendD(usdc, 'approve(address,uint256)', [kernel, String(budgetBase)]);
     sendD(kernel, 'fund(uint256,uint256)', [String(jobId), String(budgetBase)]);
 
-    // submit must come from the provider's own key (onchain NotProvider
-    // check). Same key → continue the sequence; distinct key → own sequence.
+    // submit must come from the provider's own key: the contract checks it, and
+    // paying an address whose key we do not hold cannot get past that step.
+    //
+    // Falling back to the deployer key used to look like it worked and then
+    // surfaced as "tx failed or hash unparseable (status 0)", which says
+    // nothing. The counterparty here is a vendor address the app has no key
+    // for, so the honest answer is to say which key is missing.
+    const broadcaster = privateKeyToAccount(deployerKey).address;
+    if (!providerKey && provider.toLowerCase() !== broadcaster.toLowerCase()) {
+      throw new Error(
+        `XLayerAdapter: settlement needs the provider's key to submit the deliverable, and none is ` +
+        `configured for ${provider}. Set PROVIDER_KEY, or make the provider the account whose key is ` +
+        `used to broadcast. The provider is checked onchain, so this cannot be signed around.`,
+      );
+    }
     const pKey = providerKey || deployerKey;
     const submit = pKey === deployerKey
       ? sendD(kernel, 'submit(uint256,bytes32)', [String(jobId), deliverableHash])
