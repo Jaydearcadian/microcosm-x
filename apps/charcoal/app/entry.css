@@ -75,3 +75,10 @@
 .csf__error { margin-top: 16px; padding: 11px 14px; border: 1px solid var(--danger); border-radius: var(--radius-ctl); color: var(--danger); font-size: 13px; }
 .csf__hint { color: var(--text-4); font-size: 12px; }
 @media (max-width: 900px) { .csf__grid { grid-template-columns: 1fr; } .csf__add { grid-template-columns: 1fr; } }
+
+/* The example Spaces offered from the gate. Deliberately quieter than the two
+   real ways in: a demo is an option, not the path. */
+.entry-gate__demo { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--hairline-soft); }
+.entry-gate__demo h3 { margin: 0 0 6px; font-size: 15px; color: var(--text-2); }
+.entry-gate__demo p { max-width: 66ch; margin: 0; font-size: 13px; line-height: 1.6; }
+.entry-gate__demo-list { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }

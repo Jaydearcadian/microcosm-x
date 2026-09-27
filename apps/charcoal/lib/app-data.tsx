@@ -98,14 +98,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
       const candidates = list.filter((item) => !spaceId || item.id === spaceId);
       if (!candidates.length) throw new Error("The selected Space is no longer available.");
+
+      // Only ever auto-select a Space the visitor actually belongs to.
+      //
+      // This used to take the first Space with work, which on a fresh install
+      // is a seeded demo someone is 'unaffiliated' with. The result was that a
+      // new visitor was dropped into a Space that was not theirs: its money,
+      // rules and work were on screen, none of the controls did anything, and
+      // the create-or-join gate never rendered because a Space was selected.
+      // The only way to reach the product's actual entry point was to notice
+      // the "Active Space" picker and set it back to "No Space yet".
+      //
+      // A Space you are not a member of is a demo, and a demo is something you
+      // choose from the gate rather than something chosen for you.
+      const mine = candidates.filter((item) => item.myRole && item.myRole !== 'unaffiliated');
+      if (!spaceId && mine.length === 0) {
+        setSpace(null); setBounds(null); setCapabilities(null); setParticipants([]); setJobs([]); setRequests([]); setActivity([]); setNextCursor(0);
+        autoSelectSpaceId("");
+        return;
+      }
       // Pick a Space that has work, but do not fetch jobs for every Space to do
       // it. This ran one request per Space on every page load, and because the
       // e2e suite creates a Space per test and never deletes one, the list grew
       // until a single page load fired 119 parallel requests. Probe a bounded
       // prefix instead and fall back to the first candidate.
-      const probe = candidates.slice(0, AUTO_SELECT_PROBE);
+      const probe = (spaceId ? candidates : mine).slice(0, AUTO_SELECT_PROBE);
       const jobCounts = await Promise.all(probe.map(async (item) => ({ item, jobs: await fetchJobs(item.id) })));
-      const selected = jobCounts.find(({ jobs }) => jobs.length > 0)?.item ?? candidates[0];
+      const pool = spaceId ? candidates : mine;
+      const selected = jobCounts.find(({ jobs }) => jobs.length > 0)?.item ?? pool[0];
       autoSelectSpaceId(selected.id);
       const [nextSpace, nextBounds, nextCaps, nextParticipants, nextJobs, nextRequests, nextActivity] = await Promise.all([
         fetchSpace(selected.id), fetchBoundsFor(selected.id, actorId), fetchCapabilities(selected.id, actorId),

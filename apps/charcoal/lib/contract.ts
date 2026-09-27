@@ -12,7 +12,13 @@ export interface Bounds {
   dailyBudget: string; maxPerTransaction: string; denials: number;
 }
 export interface SpaceRules { maxPerTransaction: string; dailyBudget: string; allowedCounterparties: string[] }
-export interface SpaceSummary { id: string; name: string; description?: string; currency: string; balance: string; myRole: string }
+export interface SpaceSummary {
+  id: string; name: string; description?: string; currency: string; balance: string;
+  myRole: string;
+  /** Deliberately a worked example the entry gate may offer. Not "any Space you
+   *  are not a member of" — that swept up everything the tests had created. */
+  demo?: boolean;
+}
 export interface Space {
   id: string; name: string; description?: string; network: string; chainId: number; balance: string;
   currency: string; totalSpentToday?: string; members: Array<{ id: string; name: string; role: string; address?: string }>;

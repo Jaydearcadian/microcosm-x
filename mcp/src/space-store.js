@@ -137,6 +137,11 @@ export class SpaceStore {
           currency: space.currency,
           balance: space.balance,
           myRole: (space.members || []).find((m) => m.id === actorId)?.role || 'unaffiliated',
+          // A demo is a Space deliberately put on show. Deriving it from
+          // "anything you are not a member of" swept up every Space the test
+          // suite ever made, so the demo door listed things like
+          // space-live-settlement-probe-38b2 as if they were curated examples.
+          demo: space.demo === true,
         });
       }
     }
@@ -731,6 +736,13 @@ export class SpaceStore {
       timestamp: now,
     });
     return { ...space };
+  }
+
+  /** Flags a Space as a worked example the entry gate may offer. */
+  markSpaceAsDemo(spaceId) {
+    const space = this._getSpaceOrThrow(spaceId);
+    space.demo = true;
+    return space;
   }
 
   bindMemberAddress(spaceId, memberId, address) {

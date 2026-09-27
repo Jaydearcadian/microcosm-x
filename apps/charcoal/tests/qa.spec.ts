@@ -1,3 +1,4 @@
+import { gotoView } from './helpers/space';
 import { test, expect } from '@playwright/test';
 
 test('landing does not claim simulated hashes', async ({ page }) => {
@@ -5,9 +6,15 @@ test('landing does not claim simulated hashes', async ({ page }) => {
   await expect(page.getByText('SIMULATED', { exact: true })).toHaveCount(0);
 });
 
-test('Space access requires an authenticated wallet', async ({ page }) => {
+test('Space access requires a connected wallet, and says so first', async ({ page }) => {
+  // The gate replaced the old "Connect a wallet to enter a Space" line. The
+  // requirement did not change: no Space can be entered, created or paid for
+  // until a wallet is connected, and the gate now says that before offering the
+  // two ways in rather than after.
   await page.goto('/app');
-  await expect(page.getByText('Connect a wallet to enter a Space.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'You are not in a Space yet.' })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText('Start by connecting a wallet.')).toBeVisible();
+  expect(await page.getByRole('button', { name: 'Create a Space' }).count()).toBe(0);
 });
 test('bearer invite URL opens the redemption surface', async ({ page }) => {
   await page.goto('/app/access?code=invite-demo');
@@ -23,7 +30,7 @@ test('onboarding surfaces API failures instead of hanging', async ({ page }) => 
 });
 
 test('command center exposes policy and roster semantics', async ({ page }) => {
-  await page.goto('/app');
+  await gotoView(page);
   await expect(page.getByRole('heading', { name: 'The Space at a glance.' })).toBeVisible();
   await expect(page.getByText('SPACE-WIDE AUTHORITY')).toBeVisible();
   await expect(page.getByText('ROSTER', { exact: true })).toBeVisible();
@@ -32,7 +39,7 @@ test('command center exposes policy and roster semantics', async ({ page }) => {
 });
 
 test('work view exposes lifecycle board and explicit state surface', async ({ page }) => {
-  await page.goto('/app#work');
+  await gotoView(page, '/app#work');
   await expect(page.getByRole('heading', { name: 'Proof before payout.' })).toBeVisible();
   await expect(page.getByText('FUNDED', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('SUBMITTED', { exact: true }).first()).toBeVisible();
@@ -40,7 +47,7 @@ test('work view exposes lifecycle board and explicit state surface', async ({ pa
 });
 
 test('audit view exposes paginated activity and stream state', async ({ page }) => {
-  await page.goto('/app#settings=proof');
+  await gotoView(page, '/app#settings=proof');
   await expect(page.getByRole('heading', { name: 'Proof has a trail.' })).toBeVisible();
   await expect(page.getByText('LIVE ACTIVITY')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Load older activity' })).toBeEnabled();

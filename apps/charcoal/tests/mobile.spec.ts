@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { gotoView } from "./helpers/space";
 
 test.use({ viewport: { width: 390, height: 844 } });
 
@@ -11,7 +12,9 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 const routes = [
   { path: "/", ready: async (page: Page) => expect(page.getByRole("heading", { name: "One shared Space where people and software get work done." })).toBeVisible(), control: "Open on Microcosm" },
-  { path: "/app", ready: async (page: Page) => expect(page.getByRole("heading", { name: "The Space at a glance." })).toBeVisible(), control: "Connect Wallet" },
+  // /app now lands on the entry gate rather than a Space: nothing is selected
+  // for a visitor, so the assertion is that the gate is on screen and fits.
+  { path: "/app", ready: async (page: Page) => expect(page.getByRole("heading", { name: "You are not in a Space yet." })).toBeVisible(), control: "Connect Wallet" },
   { path: "/app/access?code=mobile-invite", ready: async (page: Page) => expect(page.getByRole("heading", { name: "Join the Space." })).toBeVisible(), control: "Connect Wallet" },
   { path: "/app/onboarding", ready: async (page: Page) => expect(page.getByRole("heading", { name: "Connect" })).toBeVisible(), control: "Connect Wallet" },
 ] as const;
@@ -30,7 +33,7 @@ for (const route of routes) {
 }
 
 test("app view navigation stays overflow-free and exposes wallet controls", async ({ page }) => {
-  await page.goto("/app");
+  await gotoView(page);
   const navigation = page.getByRole("navigation", { name: "App views" });
   // The four destinations, after the rail came down from eight peers. The
   // heading each one leads with is what proves the click actually navigated.

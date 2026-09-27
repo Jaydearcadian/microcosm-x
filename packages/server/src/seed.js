@@ -31,10 +31,15 @@ export async function buildDemoSpace(store = new SpaceStore()) {
 
   const space = store.createSpace({
     name: 'Acme Procurement',
-    description: 'Seeded demo Space: bounded buying with agents.',
+    description: 'A worked example: a Space with money, people, limits, and a job mid-flight.',
     actorId: founder,
   });
   const spaceId = space.id;
+
+  // Marked so the entry gate can offer this as a deliberate demo rather than
+  // offering every Space the visitor happens not to be a member of — which
+  // swept up everything the test suite had ever created.
+  store.markSpaceAsDemo(spaceId);
 
   const signer = privateKeyToAccount(DEMO_SIGNER_KEY);
   store.bindMemberAddress(spaceId, founder, signer.address);

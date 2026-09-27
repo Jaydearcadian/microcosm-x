@@ -46,7 +46,8 @@
       "SettlementRouter",
       "ClaimEscrow",
       "MockERC20",
-      "AgenticCommerce"
+      "AgenticCommerce",
+      "SpaceBudget"
     ],
     "env": [
       "PRIVATE_KEY",
@@ -59,15 +60,16 @@
     "deployments": {
       "testnet": {
         "chainId": 1952,
-        "deployedAt": "2026-09-22",
+        "deployedAt": "2026-09-26",
         "broadcastArtifact": "contracts/broadcast/DeployXLayer.s.sol/1952/run-latest.json",
-        "oklinkVerifiedAll": true,
+        "oklinkVerifiedAll": false,
         "contracts": {
-          "EnvelopeRegistry": "0xfcc29e1ac8860a3e0ae50bd8706189464b3764f6",
-          "SettlementRouter": "0xe772f79c10fac15e52909b376633a3e80cb6a2e6",
-          "ClaimEscrow": "0x767c79c97Aee5440f70074309a3efd89bF863945",
+          "EnvelopeRegistry": "0xce5577609405a16b3ad43387c079ffc24f74fbe2",
+          "SettlementRouter": "0xc1ad34e735486a0966bfc8bf5a0cd5cea54c73d7",
+          "ClaimEscrow": "0xf9b0bf4f1eeec43183bdb4b047f5e37e0a9c741c",
           "MockERC20": "0x6176287b2E80374B41388029f0b87Eb6eeE289e7",
-          "AgenticCommerce": "0xCdddCDC435f9C6C4a38D1E421b89fdcD7Be92a81"
+          "AgenticCommerce": "0xddd9d4fdf33b8a736f98470a243d9fd7735f0818",
+          "SpaceBudget": "0x1f765cc5affc71b2457b0a7b3e357e6cf05219d4"
         },
         "receipts": {
           "EnvelopeRegistry": "0xd0dda2376e383e3c09f8a782be26c9ada8b407e6a07b2d1358959820be467115",

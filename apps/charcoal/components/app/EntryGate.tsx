@@ -16,15 +16,27 @@ import { useWalletSession } from "@/lib/wallet-session";
  * It is deliberately worded as choices rather than as concepts. "Paste an
  * invite" and "Create a Space" are things you do; a bearer credential and an
  * operating context are not.
+ *
+ * The example Spaces at the bottom are a deliberate third option rather than
+ * something the app drops you into. Auto-selecting one was convenient for the
+ * person who wrote the demo and wrong for everyone else: it showed a new
+ * visitor a Space they are not a member of, with controls that do nothing, and
+ * it meant the two real ways in were never on screen.
  */
 export function EntryGate() {
-  const { spaceId, setSpaceId, refresh } = useAppData();
+  const { spaceId, setSpaceId, refresh, spaces } = useAppData();
   const { isConnected, isAuthenticated, authenticate, isAuthenticating, address } = useWalletSession();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // Only Spaces explicitly flagged as worked examples, and only ones this
+  // visitor is not already a member of. Offered, never selected for them: the
+  // app used to auto-pick an unaffiliated Space on load, which put a new
+  // visitor inside somebody else's books and hid these two doors entirely.
+  const demoSpaces = (spaces ?? []).filter((item) => item.demo === true && item.myRole === "unaffiliated");
 
   // Order matters. Creating a Space sets the selected Space, and the gate used to
   // bail out on that, which unmounted the form halfway through and threw away the
@@ -130,6 +142,29 @@ export function EntryGate() {
           </div>
         </div>
       )}
+
+      {demoSpaces.length > 0 ? (
+        <div className="entry-gate__demo">
+          <h3>Just looking?</h3>
+          <p className="muted">
+            These are example Spaces. You are not a member of them, so everything in them is
+            read-only and none of it is yours. Joining one changes nothing about your account.
+          </p>
+          <ul className="entry-gate__demo-list">
+            {demoSpaces.map((item) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={() => setSpaceId(item.id)}
+                >
+                  Open &ldquo;{item.name}&rdquo;
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }

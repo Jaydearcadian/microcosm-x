@@ -46,8 +46,14 @@ test('onboarding checks the real API and advances prechecks', async ({ page }) =
   await page.getByRole('button', { name: 'Check API and identity' }).click();
   await expect(page.getByText(/API online · chain 1952/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Space' })).toBeVisible();
-  await page.getByRole('button', { name: 'Continue with active Space' }).click();
-  await expect(page.getByRole('heading', { name: 'Participants' })).toBeVisible();
+  // The Space step offers whichever action applies. Nothing is selected for a
+  // visitor any more, so with no active Space it offers to create one; with a
+  // Space already open it offers to continue in that. Asserting one label made
+  // this test depend on the app auto-selecting a Space for you.
+  const step = page.getByRole('button', { name: /Continue with active Space|Create Space/ });
+  await expect(step).toBeVisible();
+  await step.click();
+  await expect(page.getByRole('heading', { name: 'Participants' })).toBeVisible({ timeout: 20000 });
 });
 
 test('mobile onboarding has no horizontal overflow', async ({ page }) => {

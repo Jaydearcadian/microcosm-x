@@ -22,7 +22,23 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { keccak256, toBytes } from 'viem';
 import { readFileSync, existsSync } from 'node:fs';
+
+/**
+ * The bytes32 a Space is known by on chain.
+ *
+ * The product identifies a Space by a readable string; the contracts key on
+ * bytes32. This is the bridge, and it has to match
+ * contracts/script/BindSpaceBudget.s.sol exactly, or a Space gets bound under
+ * one id and paid under another. Nothing in the runtime used to call
+ * registerSpaceToken at all, so there was no agreed derivation to disagree
+ * about — which is why the live router had no Spaces registered.
+ */
+export function spaceIdToBytes32(spaceId) {
+  return keccak256(toBytes(String(spaceId)));
+}
+
 
 export function rpcUrl() {
   return process.env.XLAYER_RPC_URL || 'https://testrpc.xlayer.tech';
