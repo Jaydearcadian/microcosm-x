@@ -24,6 +24,9 @@ contract SettlementRouter {
     mapping(bytes32 => ReceiptAnchor) public receipts;
 
     event BudgetContractSet(address indexed budget);
+    event SpaceFunded(bytes32 indexed spaceId, address indexed from, uint256 amount, uint256 spaceBalance);
+    event SpaceWithdrawn(bytes32 indexed spaceId, address indexed to, uint256 amount, uint256 spaceBalance);
+    event ExcessSwept(address indexed token, address indexed to, uint256 amount, uint256 remaining);
 
     event DirectSettlementRecorded(
         bytes32 indexed paymentIdHash,
@@ -85,6 +88,20 @@ contract SettlementRouter {
     /// Per-Space limits contract. Zero means settlement is closed, not open.
     address public budgetContract;
 
+    /// Funds held on behalf of each Space.
+    ///
+    /// Until settleDirect draws on this, the broadcaster's own balance is what
+    /// actually funds a payment and this is a shadow of it. It exists so the two
+    /// can be compared: the sum of these numbers is `totalAccounted`, and the
+    /// router's token balance should equal that exactly. Anything above it was
+    /// sent here by mistake and is sweepable.
+    mapping(bytes32 => uint256) public spaceBalance;
+
+    /// The sum of every Space balance. One number, so the invariant
+    /// `token.balanceOf(router) == totalAccounted()` is a single eth_call anyone
+    /// can check, rather than a claim our server makes about itself.
+    uint256 public totalAccounted;
+
     event ControllerUpdated(address indexed controller, bool authorized);
     event SpaceTokenRegistered(bytes32 indexed spaceId, address indexed token);
     event AttestedSettlement(
@@ -127,6 +144,52 @@ contract SettlementRouter {
         require(token != address(0), "token required");
         spaceTokens[spaceId] = token;
         emit SpaceTokenRegistered(spaceId, token);
+    }
+
+    /**
+     * Put funds into a Space's own pool.
+     *
+     * The Space's owner does this. It makes the money belong to the Space rather
+     * than to the broadcaster: a leaked broadcaster key can no longer reach it,
+     * which is the whole point of holding it here at all.
+     */
+    function deposit(bytes32 spaceId, uint256 amount) external {
+        require(spaceId != bytes32(0), "space required");
+        require(amount > 0, "amount required");
+        address token = spaceTokens[spaceId];
+        require(token != address(0), "space token not registered");
+
+        bool ok = IERC20(token).transferFrom(msg.sender, address(this), amount);
+        require(ok, "transfer failed");
+
+        spaceBalance[spaceId] += amount;
+        totalAccounted += amount;
+        emit SpaceFunded(spaceId, msg.sender, amount, spaceBalance[spaceId]);
+    }
+
+    /// Withdrawing a Space's own funds arrives with the switch that makes
+    /// settleDirect draw on this pool, because until then there is nothing here
+    /// to withdraw. It will be gated on the Space's signed owner rather than on
+    /// this contract's owner: the owner of the router must not be able to take a
+    /// Space's money, which is the property the whole arrangement exists to get.
+
+    /**
+     * Sweep tokens the router holds that no Space has a claim to.
+     *
+     * Bounded by the difference between what the router holds and what it owes,
+     * so this can never touch a Space's funds even if called by mistake. That
+     * difference is also the standing evidence of whether the books balance: if
+     * it is ever negative, something has been taken and the number says so.
+     */
+    function sweepExcess(address token, address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "recipient required");
+        uint256 held = IERC20(token).balanceOf(address(this));
+        require(held > totalAccounted, "no excess to sweep");
+        uint256 excess = held - totalAccounted;
+        require(amount <= excess, "amount exceeds excess");
+        bool ok = IERC20(token).transfer(to, amount);
+        require(ok, "transfer failed");
+        emit ExcessSwept(token, to, amount, excess - amount);
     }
 
     function domainSeparator() public view returns (bytes32) {

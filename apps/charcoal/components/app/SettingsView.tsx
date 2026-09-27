@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GovernanceView } from "@/components/app/GovernanceView";
 import { DelegationView } from "@/components/app/DelegationView";
 import { AgentView } from "@/components/app/AgentView";
@@ -32,6 +32,16 @@ function tabFromHash(): TabId {
 
 export function SettingsView() {
   const [tab, setTab] = useState<TabId>(tabFromHash);
+
+  // The hash was only ever read on mount, so a deep link worked but nothing
+  // responded to the hash changing afterwards: the back button walked away from
+  // a section without switching it, and any in-app link to #settings=proof
+  // silently showed #settings=people.
+  useEffect(() => {
+    const sync = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   const change = (next: TabId) => {
     setTab(next);

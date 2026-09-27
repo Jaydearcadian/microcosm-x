@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { gotoView } from './helpers/space';
 
 /**
  * Two doors into the app, in order, and neither opens by itself.
@@ -55,4 +56,30 @@ test('the demo is a labelled choice, and choosing it is what opens it', async ({
   // Now, and only now, a Space is open and the gate is gone.
   expect(await page.getByLabel('Active Space').inputValue()).not.toBe('');
   expect(await page.getByText('You are not in a Space yet.').count()).toBe(0);
+});
+
+/**
+ * The Settings sections are addressed by the hash, so the hash has to be
+ * listened to. It used to be read once on mount: a deep link landed on the right
+ * section, but the back button walked away from one without switching it, and
+ * any in-app change of the hash was ignored.
+ */
+test('settings follows the hash in both directions', async ({ page }) => {
+  await gotoView(page);
+  // Reach Settings the way a person does, rather than assuming a hash landed.
+  await page.getByRole('button', { name: 'Settings' }).first().click();
+  await expect(page.getByText('Rules move by signature.')).toBeVisible({ timeout: 15000 });
+  console.log('SETTINGS opened on the people section');
+
+  await page.evaluate(() => { window.location.hash = '#settings=proof'; });
+  await expect(page.getByText(/indexer|chain|activity/i).first()).toBeVisible({ timeout: 10000 });
+  console.log('SETTINGS hash -> proof switched the section');
+
+  await page.evaluate(() => { window.location.hash = '#settings=setup'; });
+  await expect(page.getByText(/setup|steps/i).first()).toBeVisible({ timeout: 10000 });
+  console.log('SETTINGS hash -> setup switched the section');
+
+  await page.evaluate(() => { window.location.hash = '#settings=people'; });
+  await expect(page.getByText('Rules move by signature.')).toBeVisible({ timeout: 10000 });
+  console.log('SETTINGS hash -> people switched back');
 });
