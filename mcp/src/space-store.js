@@ -869,9 +869,22 @@ export class SpaceStore {
     // Skipped when there is no pool to have an invariant about, because
     // "0 == 0" is true of a router that was never built to hold funds.
     const poolDeployed = held.poolDeployed !== false;
-    const chainBalances = poolDeployed
-      && held.routerTokenBalance === held.totalAccounted
-      && held.sumOfSpaceBalances === held.totalAccounted;
+    // Only the contract's own invariant counts here: what the router holds should
+    // equal what it says it owes.
+    //
+    // It deliberately does NOT compare the sum of the per-Space balances against
+    // totalAccounted. That sum only covers the Spaces this report asked about, so
+    // it is smaller than the total whenever the router owes money to any Space
+    // outside the query — and it read as a broken contract when the contract was
+    // fine. It was raising a false alarm here with a perfectly healthy router and
+    // blocking readyToFundFromPool for a reason that had nothing to do with the
+    // chain.
+    const chainBalances = poolDeployed && held.routerTokenBalance === held.totalAccounted;
+    // What the router owes that this report did not cover. Informational: it says
+    // the books are incomplete, not that the contract is wrong.
+    const uncovered = held.totalAccounted > held.sumOfSpaceBalances
+      ? held.totalAccounted - held.sumOfSpaceBalances
+      : 0n;
 
     const agrees = perSpace.every((row) => row.agrees);
     // Funds a Space holds but cannot spend, because nobody has signed its limits.
@@ -900,6 +913,8 @@ export class SpaceStore {
         spaces: stranded.map((row) => row.spaceId),
         total: fromBaseUnits(strandedTotal),
       },
+      // Held for Spaces this report did not ask about.
+      uncovered: fromBaseUnits(uncovered),
       // Agreement is not enough on its own. A Space with no pool has nothing to
       // fund from, and a Space whose limits were never signed cannot spend what
       // it holds however well the numbers line up.
@@ -2792,7 +2807,30 @@ export class SpaceStore {
       throw new Error('That signature was not made by the address signing in, over these limits');
     }
     const { XLayerAdapter } = await import('./xlayer.js');
-    const tx = await new XLayerAdapter().bindSpaceBudgetOnchain({ ...binding, signature });
+    const adapter = new XLayerAdapter();
+    const tx = await adapter.bindSpaceBudgetOnchain({ ...binding, signature });
+
+    // Wait until the chain agrees the Space is bound.
+    //
+    // The public X Layer node serves reads from a lagging backend, so a binding
+    // that was accepted can still read back as absent for a few seconds. A
+    // caller that trusts the receipt and moves on — as the seed does, funding
+    // immediately after binding — is then told the Space is unbound and the
+    // deposit is refused, or worse, a direct payment reverts NotBound. The
+    // receipt says the transaction succeeded; only the chain says the Space is
+    // usable, and those have differed here before.
+    let bound = false;
+    for (let attempt = 0; attempt < 12 && !bound; attempt += 1) {
+      bound = (await adapter.spaceBudgetBinding(spaceId)).bound;
+      if (!bound) await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+    if (!bound) {
+      throw new Error(
+        `The binding was accepted (${tx.bindTx}) but Space '${spaceId}' still does not read as bound on chain. `
+        + 'Nothing has been recorded. This is usually a lagging node — try again in a moment rather than funding a Space that may not be bound.',
+      );
+    }
+
     const record = this.recordBudgetBinding({
       spaceId,
       actorAddress,

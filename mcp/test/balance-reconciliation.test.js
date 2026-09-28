@@ -202,3 +202,34 @@ test('R2-7: a fully backed ledger with a real pool is the only thing that unbloc
     proto.heldBalances = before;
   }
 });
+
+test('R2-8: a router owing money to Spaces outside the report is not a broken contract', async () => {
+  const { store, spaceId } = setup();
+  const { XLayerAdapter } = await import('../src/xlayer.js');
+  const proto = XLayerAdapter.prototype;
+  const before = proto.heldBalances;
+  const mine = 1_000_000_000n;   // this Space's own balance
+  const theirs = 5_000_000_000n; // another Space's, not in this report
+  proto.heldBalances = async () => ({
+    poolDeployed: true,
+    bound: { [spaceId]: true },
+    // sumOfSpaceBalances only covers what was asked about.
+    perSpace: { [spaceId]: mine }, sumOfSpaceBalances: mine,
+    totalAccounted: mine + theirs,
+    routerTokenBalance: mine + theirs, excess: 0n,
+  });
+  try {
+    const report = await store.reconcileOnchainBalances({ spaceIds: [spaceId] });
+    // The contract's own invariant holds: it holds exactly what it owes.
+    assert.equal(report.chainBalances, true,
+      'a healthy router must not be reported as broken because the report is partial');
+    assert.equal(report.agrees, true, 'this Space is backed and nothing is wrong with it');
+    assert.equal(report.readyToFundFromPool, true,
+      'and it should not be blocked for something the contract is not responsible for');
+    // The gap is still reported, because our books being incomplete is a real
+    // thing to know — it just is not the contract misbehaving.
+    assert.equal(report.uncovered, '5000.000000');
+  } finally {
+    proto.heldBalances = before;
+  }
+});

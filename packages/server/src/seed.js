@@ -51,7 +51,22 @@ export async function buildDemoSpace(store = new SpaceStore()) {
   store.addParticipant({ spaceId, kind: 'Agent', displayName: agent, address: AGENT_ADDRESS, actorId: founder });
   store.addParticipant({ spaceId, kind: 'Counterparty', displayName: vendor, address: VENDOR, actorId: founder });
 
-  store.fundSpace({ spaceId, amount: '5000.00', actorId: founder });
+  // The limits, and then the money. In that order, and both against the chain
+  // when there is one to talk to.
+  //
+  // A Space whose limits were never signed on chain has nobody who can ever
+  // authorise a withdrawal, so anything deposited for it is unreachable forever.
+  // That is not hypothetical: doing it the other way round stranded 15,830 USDC
+  // across four Spaces. So the seed binds first and funds second, and a fresh
+  // seed is born able to pay and able to get its money back.
+  //
+  // A Space that is only ever recorded offline is the thing that looked fine and
+  // was not: the demo Space the UI opens on was quoting a balance the chain held
+  // nothing for, and every payment from it reverted NotBound.
+  const chainBacked = await bindAndFundOnchain(store, { spaceId, founder, signer, VENDOR });
+  if (!chainBacked) {
+    store.fundSpace({ spaceId, amount: '5000.00', actorId: founder });
+  }
 
   // The agent spends under a delegation the founder signed. This is not
   // decoration: an agent with no delegation has no spending authority at all,
@@ -146,4 +161,49 @@ export async function buildDemoSpace(store = new SpaceStore()) {
 if (process.argv[1] && process.argv[1].endsWith('seed.js')) {
   const summary = await buildDemoSpace();
   console.log(JSON.stringify(summary, null, 2));
+}
+
+/**
+ * Sign the demo Space's limits with the demo owner's key and deposit real funds
+ * into its own pool. Returns false when there is no chain to talk to, so an
+ * offline seed — the unit tests, a laptop — still produces a usable Space.
+ *
+ * The signer is anvil's first account, which holds nothing on any live network.
+ * On X Layer it has been funded, because a deposit has to come from somewhere
+ * and the broadcaster is what the product already uses to capitalise a Space.
+ * That is a testnet shortcut, and it is why this is the demo and not the shape a
+ * real Space owner would follow: a real owner deposits from their own wallet and
+ * signs with their own key.
+ */
+async function bindAndFundOnchain(store, { spaceId, founder, signer, VENDOR }) {
+  if (!process.env.XLAYER_RPC_URL || !process.env.XLAYER_BUDGET_ADDRESS) return false;
+  try {
+    const { XLayerAdapter } = await import('../../../mcp/src/xlayer.js');
+    const adapter = new XLayerAdapter();
+    if (adapter.chainId !== store.getSpace(spaceId).chainId) return false;
+
+    // Limits first, so the Space has a signed owner who can authorise a refund.
+    // These have to match, or be wider than, the delegation the seed issues
+    // below. A delegation cannot expand its parent's authority, so a Space whose
+    // own limits were tighter would refuse to mint the agent delegation that the
+    // seeded job depends on — the Space would be real on chain and useless.
+    const cap = '500.00';
+    const daily = '1000.00';
+    store.configureSpaceLimits({ spaceId, actorAddress: signer.address, maxPerTransaction: cap, dailyBudget: daily });
+    const prepared = await store.spaceBudgetBindingFor({
+      spaceId, actorAddress: signer.address, maxPerTransaction: cap, dailyBudget: daily,
+    });
+    const signature = await signer.signTypedData(prepared.typedData);
+    await store.bindSpaceBudget({ spaceId, actorAddress: signer.address, signature, prepared });
+
+    // Then the money, which needs a Space that is bound to be recoverable.
+    await store.fundSpaceOnchain({ spaceId, amount: '5000.00', actorId: founder });
+    console.log(`[seed] demo Space ${spaceId} bound on chain and funded from its own pool`);
+    return true;
+  } catch (err) {
+    // A seed that cannot reach the chain is still a seed, but it must not claim
+    // the money is held anywhere it is not.
+    console.log(`[seed] demo Space not bound on chain (${err.message}); funded in the ledger only`);
+    return false;
+  }
 }
