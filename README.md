@@ -218,3 +218,7 @@ npm run demo
 * [`forge/DEMO_SCRIPT.md`](forge/DEMO_SCRIPT.md) — 3-minute video walkthrough script.
 * [`forge/SUBMISSION.md`](forge/SUBMISSION.md) — OKX Dev Day 2026 hackathon submission package.
 * [`AGENT_HANDOFF.md`](AGENT_HANDOFF.md) — Context and roadmap for incoming engineering agents.
+
+## Design notes
+
+- [Escrow from a Space's own pool](docs/ESCROW_FROM_POOL.md) — agreed, not started, and the three constraints that make the obvious fix wrong.
