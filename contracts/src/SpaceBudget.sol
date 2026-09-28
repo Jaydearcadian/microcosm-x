@@ -127,9 +127,42 @@ contract SpaceBudget {
                 verifyingContract
             )
         );
-        // the dynamic recipient list is hashed rather than concatenated, so the
-        // struct hash stays a fixed size and the encoding cannot be ambiguous
-        bytes32 recipientsHash = keccak256(abi.encode(binding.recipients));
+        // The dynamic recipient list is hashed rather than concatenated, so the
+        // struct hash stays a fixed size and the encoding cannot be ambiguous.
+        //
+        // It has to be hashed exactly the way EIP-712 says to hash it, which is
+        // the part that was wrong twice. EIP-712 encodes the contents of a
+        // dynamic array as the keccak256 of their concatenated encodeData, and
+        // encodeData of an address is 32 bytes, left aligned. Not 20 raw bytes,
+        // and not the abi.encode form (an offset, a length, then padded
+        // elements) which is what this used to be.
+        //
+        // Getting this wrong is invisible from inside the contract, because the
+        // contract both produces the digest and checks the signature against its
+        // own digest, so it agrees with itself perfectly. It only shows up
+        // against a real wallet, where every attempt comes back as BadSignature
+        // with the signer blamed for an encoding mistake they did not make. So
+        // the conformance test recomputes the digest independently, and the
+        // product also compares its own digest against the contract's before it
+        // asks anyone to sign.
+        //
+        // abi.encodePacked cannot be used: it does not support dynamic arrays.
+        // Each element is one 32-byte word here, which is precisely what
+        // abi.encode of a single address would produce, so writing the word
+        // directly is the encodeData.
+        uint256 n = binding.recipients.length;
+        bytes memory encoded = new bytes(n * 32 + 32);
+        for (uint256 i = 0; i < n; i++) {
+            address who = binding.recipients[i];
+            // an address is already left-aligned in a word
+            assembly {
+                mstore(add(encoded, add(32, mul(i, 32))), who)
+            }
+        }
+        bytes32 recipientsHash;
+        assembly {
+            recipientsHash := keccak256(add(encoded, 32), mul(n, 32))
+        }
         bytes32 structHash = keccak256(
             abi.encode(
                 keccak256(

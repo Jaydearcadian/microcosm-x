@@ -316,4 +316,126 @@ contract SpaceBudgetTest is SpaceBudgetAssertions {
         list = new address[](1);
         list[0] = who;
     }
+
+    // ---- the digest has to be one a wallet can actually sign
+    //
+    // A regression test for a defect that made owner-signed limits impossible.
+    // The recipient array was hashed with abi.encode, which is the ABI encoding
+    // of a dynamic array: an offset, a length, then 32-byte padded elements.
+    // EIP-712 specifies 20-byte packed elements, which is what every wallet's
+    // signTypedData produces. The two digests never agreed, so a Space owner
+    // could not sign its own limits however hard the product tried — every
+    // attempt came back as BadSignature, blaming the signer.
+    //
+    // The expected digest is recomputed here the EIP-712 way, independently of
+    // the contract's own code, so this cannot pass by both being wrong together.
+
+    /// EIP-712 encode of a dynamic address[]: keccak of the concatenated
+    /// encodeData of its contents, and encodeData of an address is 32 bytes.
+    ///
+    /// This is deliberately not the 20-byte packed form. That looks like the
+    /// natural encoding of a list of addresses and is what the first attempt at
+    /// fixing this used; it is not what EIP-712 specifies, so it still did not
+    /// match a wallet. The digest has to be checked against a real wallet's,
+    /// not against intuition.
+    function _eip712RecipientsHash(address[] memory recipients) internal pure returns (bytes32) {
+        uint256 n = recipients.length;
+        bytes memory encoded = new bytes(n * 32 + 32);
+        for (uint256 i = 0; i < n; i++) {
+            address who = recipients[i];
+            assembly {
+                mstore(add(encoded, add(32, mul(i, 32))), who)
+            }
+        }
+        bytes32 out;
+        assembly {
+            out := keccak256(add(encoded, 32), mul(n, 32))
+        }
+        return out;
+    }
+
+    function _domainSeparator() internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                    keccak256(bytes("MicrocosmSpaceBudget")),
+                    keccak256(bytes("1")),
+                    block.chainid,
+                    address(budget)
+                )
+            );
+    }
+
+    function _structHash(SpaceBudget.Binding memory b, bytes32 recipientsHash) internal pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    keccak256(
+                        "Binding(bytes32 spaceId,address owner,uint256 maxPerTransaction,uint256 dailyBudget,address[] recipients,uint256 deadline,uint256 nonce)"
+                    ),
+                    b.spaceId,
+                    b.owner,
+                    b.maxPerTransaction,
+                    b.dailyBudget,
+                    recipientsHash,
+                    b.deadline,
+                    b.nonce
+                )
+            );
+    }
+
+    function _eip712Digest(SpaceBudget.Binding memory b) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), _structHash(b, _eip712RecipientsHash(b.recipients))));
+    }
+
+    function testTheDigestIsTheOneAWalletWouldCompute() public {
+        SpaceBudget.Binding memory b = _binding(owner, CAP, DAILY, _recipients(), block.timestamp + 1 days, NONCE);
+        require(
+            budget.bindingDigest(b) == _eip712Digest(b),
+            "digest is not EIP-712 conformant, so no wallet can sign these limits"
+        );
+    }
+
+    function testTheDigestStillWorksForASingleRecipient() public {
+        SpaceBudget.Binding memory b = _binding(owner, CAP, DAILY, _singleton(address(0xC0FFEE)), block.timestamp + 1 days, NONCE);
+        require(budget.bindingDigest(b) == _eip712Digest(b), "single-recipient digests must be conformant too");
+    }
+
+    /// A negative control. If the old encoding ever agrees again then the tests
+    /// above are not actually discriminating between the two.
+    function testTheAbiEncodeEncodingIsNotWhatTheContractProduces() public {
+        SpaceBudget.Binding memory b = _binding(owner, CAP, DAILY, _recipients(), block.timestamp + 1 days, NONCE);
+        bytes32 wrong = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), _structHash(b, keccak256(abi.encode(b.recipients)))));
+        require(wrong != budget.bindingDigest(b), "the abi.encode encoding is being produced again");
+    }
+
+    /// A second negative control, for the 20-byte packed form. It looks right and
+    /// is wrong, which is why it is pinned here as well.
+    function testThePackedTwentyByteEncodingIsNotWhatTheContractProduces() public {
+        SpaceBudget.Binding memory b = _binding(owner, CAP, DAILY, _recipients(), block.timestamp + 1 days, NONCE);
+        uint256 n = b.recipients.length;
+        bytes memory packed = new bytes(n * 20 + 32);
+        for (uint256 i = 0; i < n; i++) {
+            address who = b.recipients[i];
+            assembly {
+                mstore(add(packed, add(32, mul(i, 20))), shl(96, who))
+            }
+        }
+        bytes32 packedHash;
+        assembly {
+            packedHash := keccak256(add(packed, 32), mul(n, 20))
+        }
+        bytes32 wrong = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), _structHash(b, packedHash)));
+        require(wrong != budget.bindingDigest(b), "the packed 20-byte encoding is being produced again");
+    }
+
+    function testABindingSignedOverTheEip712DigestIsAccepted() public {
+        SpaceBudget.Binding memory b = _binding(owner, CAP, DAILY, _recipients(), block.timestamp + 1 days, NONCE);
+        // _sign recovers over bindingDigest, which is the same digest a wallet
+        // signs, so this is the path a real owner's signature now takes.
+        budget.bind(b, _sign(b));
+        (, , , uint64 boundAt, , , ) = budget.limits(b.spaceId);
+        require(boundAt != 0, "not bound");
+    }
 }

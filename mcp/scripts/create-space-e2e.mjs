@@ -9,7 +9,6 @@
 // somebody. The point is the last step, which is the one that used to revert.
 import { privateKeyToAccount } from 'viem/accounts';
 import { createPublicClient, http } from 'viem';
-import { signTypedData } from 'viem/accounts';
 import { SpaceStore } from '../src/space-store.js';
 
 const rpc = process.env.XLAYER_RPC_URL;
@@ -58,10 +57,7 @@ console.log(`   digest      ${prepared.digest}`);
 // (personal-sign prefix) and not signMessage({raw: digest}) (which re-hashes the
 // bytes) — both produce a signature SpaceBudget's plain ecrecover will not
 // recognise, and the failure names the signer rather than the encoding.
-const signature = await signTypedData({
-  account: privateKeyToAccount(ownerKey),
-  ...prepared.typedData,
-});
+const signature = await privateKeyToAccount(ownerKey).signTypedData(prepared.typedData);
 
 const bound = await store.bindSpaceBudget({
   spaceId: space.id, actorAddress: owner, signature, prepared,
