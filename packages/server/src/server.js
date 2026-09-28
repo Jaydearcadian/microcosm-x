@@ -460,7 +460,34 @@ async function dispatch(app, req, res) {
     if (req.method === 'GET' && path === '/api/health') {
       const spaces = store.listSpaces();
       const first = spaces.length > 0 ? store.getSpace(spaces[0].id) : null;
-      return ok(200, { ok: true, network: 'OKX X Layer Testnet', chainId: first?.chainId || 1952, time: new Date().toISOString() });
+      // The addresses are here because addresses() in the adapter caches on first
+      // read, so a redeploy leaves a running server pointed at a contract that no
+      // longer holds anything — and nothing errors. It surfaced as a service that
+      // was healthy, answering requests, and paying out of a router with no funds
+      // in it. A health check that cannot see which contract it is talking to
+      // cannot notice that.
+      let contracts = null;
+      let contractsError = null;
+      try {
+        // Three levels up: this file is packages/server/src/server.js, and a
+        // dynamic import resolves against the module, not the working directory.
+        // Getting that wrong produced a health check that silently reported
+        // null forever, which is the failure this was added to prevent.
+        const { addressesForHealth } = await import('../../../mcp/src/xlayer.js');
+        contracts = addressesForHealth();
+      } catch (err) {
+        contractsError = err.message;
+      }
+      return ok(200, {
+        ok: true,
+        network: 'OKX X Layer Testnet',
+        chainId: first?.chainId || 1952,
+        // Present but possibly null: an unreachable chain is a different problem
+        // from an unconfigured one, and the operator needs to tell them apart.
+        contracts,
+        contractsError,
+        time: new Date().toISOString(),
+      });
     }
 
     // --- spaces ---

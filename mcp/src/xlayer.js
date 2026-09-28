@@ -40,6 +40,23 @@ export function addressesForBudget() {
   return { budget: addresses().SpaceBudget, chainId: chainId() };
 }
 
+/**
+ * Every address this process will actually use, for /api/health.
+ *
+ * These are the cached values, not a fresh read of forge.json, because the point
+ * is to show what this process is pointed at — which is exactly what a stale
+ * cache makes different from what the file now says.
+ */
+export function addressesForHealth() {
+  const a = addresses();
+  return {
+    SettlementRouter: a.SettlementRouter,
+    SpaceBudget: a.SpaceBudget,
+    AgenticCommerce: a.AgenticCommerce,
+    MockERC20: a.MockERC20,
+  };
+}
+
 const BINDING_TUPLE = {
   type: 'tuple',
   components: [
