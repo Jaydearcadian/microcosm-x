@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { createPublicClient, createWalletClient, http, parseAbi, toHex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { SpaceStore } from '../src/space-store.js';
+import { XLayerAdapter } from '../src/xlayer.js';
 
 /**
  * Back each Space's ledger balance with real tokens in its own onchain pool.
@@ -39,6 +40,7 @@ const TOKEN_ABI = parseAbi([
 ]);
 
 const apply = process.argv.includes('--apply');
+const allowUnbound = process.argv.includes('--allow-unbound');
 const rpc = process.env.XLAYER_RPC_URL;
 const key = process.env.PRIVATE_KEY;
 const asset = process.env.USDC_ADDRESS;
@@ -128,18 +130,25 @@ const broadcasterBefore = await client.readContract({ address: asset, abi: TOKEN
 
 const plan = [];
 let needed = 0n;
+const unbound = [];
 for (const [spaceId, space] of spaces) {
   const claimed = toBase(space.balance);
   const sid = await spaceIdToBytes32(spaceId);
   const held = await client.readContract({ address: router, abi: ROUTER_ABI, functionName: 'spaceBalance', args: [sid] });
   const registered = await client.readContract({ address: router, abi: ROUTER_ABI, functionName: 'spaceTokens', args: [sid] });
   const short = claimed > held ? claimed - held : 0n;
-  needed += short;
-  plan.push({ spaceId, sid, name: space.name, claimed, held, short, needsRegister: registered.toLowerCase() !== asset.toLowerCase() });
+  // A Space with no signed limits has nobody who can authorise a withdrawal, so
+  // anything put in its pool is unreachable forever. This script deposited for
+  // four such Spaces and stranded 15,830 USDC doing it; it now refuses.
+  const binding = await new XLayerAdapter().spaceBudgetBinding(spaceId);
+  if (!binding.bound) unbound.push({ spaceId, claimed, held, short });
+  if (binding.bound) needed += short;
+  plan.push({ spaceId, sid, name: space.name, claimed, held, short, bound: binding.bound, needsRegister: registered.toLowerCase() !== asset.toLowerCase() });
   console.log(
     `  ${spaceId}\n` +
     `    our books claim ${fmt(claimed).padStart(14)}   chain holds ${fmt(held).padStart(14)}` +
     (short > 0n ? `   short ${fmt(short)}` : '   already backed') +
+    (binding.bound ? '' : '\n    NOT BOUND on chain — depositing here would strand the money unrecoverably') +
     (registered.toLowerCase() !== asset.toLowerCase() ? '\n    needs its asset registered on this router' : '')
   );
 }
@@ -147,6 +156,19 @@ for (const [spaceId, space] of spaces) {
 console.log(`\n  total to deposit ${fmt(needed)} · broadcaster holds ${fmt(broadcasterBefore)}`);
 if (needed > broadcasterBefore) {
   console.error('\n  REFUSING: the broadcaster does not hold enough to back the ledger.');
+  process.exit(1);
+}
+if (unbound.length > 0) {
+  const stranded = unbound.reduce((sum, u) => sum + u.short, 0n);
+  console.error(
+    `\n  REFUSING: ${unbound.length} Space(s) have no spending limits signed on chain.\n`
+    + '  A withdrawal is gated on the Space\u2019s own signed owner, so a Space that was never\n'
+    + '  bound has nobody who can ever authorise a refund, and anything deposited for it\n'
+    + `  is unreachable forever. That is how ${fmt(stranded)} USDC was stranded here once already.`,
+  );
+  for (const u of unbound) console.error(`    ${u.spaceId}  would strand ${fmt(u.short)}`);
+  console.error('\n  Bind those Spaces on chain first, then re-run. Pass --allow-unbound to override,');
+  console.error('  which will strand the money rather than the script.');
   process.exit(1);
 }
 

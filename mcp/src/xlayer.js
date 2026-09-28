@@ -455,6 +455,42 @@ export class XLayerAdapter {
    * create flow funds before it binds, so the registration has to happen here
    * rather than waiting for the bind step.
    */
+  /**
+   * What the limits contract knows about a Space, and whether it is bound.
+   *
+   * The binding is the authorisation that lets a Space move its own money: a
+   * withdrawal is gated on the Space's signed owner, so a Space that was never
+   * bound has no one who can ever authorise a refund. That makes this the check
+   * that has to happen before money goes anywhere near a pool.
+   */
+  async spaceBudgetBinding(spaceId) {
+    const budget = addresses().SpaceBudget;
+    const sid = spaceIdToBytes32(spaceId);
+    let out;
+    try {
+      // An untyped cast call returns the seven words as one unbroken hex string
+      // with a single 0x in front. Strip that off before slicing into 32-byte
+      // words, or every slice starts with 0x and is not a number.
+      out = String(cast(['call', budget, 'limits(bytes32)', sid, '--rpc-url', rpcUrl()]))
+        .replace(/\s+/g, '')
+        .replace(/^0x/, '');
+    } catch {
+      return { bound: false, owner: null, maxPerTransaction: 0n, dailyBudget: 0n, readable: false };
+    }
+    const words = [];
+    for (let i = 0; i + 64 <= out.length; i += 64) words.push(BigInt(`0x${out.slice(i, i + 64)}`));
+    if (words.length < 7) return { bound: false, owner: null, maxPerTransaction: 0n, dailyBudget: 0n, readable: false };
+    // owner, maxPerTransaction, dailyBudget, boundAt, updatedAt, nonce, bound
+    const [ownerWord, cap, daily, , , , bound] = words;
+    return {
+      bound: bound === 1n,
+      owner: `0x${ownerWord.toString(16).padStart(40, '0')}`,
+      maxPerTransaction: cap,
+      dailyBudget: daily,
+      readable: true,
+    };
+  }
+
   async depositSpacePool({ spaceId, amount }) {
     const router = addresses().SettlementRouter;
     const token = addresses().MockERC20;

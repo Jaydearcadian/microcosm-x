@@ -3386,6 +3386,29 @@ export class SpaceStore {
 
     const { XLayerAdapter } = await import('./xlayer.js');
     const adapter = new XLayerAdapter();
+
+    // Bound first, deposit second. Never the other way round.
+    //
+    // A withdrawal is gated on the Space's own signed owner, read from the limits
+    // contract. A Space that has never been bound therefore has no one who can
+    // authorise a refund, and anything deposited into its pool is unreachable
+    // forever — by the owner, by the router owner, by anyone. That is not a
+    // hypothetical: doing it this way stranded 15,830 USDC across four Spaces
+    // when the limits digest changed and the router with it.
+    //
+    // The check is here rather than in the contract so that it can name the fix.
+    // SettlementRouter.deposit cannot refuse an unbound Space without another
+    // redeploy, and a redeploy starts the pools from empty again, which strands
+    // whatever is in them — so the guard belongs where it can tell the operator
+    // what to do about it.
+    const binding = await adapter.spaceBudgetBinding(spaceId);
+    if (!binding.bound) {
+      throw new Error(
+        `Space '${spaceId}' has no spending limits signed on chain, so money deposited for it could never be withdrawn or spent. `
+        + 'Bind the limits on chain first, then fund the Space. Nothing has been deposited.',
+      );
+    }
+
     const result = await adapter.depositSpacePool({ spaceId, amount: amountBase });
 
     const now = new Date().toISOString();
