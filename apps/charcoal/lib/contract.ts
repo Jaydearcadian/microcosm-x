@@ -239,6 +239,10 @@ export interface Reconciliation {
   perSpace: Array<{
     spaceId: string; claimed: string; heldOnChain: string; difference: string;
     agrees: boolean; state: ReconciliationState;
+    /** Whether this Space's spending limits are signed on chain. */
+    bound: boolean;
+    /** Funds it holds that it cannot spend, for want of a binding. */
+    spendable: boolean;
   }>;
   summary: {
     claimTotal: string; heldTotal: string; routerTokenBalance: string;
@@ -249,6 +253,8 @@ export interface Reconciliation {
   /** Whether the router's own books add up. False means a contract problem. */
   chainBalances: boolean;
   agrees: boolean;
+  /** Funds held by Spaces whose limits were never signed, so they cannot spend. */
+  stranded: { spaces: string[]; total: string };
   /** The gate on funding payments from a Space's own onchain pool. */
   readyToFundFromPool: boolean;
   checkedAt: string;

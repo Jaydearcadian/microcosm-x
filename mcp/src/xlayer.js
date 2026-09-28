@@ -264,6 +264,27 @@ export class XLayerAdapter {
     const poolDeployed = totalAccountedRaw !== null;
     const zero = (v) => (v === null ? 0n : v);
 
+    /**
+     * Whether a Space's limits have been signed for.
+     *
+     * `limits` returns a seven-word tuple whose last word is the `bound` flag.
+     * An untyped `cast call` returns those words as one unbroken hex string, so
+     * this takes the final 32-byte word rather than splitting on whitespace —
+     * cast does not insert any. An unreadable answer is false: a Space we cannot
+     * confirm is treated as one that cannot spend, which is the direction to be
+     * wrong in.
+     */
+    const readBound = (sid) => {
+      try {
+        const out = String(cast(['call', addresses().SpaceBudget, 'limits(bytes32)', sid, '--rpc-url', rpcUrl()])).replace(/\s+/g, '');
+        // Seven 32-byte words come back as one unbroken hex string; the flag is
+        // the last of them.
+        return /^0x[0-9a-f]+$/i.test(out) && out.length >= 66 && BigInt(`0x${out.slice(-64)}`) === 1n;
+      } catch {
+        return false;
+      }
+    };
+
     const perSpace = {};
     let sumOfSpaceBalances = 0n;
     for (const spaceId of spaceIds) {
@@ -273,9 +294,22 @@ export class XLayerAdapter {
     }
     const totalAccounted = zero(totalAccountedRaw);
     const routerTokenBalance = zero(read(token, 'balanceOf(address)(uint256)', [router]));
+
+    // Whether each Space's limits are actually signed for. A Space can hold a
+    // perfectly funded pool and still be unable to pay a single person out of
+    // it, because SpaceBudget refuses an unbound Space — and it did exactly that
+    // in production, where a demo Space had 4,530 deposited and no binding at
+    // all. Held money that can never be spent is not the same as usable money,
+    // so it is read here rather than discovered by a reverted payment.
+    const budget = addresses().SpaceBudget;
+    const bound = {};
+    for (const spaceId of spaceIds) {
+      bound[spaceId] = readBound(spaceIdToBytes32(spaceId));
+    }
     return {
       poolDeployed,
       perSpace,
+      bound,
       sumOfSpaceBalances,
       totalAccounted,
       routerTokenBalance,
@@ -323,6 +357,51 @@ export class XLayerAdapter {
       txHash: receipt.txHash,
       txHashes: { direct: receipt.txHash },
       spaceIdOnChain: spaceIdToBytes32(spaceId),
+    };
+  }
+
+  /**
+   * Settle a direct payment out of the Space's own onchain pool.
+   *
+   * This is the switch, and it is a different function from settleDirectOnchain
+   * on purpose. The caller has already deposited the money, so the router pays
+   * the recipient from itself rather than pulling from a shared broadcaster
+   * wallet. Two consequences worth stating plainly:
+   *
+   * - The broadcaster no longer needs an allowance, and no longer carries the
+   *   balance. A leaked broadcaster key can no longer spend a Space's funds.
+   * - The Space's pool and the router's totalAccounted both come down by the
+   *   amount paid, inside the same transaction, so the books cannot drift apart.
+   *
+   * Fails closed on everything: a Space that never deposited, a Space whose
+   * limits are unbound, a recipient it has not approved, or an amount past its
+   * signed cap or daily budget all revert rather than quietly falling back to
+   * the broadcaster. Paying from somewhere else without saying so would defeat
+   * the entire point of the pool.
+   */
+  settleFromPoolOnchain({ spaceId, paymentIdHash, recipient, amount }) {
+    requireAddress('recipient', recipient);
+    requireBytes32('paymentIdHash', paymentIdHash);
+    const amountBase = toBaseUnitsExact(amount);
+    if (amountBase <= 0n) throw new Error(`XLayerAdapter: amount must be positive, got '${amount}'`);
+
+    const router = addresses().SettlementRouter;
+    const usdc = addresses().MockERC20;
+    const send = makeSequencer(privKey());
+    // No approve: the money is already here, and approving the router to pull
+    // from the broadcaster is precisely the arrangement being removed.
+    const receipt = send(router, 'settleFromPool(bytes32,bytes32,address,address,uint256)', [
+      spaceIdToBytes32(spaceId),
+      paymentIdHash,
+      usdc,
+      recipient,
+      String(amountBase),
+    ]);
+    return {
+      txHash: receipt.txHash,
+      txHashes: { direct: receipt.txHash, pool: receipt.txHash },
+      spaceIdOnChain: spaceIdToBytes32(spaceId),
+      fundedFrom: 'space-pool',
     };
   }
 

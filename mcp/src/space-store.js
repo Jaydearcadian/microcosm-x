@@ -359,6 +359,49 @@ export class SpaceStore {
    * must only mutate Space state after this resolves. There is no
    * simulated fallback anywhere in this file.
    */
+  /**
+   * Whether this Space's balance is genuinely held on chain, and so whether a
+   * payment may be drawn from its pool.
+   *
+   * The condition is the whole reconciliation report agreeing, not merely a
+   * non-zero balance. A pool that holds some money while the books claim a
+   * different number is a Space whose funds are already ambiguous, and paying
+   * out of it would make the ambiguity permanent and harder to undo. When this
+   * is false the caller falls back to the broadcaster, and the reason is
+   * returned so the decision is recorded rather than invisible.
+   */
+  async _spaceIsPoolBacked(spaceId) {
+    try {
+      const report = await this.reconcileOnchainBalances({ spaceIds: [spaceId] });
+      const row = report.perSpace[0];
+      const funded = report.poolDeployed
+        && report.chainBalances
+        && report.agrees
+        && Boolean(row)
+        && row.state === 'AGREES'
+        && row.heldOnChain !== '0.000000';
+      // The per-Space row is the more precise signal and is what the reason is
+      // read from. A report whose summary disagrees with its own rows is itself
+      // a reason to be cautious, so trust the row over the rollup.
+      const reason = funded
+        ? 'the chain holds this Space its own balance'
+        : !report.poolDeployed
+          ? 'the router has no per-Space pool, so there is nothing to draw from'
+          : !report.chainBalances
+            ? 'the router holds less than it owes, which is a contract problem'
+            : !row
+              ? 'this Space has no ledger entry to check against the chain'
+              : row.state !== 'AGREES'
+                ? `our books and the chain disagree (${row.state}: claimed ${row.claimed}, chain holds ${row.heldOnChain})`
+                : 'this Space has deposited nothing into a pool yet';
+      return { funded, reason, report };
+    } catch (err) {
+      // An unreachable chain must not silently downgrade a Space to broadcaster
+      // funding on the grounds that a failed check is the same as no pool.
+      return { funded: false, reason: `could not check the chain (${err.message})`, report: null };
+    }
+  }
+
   async _liveSettle(args) {
     if (this.settlement) return this.settlement(args);
     const { XLayerAdapter } = await import('./xlayer.js');
@@ -376,6 +419,21 @@ export class SpaceStore {
     // which asks SpaceBudget first.
     if (kind === 'payment') {
       const { spaceIdToBytes32 } = await import('./xlayer.js');
+      // A Space whose money sits in its own onchain pool is paid from that pool.
+      // The check is deliberately strict and never falls back: if the books and
+      // the chain disagree we do not quietly pay from the shared broadcaster
+      // wallet, because a payment that came from somewhere other than where the
+      // Space's money is supposed to be is exactly the thing nobody would notice
+      // until it mattered.
+      const backed = await this._spaceIsPoolBacked(space.id);
+      if (backed.funded) {
+        return adapter.settleFromPoolOnchain({
+          spaceId: space.id,
+          paymentIdHash: deliverableHash,
+          recipient: provider,
+          amount: budget,
+        });
+      }
       return adapter.settleDirectOnchain({
         spaceId: space.id,
         paymentIdHash: deliverableHash,
@@ -789,6 +847,7 @@ export class SpaceStore {
       const actual = held.perSpace[id] ?? 0n;
       claimTotal += claim;
       heldTotal += actual;
+      const isBound = held.bound ? held.bound[id] !== false : false;
       perSpace.push({
         spaceId: id,
         claimed: fromBaseUnits(claim),
@@ -796,6 +855,12 @@ export class SpaceStore {
         difference: fromBaseUnits(claim > actual ? claim - actual : actual - claim),
         agrees: claim === actual,
         state: claim === actual ? 'AGREES' : claim > actual ? 'UNBACKED' : 'UNRECORDED',
+        // Money in a pool a Space cannot sign for is held, not spendable:
+        // SpaceBudget refuses an unbound Space, so every payment reverts.
+        bound: isBound,
+        // Only meaningful for Spaces that actually hold something. A Space with
+        // no money and no binding is not a problem, it is just an empty Space.
+        spendable: isBound && actual > 0n,
       });
     }
 
@@ -809,6 +874,11 @@ export class SpaceStore {
       && held.sumOfSpaceBalances === held.totalAccounted;
 
     const agrees = perSpace.every((row) => row.agrees);
+    // Funds a Space holds but cannot spend, because nobody has signed its limits.
+    // The books and the chain can agree perfectly while every one of these
+    // payments reverts, so agreement alone is not readiness.
+    const stranded = perSpace.filter((row) => row.heldOnChain !== '0.000000' && !row.bound);
+    const strandedTotal = stranded.reduce((sum, row) => sum + toBaseUnits(row.heldOnChain), 0n);
     return {
       poolDeployed,
       perSpace,
@@ -825,9 +895,15 @@ export class SpaceStore {
       // separating: one is a bug in us, the other would be a bug in a contract.
       chainBalances,
       agrees,
-      // Agreement is not enough on its own: if the router has no pool, there is
-      // nothing to fund from however well the numbers line up.
-      readyToFundFromPool: poolDeployed && agrees && chainBalances,
+      // Funds sitting in pools that cannot be spent from, for want of a binding.
+      stranded: {
+        spaces: stranded.map((row) => row.spaceId),
+        total: fromBaseUnits(strandedTotal),
+      },
+      // Agreement is not enough on its own. A Space with no pool has nothing to
+      // fund from, and a Space whose limits were never signed cannot spend what
+      // it holds however well the numbers line up.
+      readyToFundFromPool: poolDeployed && agrees && chainBalances && stranded.length === 0,
       checkedAt: new Date().toISOString(),
     };
   }

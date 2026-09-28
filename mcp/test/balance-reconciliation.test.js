@@ -70,6 +70,8 @@ test('R2-2: when the chain holds exactly what the ledger claims, it reports agre
   const before = proto.heldBalances;
   const one = 1_000_000_000n; // 1000 USDC in base units
   proto.heldBalances = async () => ({
+    poolDeployed: true,
+    bound: { [spaceId]: true },
     perSpace: { [spaceId]: one },
     sumOfSpaceBalances: one,
     totalAccounted: one,
@@ -93,6 +95,8 @@ test('R2-3: money in the router that our books never saw is UNRECORDED, not agre
   const before = proto.heldBalances;
   const one = 1_000_000_000n;
   proto.heldBalances = async () => ({
+    poolDeployed: true,
+    bound: { [spaceId]: true },
     perSpace: { [spaceId]: one },
     sumOfSpaceBalances: one,
     totalAccounted: one,
@@ -186,6 +190,7 @@ test('R2-7: a fully backed ledger with a real pool is the only thing that unbloc
   const one = 1_000_000_000n;
   proto.heldBalances = async () => ({
     poolDeployed: true,
+    bound: { [spaceId]: true },
     perSpace: { [spaceId]: one }, sumOfSpaceBalances: one,
     totalAccounted: one, routerTokenBalance: one, excess: 0n,
   });

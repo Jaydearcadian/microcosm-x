@@ -105,8 +105,11 @@ function readNote(state: IndexerHealth, label: string): string {
 function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
   if (!state) return null;
   const { summary } = state;
+  const stranded = state.stranded?.spaces?.length ?? 0;
   const verdict = !state.poolDeployed
     ? { label: "THIS ROUTER HAS NO PER-SPACE POOL", tone: "bad" }
+    : stranded > 0
+    ? { label: `${state.stranded.total} USDC IS HELD BUT CANNOT BE SPENT`, tone: "bad" }
     : !state.chainBalances
     ? { label: "THE ROUTER\u2019S BOOKS DO NOT ADD UP", tone: "bad" }
     : state.agrees
@@ -125,6 +128,13 @@ function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
           The settlement router this deployment points at was built before per-Space pools existed,
           so it cannot hold a Space\u2019s funds at all. Every balance below is still sitting in the
           broadcaster wallet, and this check cannot pass until the router is redeployed.
+        </p>
+      ) : stranded > 0 ? (
+        <p className="muted">
+          {state.stranded.total} USDC is deposited and accounted for, but {stranded === 1 ? "its Space has" : "its Spaces have"}{" "}
+          never signed spending limits on chain. Until {stranded === 1 ? "that Space signs" : "those Spaces sign"},
+          every payment from {stranded === 1 ? "it" : "them"} reverts &mdash; the money is held, not spendable. The
+          books and the chain agree exactly, which is why this needs saying separately.
         </p>
       ) : !state.chainBalances ? (
         <p className="muted">
@@ -147,7 +157,7 @@ function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
 
       <table className="recon__table">
         <thead>
-          <tr><th>Space</th><th>Our books claim</th><th>Chain holds for it</th><th>Difference</th><th>State</th></tr>
+          <tr><th>Space</th><th>Our books claim</th><th>Chain holds for it</th><th>Difference</th><th>State</th><th>Spendable</th></tr>
         </thead>
         <tbody>
           {state.perSpace.map((row) => (
@@ -157,6 +167,7 @@ function ReconciliationPanel({ state }: { state: Reconciliation | null }) {
               <td className="tnum">{row.heldOnChain}</td>
               <td className="tnum">{row.difference}</td>
               <td>{row.state}</td>
+              <td>{row.bound === false ? "no — unsigned limits" : row.spendable ? "yes" : "nothing to spend"}</td>
             </tr>
           ))}
         </tbody>

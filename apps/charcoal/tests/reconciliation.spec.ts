@@ -89,3 +89,20 @@ test('recon: the panel is absent without a principal rather than falsely reassur
   await page.waitForTimeout(3000);
   await expect(page.getByText('Do the chain and our books agree?')).toHaveCount(0);
 });
+
+test('recon: funds a Space cannot spend are called stranded, not ready', async ({ page }) => {
+  // The books and the chain agree perfectly here. What is missing is a signed
+  // binding, so the Space holds money it can never pay out with — a state that
+  // agreement on its own would have reported as ready.
+  await showReport(page, {
+    poolDeployed: true, chainBalances: true, agrees: true, readyToFundFromPool: false,
+    stranded: { spaces: ['space-alpha-9f2c'], total: '4530.000000' },
+    perSpace: [{ spaceId: 'space-alpha-9f2c', claimed: '4530.000000', heldOnChain: '4530.000000', difference: '0.000000', agrees: true, state: 'AGREES', bound: false, spendable: false }],
+    summary: { claimTotal: '4530.000000', heldTotal: '4530.000000', routerTokenBalance: '4530.000000', totalAccounted: '4530.000000', excess: '0.000000', unbacked: '0.000000', unrecorded: '0.000000' },
+    checkedAt: '2026-01-01T00:00:00.000Z',
+  });
+  await expect(page.getByText('IS HELD BUT CANNOT BE SPENT')).toBeVisible();
+  await expect(page.getByText(/never signed spending limits on chain/)).toBeVisible();
+  await expect(page.getByText('no — unsigned limits')).toBeVisible();
+  await expect(page.getByText('blocked until the books agree')).toBeVisible();
+});

@@ -32,7 +32,11 @@ contract SpacePoolTest {
     MockERC20 internal token;
 
     uint256 internal ownerKey = 0xA11CE5EED;
+    uint256 internal spaceOwnerKey = 0x5ACE0F1E5;
+    uint256 internal otherOwnerKey = 0x015E4004;
     address internal owner;
+    address internal spaceOwner;
+    address internal otherOwner;
     address internal funder = address(0xF00);
     address internal recipient = address(0xB0B);
     bytes32 internal spaceId = keccak256("pool-space");
@@ -40,6 +44,8 @@ contract SpacePoolTest {
 
     function setUp() public {
         owner = vm.addr(ownerKey);
+        spaceOwner = vm.addr(spaceOwnerKey);
+        otherOwner = vm.addr(otherOwnerKey);
         router = new SettlementRouter(owner, true);
         token = new MockERC20();
         budget = new SpaceBudget();
@@ -183,5 +189,184 @@ contract SpacePoolTest {
         // Still no switch: settleDirect pulls from the caller, so a funded Space
         // with a signed cap of 500 can still only move what the caller holds.
         _require(token.balanceOf(funder) == 999_600e6, "the funder's own balance changed");
+    }
+
+    // ---- settling out of the pool
+    //
+    // settleFromPool is a separate function from settleDirect on purpose, so a
+    // Space that has not funded a pool keeps working exactly as before and the
+    // switch is opt-in rather than something an upgrade does to everybody.
+
+    function testASpacePaysOutOfItsOwnPool() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p1"), address(token), recipient, 150e6);
+
+        // The vendor is paid from the router, not from any caller's wallet.
+        _require(token.balanceOf(recipient) == 150e6, "recipient not paid");
+        _require(router.spaceBalance(spaceId) == 250e6, "space balance not debited");
+        _require(router.totalAccounted() == 250e6, "total not debited with it");
+        _require(token.balanceOf(address(router)) == 250e6, "router did not actually pay out");
+    }
+
+    function testTheInvariantSurvivesASettlement() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.prank(funder);
+        router.deposit(otherSpace, 100e6);
+
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p1"), address(token), recipient, 300e6);
+
+        // The one that matters: paying out must not make the difference look
+        // like sweepable excess, or the owner can take a Space's spent money.
+        _require(token.balanceOf(address(router)) == router.totalAccounted(), "books do not balance after payout");
+        _require(router.totalAccounted() == 200e6, "total wrong after payout");
+    }
+
+    function testOneSpacesPoolCannotPayAnothersBill() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        // Bound but empty: otherwise this reverts as NotBound, which proves
+        // something real but not the thing this test is about.
+        _bind(otherSpace, otherOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 100e6);
+        // A Space with an empty pool cannot borrow from the funded one.
+        vm.expectRevert(bytes("insufficient space balance"));
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(otherSpace, keccak256("p"), address(token), recipient, 1e6);
+    }
+
+    function testAPoolCannotSpendPastTheSpacesSignedCap() public {
+        _bind(spaceId, spaceOwner, 100e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        // Holding 400 in the pool does not raise the per-transaction cap.
+        vm.expectRevert();
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p"), address(token), recipient, 150e6);
+    }
+
+    function testAPoolCannotSpendPastTheSpacesDailyBudget() public {
+        _bind(spaceId, spaceOwner, 200e6, 250e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p1"), address(token), recipient, 200e6);
+        vm.expectRevert();
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p2"), address(token), recipient, 100e6);
+    }
+
+    function testAPoolCannotPaySomebodyTheSpaceHasNotApproved() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert();
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p"), address(token), address(0xBAD), 10e6);
+    }
+
+    function testAPoolPaymentNeedsTheSpacesLimitsBound() public {
+        // Deliberately unbound: a Space nobody has signed for cannot be paid
+        // from, however much it happens to have deposited.
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert();
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p"), address(token), recipient, 10e6);
+    }
+
+    function testAPoolCannotPayInATokenTheSpaceDidNotRegister() public {
+        MockERC20 other = new MockERC20();
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert(bytes("token mismatch"));
+        vm.prank(address(0xBEEF));
+        router.settleFromPool(spaceId, keccak256("p"), address(other), recipient, 10e6);
+    }
+
+    // ---- withdrawing a Space's own funds
+
+    function testTheSignedOwnerCanTakeTheirOwnSpaceBack() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+
+        vm.prank(spaceOwner);
+        router.withdraw(spaceId, address(token), spaceOwner, 150e6);
+
+        _require(token.balanceOf(spaceOwner) == 150e6, "owner not paid");
+        _require(router.spaceBalance(spaceId) == 250e6, "balance not debited");
+        _require(token.balanceOf(address(router)) == router.totalAccounted(), "books do not balance after withdrawal");
+    }
+
+    function testTheRouterOwnerCannotTakeASpacesMoney() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        // This is the whole point of holding funds here: whoever controls the
+        // broadcaster must not be able to reach a Space's money.
+        vm.expectRevert(bytes("not space owner"));
+        vm.prank(owner);
+        router.withdraw(spaceId, address(token), owner, 400e6);
+    }
+
+    function testAnotherSpaceCannotWithdraw() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert(bytes("not space owner"));
+        vm.prank(otherOwner);
+        router.withdraw(spaceId, address(token), otherOwner, 400e6);
+    }
+
+    function testAWithdrawalCannotExceedWhatTheSpaceHas() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert(bytes("insufficient space balance"));
+        vm.prank(spaceOwner);
+        router.withdraw(spaceId, address(token), spaceOwner, 500e6);
+    }
+
+    function testWithdrawingFromAnUnboundSpaceIsRefused() public {
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        vm.expectRevert(bytes("space not bound"));
+        vm.prank(spaceOwner);
+        router.withdraw(spaceId, address(token), spaceOwner, 1e6);
+    }
+
+    /// Binds a Space's limits with a signature from `signer`, which is what makes
+    /// that address — and only that address — able to withdraw.
+    function _bind(
+        bytes32 id,
+        address signer,
+        uint256 maxPerTx,
+        uint256 daily,
+        address approved
+    ) internal {
+        address[] memory allow = new address[](1);
+        allow[0] = approved;
+        SpaceBudget.Binding memory b = SpaceBudget.Binding({
+            spaceId: id,
+            owner: signer,
+            maxPerTransaction: uint128(maxPerTx),
+            dailyBudget: uint128(daily),
+            recipients: allow,
+            deadline: block.timestamp + 3650 days,
+            nonce: 0
+        });
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            (signer == spaceOwner ? spaceOwnerKey : otherOwnerKey),
+            budget.bindingDigestFor(address(budget), block.chainid, b)
+        );
+        budget.bind(b, abi.encodePacked(r, s, v));
     }
 }

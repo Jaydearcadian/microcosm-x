@@ -7,6 +7,11 @@ import {IERC20} from "./interfaces/IERC20.sol";
 /// token moves, so a Space that never signed its limits cannot be paid from.
 interface ISpaceBudget {
     function enforce(bytes32 spaceId, address recipient, uint256 amount) external;
+    /// The address that signed this Space's limits. Read for withdrawal gating.
+    function limits(bytes32 spaceId)
+        external
+        view
+        returns (address owner, uint128 maxPerTransaction, uint128 dailyBudget, uint64 boundAt, uint64 updatedAt, uint256 nonce, bool bound);
 }
 
 contract SettlementRouter {
@@ -168,10 +173,79 @@ contract SettlementRouter {
     }
 
     /// Withdrawing a Space's own funds arrives with the switch that makes
-    /// settleDirect draw on this pool, because until then there is nothing here
+    /// settlement draw on this pool, because until then there is nothing here
     /// to withdraw. It will be gated on the Space's signed owner rather than on
     /// this contract's owner: the owner of the router must not be able to take a
     /// Space's money, which is the property the whole arrangement exists to get.
+    function withdraw(bytes32 spaceId, address token, address to, uint256 amount) external {
+        require(spaceId != bytes32(0), "space required");
+        require(amount > 0, "amount required");
+        require(to != address(0), "recipient required");
+        require(spaceTokens[spaceId] == token, "token mismatch");
+
+        // The Space's own signed owner, not this contract's owner. The whole
+        // reason funds are held here rather than in a shared wallet is that
+        // whoever controls the broadcaster must not be able to reach them, so
+        // gating on `owner` would reintroduce exactly that.
+        (address spaceOwner,,,,,, bool bound) = ISpaceBudget(budgetContract).limits(spaceId);
+        require(bound, "space not bound");
+        require(msg.sender == spaceOwner, "not space owner");
+
+        require(spaceBalance[spaceId] >= amount, "insufficient space balance");
+        // totalAccounted has to come down with the Space's balance. If it did
+        // not, the amount withdrawn would sit above the accounted total looking
+        // like excess — and sweepExcess exists precisely to hand that out.
+        spaceBalance[spaceId] -= amount;
+        totalAccounted -= amount;
+
+        require(IERC20(token).transfer(to, amount), "transfer failed");
+        emit SpaceWithdrawn(spaceId, to, amount, spaceBalance[spaceId]);
+    }
+
+    /// Settle a payment out of the Space's own pool rather than the caller's
+    /// wallet.
+    ///
+    /// This is deliberately a separate function from settleDirect rather than a
+    /// change to it. settleDirect pulls from msg.sender, so it keeps working
+    /// unchanged for any Space that has not funded a pool, and the switch is
+    /// something a Space opts into rather than something that happens to everyone
+    /// on upgrade.
+    function settleFromPool(
+        bytes32 spaceId,
+        bytes32 paymentIdHash,
+        address token,
+        address recipient,
+        uint256 amount
+    ) external returns (bytes32 settlementId) {
+        require(paymentIdHash != bytes32(0), "payment required");
+        require(token != address(0), "token required");
+        require(recipient != address(0), "recipient required");
+        require(amount > 0, "amount required");
+        require(spaceTokens[spaceId] == token, "token mismatch");
+
+        _requireBudget();
+        // The Space's signed limits still apply, unchanged. Holding money in a
+        // pool is not permission to spend without a cap.
+        ISpaceBudget(budgetContract).enforce(spaceId, recipient, amount);
+
+        // A Space cannot spend what it never deposited, and the message has to
+        // say which Space is short rather than failing as a bare transfer error.
+        require(spaceBalance[spaceId] >= amount, "insufficient space balance");
+
+        // Both figures move together. Leaving totalAccounted alone would make
+        // the payout look like unclaimed excess to sweepExcess, which would hand
+        // a Space's spent money to this contract's owner.
+        spaceBalance[spaceId] -= amount;
+        totalAccounted -= amount;
+
+        require(IERC20(token).transfer(recipient, amount), "transfer failed");
+
+        settlementId = keccak256(
+            abi.encode(spaceId, paymentIdHash, token, address(this), recipient, amount)
+        );
+
+        emit DirectSettlementRecorded(paymentIdHash, token, address(this), recipient, amount);
+    }
 
     /**
      * Sweep tokens the router holds that no Space has a claim to.
