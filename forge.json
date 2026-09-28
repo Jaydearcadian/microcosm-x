@@ -65,7 +65,7 @@
         "oklinkVerifiedAll": false,
         "contracts": {
           "EnvelopeRegistry": "0x37f497d5ca8937bce851a61c1b551b06686060f8",
-          "SettlementRouter": "0x89c1fd8f6bcbed75b81003f5f86a926e714159e2",
+          "SettlementRouter": "0xa186e86161511c0353a40f7a5105c3b4ca1ae07f",
           "ClaimEscrow": "0xd70ffaa2c51552689ebf9cb2851d85417664b4ee",
           "MockERC20": "0x6176287b2E80374B41388029f0b87Eb6eeE289e7",
           "AgenticCommerce": "0xc3eedd58a21049bff480ce9cf34b6ac9a9ead89d",

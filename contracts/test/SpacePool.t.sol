@@ -71,6 +71,7 @@ contract SpacePoolTest {
     // ---- depositing
 
     function testADepositLandsInThatSpacesPool() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         _require(router.spaceBalance(spaceId) == 400e6, "space balance not credited");
@@ -79,6 +80,8 @@ contract SpacePoolTest {
     }
 
     function testTwoSpacesAreKeptApart() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        _bind(otherSpace, otherOwner, 500e6, 2000e6, recipient);
         vm.startPrank(funder);
         router.deposit(spaceId, 400e6);
         router.deposit(otherSpace, 100e6);
@@ -89,6 +92,7 @@ contract SpacePoolTest {
     }
 
     function testDepositsAccumulate() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.startPrank(funder);
         router.deposit(spaceId, 100e6);
         router.deposit(spaceId, 250e6);
@@ -99,6 +103,8 @@ contract SpacePoolTest {
     // ---- the invariant, which is the whole point
 
     function testWhatTheRouterHoldsEqualsWhatItOwes() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        _bind(otherSpace, otherOwner, 500e6, 2000e6, recipient);
         vm.startPrank(funder);
         router.deposit(spaceId, 400e6);
         router.deposit(otherSpace, 100e6);
@@ -107,6 +113,7 @@ contract SpacePoolTest {
     }
 
     function testTheInvariantHoldsAfterAMistakenTransfer() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         // Someone sends tokens straight to the router. That is excess, not a
         // deposit, and it must not be mistaken for money owed to a Space.
         vm.prank(address(0xBAD));
@@ -120,6 +127,7 @@ contract SpacePoolTest {
     // ---- and the excess sweep cannot reach a Space's money
 
     function testExcessCanBeSwept() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(address(0xBAD));
         token.transfer(address(router), 7e6);
         vm.prank(owner);
@@ -129,6 +137,7 @@ contract SpacePoolTest {
     }
 
     function testTheSweepCannotTouchASpacesFunds() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         vm.prank(owner);
@@ -137,6 +146,7 @@ contract SpacePoolTest {
     }
 
     function testTheSweepIsBoundedByTheExcessNotTheBalance() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         vm.prank(address(0xBAD));
@@ -148,6 +158,7 @@ contract SpacePoolTest {
     }
 
     function testOnlyTheRouterOwnerCanSweep() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         vm.prank(address(0xBAD));
@@ -160,6 +171,7 @@ contract SpacePoolTest {
     // ---- bad deposits
 
     function testDepositingForAnUnregisteredSpaceIsRefused() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         vm.expectRevert(bytes("space token not registered"));
         router.deposit(keccak256("never-registered"), 10e6);
@@ -169,6 +181,27 @@ contract SpacePoolTest {
         vm.prank(funder);
         vm.expectRevert(bytes("amount required"));
         router.deposit(spaceId, 0);
+    }
+
+    function testDepositingForAnUnboundSpaceIsRefused() public {
+        // Deliberately not bound. Withdrawal is gated on the Space's own signed
+        // owner, so a Space that never signed has nobody who can ever authorise a
+        // refund and anything deposited for it is unreachable forever. This is
+        // what stranded 15,830 USDC, and the offchain guard was the only thing
+        // stopping it — a direct call bypassed that entirely.
+        vm.expectRevert(bytes("space limits not bound; a Space with no signed owner could never withdraw"));
+        vm.prank(funder);
+        router.deposit(otherSpace, 100e6);
+        _require(router.spaceBalance(otherSpace) == 0, "an unbound Space was credited");
+        _require(token.balanceOf(funder) == 1_000_000e6, "the funder was charged anyway");
+    }
+
+    function testDepositingForABoundSpaceStillWorks() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        vm.prank(funder);
+        router.deposit(spaceId, 400e6);
+        _require(router.spaceBalance(spaceId) == 400e6, "a bound Space could not be funded");
+        _require(token.balanceOf(address(router)) == router.totalAccounted(), "books do not balance");
     }
 
     function testDepositingWithoutAnApprovalIsRefused() public {
@@ -183,6 +216,7 @@ contract SpacePoolTest {
     /// that if the switch ever lands, it fails here and gets a decision rather
     /// than happening quietly.
     function testDepositingDoesNotYetChangeWhatASpaceCanPay() public {
+        _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         _require(router.spaceBalance(spaceId) == 400e6, "pool not credited");
@@ -214,6 +248,7 @@ contract SpacePoolTest {
 
     function testTheInvariantSurvivesASettlement() public {
         _bind(spaceId, spaceOwner, 500e6, 2000e6, recipient);
+        _bind(otherSpace, otherOwner, 500e6, 2000e6, recipient);
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
         vm.prank(funder);
@@ -272,13 +307,12 @@ contract SpacePoolTest {
     }
 
     function testAPoolPaymentNeedsTheSpacesLimitsBound() public {
-        // Deliberately unbound: a Space nobody has signed for cannot be paid
-        // from, however much it happens to have deposited.
+        // Deliberately unbound. It can no longer be funded, so it cannot be paid
+        // from either — and the refusal now happens at the deposit rather than at
+        // the payment, which is the earlier and better place to stop.
+        vm.expectRevert(bytes("space limits not bound; a Space with no signed owner could never withdraw"));
         vm.prank(funder);
         router.deposit(spaceId, 400e6);
-        vm.expectRevert();
-        vm.prank(address(0xBEEF));
-        router.settleFromPool(spaceId, keccak256("p"), address(token), recipient, 10e6);
     }
 
     function testAPoolCannotPayInATokenTheSpaceDidNotRegister() public {
@@ -335,12 +369,15 @@ contract SpacePoolTest {
         router.withdraw(spaceId, address(token), spaceOwner, 500e6);
     }
 
-    function testWithdrawingFromAnUnboundSpaceIsRefused() public {
+    /// An unbound Space can no longer hold funds at all, so the withdrawal gate
+    /// for one is unreachable — there is nothing in it to withdraw. The guard that
+    /// matters is on the way in, and it is asserted by
+    /// testDepositingForAnUnboundSpaceIsRefused.
+    function testAnUnboundSpaceCannotAccumulateAFundablePool() public {
+        vm.expectRevert(bytes("space limits not bound; a Space with no signed owner could never withdraw"));
         vm.prank(funder);
-        router.deposit(spaceId, 400e6);
-        vm.expectRevert(bytes("space not bound"));
-        vm.prank(spaceOwner);
-        router.withdraw(spaceId, address(token), spaceOwner, 1e6);
+        router.deposit(spaceId, 1e6);
+        _require(router.spaceBalance(spaceId) == 0, "an unbound Space was credited");
     }
 
     /// Binds a Space's limits with a signature from `signer`, which is what makes

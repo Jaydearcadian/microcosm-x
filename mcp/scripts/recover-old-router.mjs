@@ -25,7 +25,16 @@ for (const [k, v] of Object.entries({ XLAYER_RPC_URL: rpc, OLD_ROUTER_ADDRESS: O
 }
 const client = createPublicClient({ transport: http(rpc) });
 const VENDOR = '0x1111111111111111111111111111111111111111';
-const account = privateKeyToAccount(process.env.PRIVATE_KEY);
+const BROADCASTER = process.env.PRIVATE_KEY;
+// The signed owner of each Space decides who can withdraw from it, so the key
+// used is per Space rather than whatever happens to be in the environment. The
+// broadcaster owns procurement-001; the demo Space is owned by the demo signer's
+// key. A Space whose owner is neither cannot be recovered, and is reported.
+const OWNER_KEYS = {
+  'space-procurement-001': process.env.PRIVATE_KEY,
+  'space-acme-procurement-42ee': '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+};
+const account = privateKeyToAccount(BROADCASTER);
 const wallet = createWalletClient({ account, transport: http(rpc) });
 
 const POOL = parseAbi([
@@ -90,15 +99,18 @@ for (const spaceId of SPACES) {
     cap = BigInt(parts[1] ?? 0); daily = BigInt(parts[2] ?? 0);
   } catch { /* unbound */ }
 
-  if (owner.toLowerCase() === account.address.toLowerCase() && cap > 0n) {
+  const key = OWNER_KEYS[spaceId];
+  const ownerAccount = key ? privateKeyToAccount(key) : null;
+  if (ownerAccount && owner.toLowerCase() === ownerAccount.address.toLowerCase() && cap > 0n) {
     // The approved list is not enumerable on chain, so it is carried over from
     // the Space's configuration rather than read back. The seeded demo Space's
     // vendor is the one that was signed.
-    recover.push({ spaceId, sid, held, cap, daily, recipients: [VENDOR] });
+    recover.push({ spaceId, sid, held, cap, daily, recipients: [VENDOR], ownerAccount });
   } else {
     stuck.push({ spaceId, held, reason: owner === '0x0000000000000000000000000000000000000000'
       ? 'never bound, so no signed owner exists to authorise a withdrawal'
-      : `signed owner is ${owner}, and it is not the key held here` });
+      : key ? `signed owner is ${owner}, which is not this Space\u2019s key`
+            : `signed owner is ${owner} and no key is held for this Space` });
     stuckTotal += held;
   }
 }
@@ -107,12 +119,13 @@ console.log(`old router holds ${await client.readContract({ address: token, abi:
 
 for (const item of recover) {
   console.log(`recovering ${item.spaceId}: ${item.held} base units`);
-  const h1 = await wallet.writeContract({ address: OLD_ROUTER, abi: POOL, functionName: 'withdraw', args: [item.sid, token, account.address, item.held] });
+  const ownerWallet = createWalletClient({ account: item.ownerAccount, transport: http(rpc) });
+  const h1 = await ownerWallet.writeContract({ address: OLD_ROUTER, abi: POOL, functionName: 'withdraw', args: [item.sid, token, item.ownerAccount.address, item.held] });
   const r1 = await client.waitForTransactionReceipt({ hash: h1 });
   if (r1.status !== 'success') throw new Error(`withdraw reverted for ${item.spaceId}: ${h1}`);
   console.log(`  withdrew from the old router   ${h1}`);
 
-  await client.waitForTransactionReceipt({ hash: await wallet.writeContract({ address: token, abi: TOKEN, functionName: 'approve', args: [router, item.held] }) });
+  await client.waitForTransactionReceipt({ hash: await ownerWallet.writeContract({ address: token, abi: TOKEN, functionName: 'approve', args: [router, item.held] }) });
   const reg = await client.readContract({ address: router, abi: POOL, functionName: 'spaceTokens', args: [item.sid] });
   if (reg.toLowerCase() !== token.toLowerCase()) {
     await client.waitForTransactionReceipt({ hash: await wallet.writeContract({
@@ -121,14 +134,14 @@ for (const item of recover) {
       functionName: 'registerSpaceToken', args: [item.sid, token],
     }) });
   }
-  const h2 = await wallet.writeContract({ address: router, abi: POOL, functionName: 'deposit', args: [item.sid, item.held] });
+  const h2 = await ownerWallet.writeContract({ address: router, abi: POOL, functionName: 'deposit', args: [item.sid, item.held] });
   const r2 = await client.waitForTransactionReceipt({ hash: h2 });
   if (r2.status !== 'success') throw new Error(`deposit reverted for ${item.spaceId}: ${h2}`);
   console.log(`  deposited into the new router   ${h2}`);
 
   // Re-bind on the new limits contract, whose digest is the one a wallet signs.
   const message = {
-    spaceId: item.sid, owner: account.address,
+    spaceId: item.sid, owner: item.ownerAccount.address,
     maxPerTransaction: item.cap, dailyBudget: item.daily,
     recipients: item.recipients, deadline: BigInt(Math.floor(Date.now() / 1000) + 86400 * 365), nonce: 0n,
   };
@@ -142,8 +155,8 @@ for (const item of recover) {
     primaryType: 'Binding', message,
   };
   const onChain = await client.readContract({ address: budget, abi: BUDGET_ABI, functionName: 'bindingDigest', args: [message] });
-  const signature = await account.signTypedData(typedData);
-  const h3 = await wallet.writeContract({ address: budget, abi: BUDGET_ABI, functionName: 'bind', args: [message, signature] });
+  const signature = await item.ownerAccount.signTypedData(typedData);
+  const h3 = await ownerWallet.writeContract({ address: budget, abi: BUDGET_ABI, functionName: 'bind', args: [message, signature] });
   const r3 = await client.waitForTransactionReceipt({ hash: h3 });
   if (r3.status !== 'success') throw new Error(`bind reverted for ${item.spaceId}: ${h3}`);
   console.log(`  re-bound on the new contract    ${h3}`);

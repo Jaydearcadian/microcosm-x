@@ -157,12 +157,22 @@ contract SettlementRouter {
      * The Space's owner does this. It makes the money belong to the Space rather
      * than to the broadcaster: a leaked broadcaster key can no longer reach it,
      * which is the whole point of holding it here at all.
+     *
+     * A Space whose limits were never signed is refused. Withdrawal is gated on
+     * the Space's own signed owner, so an unbound Space has nobody who can ever
+     * authorise a refund — and anything deposited here would be unreachable
+     * forever, by its owner, by this contract's owner, by anyone. That is not
+     * hypothetical: 15,830 USDC was stranded exactly this way, and the only
+     * reason the loss was bounded at all is that one Space happened to have been
+     * bound by hand. The check belongs here rather than only in the product,
+     * because a direct call bypasses the product entirely.
      */
     function deposit(bytes32 spaceId, uint256 amount) external {
         require(spaceId != bytes32(0), "space required");
         require(amount > 0, "amount required");
         address token = spaceTokens[spaceId];
         require(token != address(0), "space token not registered");
+        _requireSpaceBound(spaceId);
 
         bool ok = IERC20(token).transferFrom(msg.sender, address(this), amount);
         require(ok, "transfer failed");
@@ -170,6 +180,13 @@ contract SettlementRouter {
         spaceBalance[spaceId] += amount;
         totalAccounted += amount;
         emit SpaceFunded(spaceId, msg.sender, amount, spaceBalance[spaceId]);
+    }
+
+    /// Reverts unless this Space's limits have been signed on chain.
+    function _requireSpaceBound(bytes32 spaceId) private view {
+        require(budgetContract != address(0), "budget not configured");
+        (, , , , , , bool bound) = ISpaceBudget(budgetContract).limits(spaceId);
+        require(bound, "space limits not bound; a Space with no signed owner could never withdraw");
     }
 
     /// Withdrawing a Space's own funds arrives with the switch that makes
