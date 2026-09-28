@@ -228,8 +228,17 @@ test("creating a Space sets real limits, funds it, binds the budget, and signs a
   // committed on chain, so there is nothing to display and the form must not
   // present an offline record as though the owner had signed it.
   //
-  // When SpaceBudget's digest is made wallet-conformant this becomes: the
-  // section appears, showing the EIP-712 digest the owner actually signed.
+  // When a chain is reachable this becomes: the section appears, showing the
+  // EIP-712 digest the owner actually signed.
   await expect(page.getByText("The exact budget message that was signed")).toHaveCount(0);
   await expect(page.getByText(/Microcosm budget binding/)).toHaveCount(0);
+
+  // And the summary must not describe an absent or uncommitted signature as a
+  // binding. SpaceBudget refuses an unbound Space, so "bound" is a claim about
+  // whether this Space can pay at all, not a flourish.
+  await expect(page.getByText("Budget bound on chain by")).toHaveCount(0);
+  await expect(page.getByText("Signature recorded by")).toHaveCount(0);
+  // With no signature at all the row must say so rather than name a label that
+  // implies one exists.
+  await expect(page.getByText("not signed yet")).toBeVisible();
 });

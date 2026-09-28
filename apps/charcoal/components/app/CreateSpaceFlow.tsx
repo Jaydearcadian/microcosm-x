@@ -71,6 +71,10 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
   const [daily, setDaily] = useState("2000.00");
   const [spaceId, setCreated] = useState("");
   const [binding, setBinding] = useState<BudgetBinding | null>(null);
+  // A binding committed on chain records the EIP-712 digest it was signed over.
+  // An offline record does not, and that is the whole difference between "your
+  // limits are enforced" and "we kept a note of them".
+  const committedOnChain = Boolean(binding?.message?.startsWith("eip712:"));
   const [issued, setIssued] = useState<Issued[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -495,7 +499,29 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
             <div><dt>Space id</dt><dd className="ident">{spaceId}</dd></div>
             <div><dt>Space per-payment cap</dt><dd className="tnum">{cap}</dd></div>
             <div><dt>Space daily budget</dt><dd className="tnum">{daily}</dd></div>
-            <div><dt>Budget bound by</dt><dd className="ident">{binding?.actorAddress ?? "—"}</dd></div>
+            {/* A recorded signature is not the same thing as a binding the chain
+                will enforce. SpaceBudget refuses an unbound Space, so a Space whose
+                signature was only stored offline cannot pay anybody — and calling
+                that "bound" is the last place in this flow that overstated it. An
+                onchain bind records the EIP-712 digest it committed, which is what
+                distinguishes the two without another request. */}
+            {/* Shown only when there is a signature at all. Rendering the label
+                unconditionally claimed one had been recorded for a Space where
+                nothing had — trading one overstatement for another. */}
+            {binding ? (
+              <div>
+                <dt>{committedOnChain ? "Budget bound on chain by" : "Signature recorded by"}</dt>
+                <dd className="ident">
+                  {binding.actorAddress}
+                  {committedOnChain ? "" : " (not committed on chain)"}
+                </dd>
+              </div>
+            ) : (
+              <div>
+                <dt>Budget</dt>
+                <dd>not signed yet</dd>
+              </div>
+            )}
             <div><dt>Signed at</dt><dd>{binding?.boundAt ? new Date(binding.boundAt).toLocaleString() : "—"}</dd></div>
           </dl>
 
