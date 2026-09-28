@@ -84,7 +84,31 @@ export interface BudgetBinding {
   boundAt: string;
 }
 
-export interface BudgetChallenge { message: string; nonce: string; maxPerTransaction: string; dailyBudget: string }
+export interface BudgetChallenge {
+  message: string; nonce: string; maxPerTransaction: string; dailyBudget: string;
+  /** The digest the contract says these limits hash to, for cross-checking. */
+  digest: string | null;
+  /**
+   * What the wallet actually signs.
+   *
+   * EIP-712 typed data, not a message. SpaceBudget recovers a plain ecrecover
+   * over the typed-data digest, and a wallet's signMessage applies the EIP-191
+   * prefix — a different payload that recovers to nobody and is refused as a bad
+   * signature.
+   */
+  typedData: {
+    domain: { name: string; version: string; chainId: number; verifyingContract: `0x${string}` };
+    types: Record<string, Array<{ name: string; type: string }>>;
+    primaryType: string;
+    message: {
+      spaceId: `0x${string}`; owner: `0x${string}`;
+      maxPerTransaction: string; dailyBudget: string;
+      recipients: string[]; deadline: string; nonce: string;
+    };
+  } | null;
+  /** Why no digest could be produced, when there is not one. */
+  bindingUnavailable?: string;
+}
 
 /** Sets a Space's own per-payment cap and daily budget. Admin only. */
 export async function configureSpaceLimits(spaceId: string, input: { maxPerTransaction?: string; dailyBudget?: string }): Promise<{ rules: Record<string, unknown>; changed: string[] }> {
@@ -94,6 +118,25 @@ export async function configureSpaceLimits(spaceId: string, input: { maxPerTrans
 /** The message to sign, plus whatever is already bound. */
 export async function fetchBudgetBinding(spaceId: string): Promise<{ binding: BudgetBinding | null; challenge: BudgetChallenge }> {
   return request<{ binding: BudgetBinding | null; challenge: BudgetChallenge }>(`/api/spaces/${q(spaceId)}/budget-binding`);
+}
+
+/**
+ * Commits the Space's limits on chain with the owner's own signature.
+ *
+ * Separate from the offline record because they are different things: the
+ * offline one is an audit note, and this is what SpaceBudget will actually
+ * enforce. Recording only the former is how a Space came to look bound and then
+ * revert NotBound on its first payment.
+ */
+export async function submitBudgetBindingOnchain(
+  spaceId: string,
+  signature: string,
+  input: { maxPerTransaction?: string; dailyBudget?: string },
+): Promise<{ binding: BudgetBinding; onchain: { bindTx: string; registerSpaceTokenTx: string } }> {
+  return request<{ binding: BudgetBinding; onchain: { bindTx: string; registerSpaceTokenTx: string } }>(
+    `/api/spaces/${q(spaceId)}/budget-binding/onchain`,
+    { method: "POST", body: JSON.stringify({ ...input, signature }) },
+  );
 }
 
 /** Submits a signature over the challenge. The server verifies it before storing. */
@@ -106,7 +149,12 @@ export async function fetchJobs(spaceId: string, signal?: AbortSignal): Promise<
 export async function fetchRequests(spaceId: string, signal?: AbortSignal): Promise<Request[]> { return (await request<{ requests: Request[] }>(`/api/spaces/${q(spaceId)}/requests`, { signal })).requests; }
 export async function fetchActivity(spaceId: string, limit = 50, cursor?: number, signal?: AbortSignal): Promise<{ activity: Activity[]; nextCursor: number }> { const query = new URLSearchParams({ limit: String(limit) }); if (cursor !== undefined) query.set("cursor", String(cursor)); return request(`/api/spaces/${q(spaceId)}/activity?${query}`, { signal }); }
 export async function createSpace(body: { name: string; description?: string; actorId: string }): Promise<Space> { return (await post<{ space: Space }>("/api/spaces", body)).space; }
-export async function fundSpace(spaceId: string, amount: string, actorId: string): Promise<Space> { return (await post<{ space: Space }>(`/api/spaces/${q(spaceId)}/fund`, { amount, actorId })).space; }
+/**
+ * Capitalise a Space's treasury. With `onchain` the money is also deposited into
+ * that Space's own pool, which is what makes it spendable by the Space rather
+ * than a number in our ledger.
+ */
+export async function fundSpace(spaceId: string, amount: string, actorId: string, options: { onchain?: boolean } = {}): Promise<Space> { return (await post<{ space: Space }>(`/api/spaces/${q(spaceId)}/fund`, { amount, actorId, onchain: options.onchain === true })).space; }
 export async function createParticipant(spaceId: string, body: { kind: ParticipantKind; displayName: string; address?: string; actorId?: string }): Promise<Participant> { return (await post<{ participant: Participant }>(`/api/spaces/${q(spaceId)}/participants`, body)).participant; }
 export async function createRequest(spaceId: string, body: { createdBy: string; assignee?: string; title: string; instructions?: string; context?: unknown }): Promise<Request> { return (await post<{ request: Request }>(`/api/spaces/${q(spaceId)}/requests`, body)).request; }
 export async function createJob(spaceId: string, body: { actorId: string; provider: string; evaluator: string; description: string; budget: string; deadline: string; requestId?: string }): Promise<{ status: string; job: Job; spaceBalance: string }> { return post(`/api/spaces/${q(spaceId)}/work`, body); }

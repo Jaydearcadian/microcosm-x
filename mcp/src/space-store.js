@@ -2693,6 +2693,119 @@ export class SpaceStore {
    * with viem's verifyMessage; this stores the result so the binding is
    * inspectable afterwards rather than being a button that says "done".
    */
+  /** The bytes32 a Space is known by on chain: keccak of its readable id. */
+  async _spaceIdOnChain(spaceId) {
+    const { keccak256, toBytes } = await import('viem');
+    return keccak256(toBytes(String(spaceId)));
+  }
+
+  /**
+   * The limits a Space's owner is about to sign, as EIP-712 typed data, plus the
+   * digest the contract says that data hashes to.
+   *
+   * Typed data, not prose, because SpaceBudget recovers a plain ecrecover over
+   * an EIP-712 digest. Signing a human-readable message produces a different
+   * payload entirely: a wallet's signMessage applies the EIP-191 personal-sign
+   * prefix, and even passing the digest as "raw" re-hashes it, so neither
+   * recovers to the owner. That mismatch surfaces as BadSignature, which points
+   * at the signer rather than at the encoding.
+   *
+   * The digest is read from the contract and compared against the one we compute
+   * locally. A disagreement means our typed data does not describe what the
+   * contract will verify, which is worth failing on here rather than spending a
+   * transaction to be told BadSignature.
+   */
+  async spaceBudgetBindingFor({ spaceId, actorAddress, maxPerTransaction, dailyBudget, deadline, nonce }) {
+    const { verifyTypedData, hashTypedData } = await import('viem');
+    const space = this._getSpaceOrThrow(spaceId);
+    const rules = space.rules || {};
+    const cap = rules.maxPerTransaction ?? maxPerTransaction;
+    const daily = rules.dailyBudget ?? dailyBudget;
+    if (!cap || cap === 'unset' || !daily || daily === 'unset') {
+      throw new Error('Set this Space\\u2019s spending limits before binding them');
+    }
+    const budget = (await import('./xlayer.js')).addressesForBudget();
+    const chainId = budget.chainId;
+    const message = {
+      spaceId: await this._spaceIdOnChain(spaceId),
+      owner: actorAddress,
+      maxPerTransaction: toBaseUnits(cap),
+      dailyBudget: toBaseUnits(daily),
+      // A Space with no approved counterparties can be bound but never pay
+      // anyone, so the allowlist is part of what the owner is signing.
+      recipients: (rules.allowedCounterparties || []).filter((item) => /^0x[0-9a-fA-F]{40}$/.test(String(item))),
+      deadline: deadline ?? BigInt(Math.floor(Date.now() / 1000) + 86400 * 365),
+      nonce: nonce ?? 0n,
+    };
+    const domain = { name: 'MicrocosmSpaceBudget', version: '1', chainId, verifyingContract: budget.budget };
+    const types = {
+      Binding: [
+        { name: 'spaceId', type: 'bytes32' },
+        { name: 'owner', type: 'address' },
+        { name: 'maxPerTransaction', type: 'uint256' },
+        { name: 'dailyBudget', type: 'uint256' },
+        { name: 'recipients', type: 'address[]' },
+        { name: 'deadline', type: 'uint256' },
+        { name: 'nonce', type: 'uint256' },
+      ],
+    };
+    const typedData = { domain, types, primaryType: 'Binding', message };
+    const local = hashTypedData(typedData);
+
+    const { XLayerAdapter } = await import('./xlayer.js');
+    const adapter = new XLayerAdapter();
+    const onChain = await adapter.spaceBudgetBindingDigest({
+      spaceId,
+      owner: message.owner,
+      maxPerTransaction: message.maxPerTransaction,
+      dailyBudget: message.dailyBudget,
+      recipients: message.recipients,
+      deadline: message.deadline,
+      nonce: message.nonce,
+    });
+    if (String(local).toLowerCase() !== String(onChain).toLowerCase()) {
+      throw new Error(
+        `These limits do not hash to what the contract expects (ours ${local}, contract ${onChain}), so a signature over them would be refused. Nothing has been signed.`,
+      );
+    }
+    return {
+      binding: { spaceId, owner: message.owner, maxPerTransaction: message.maxPerTransaction, dailyBudget: message.dailyBudget, recipients: message.recipients, deadline: message.deadline, nonce: message.nonce },
+      digest: onChain,
+      typedData,
+      verify: (address, signature) => verifyTypedData({ address, ...typedData, signature }),
+    };
+  }
+
+  /**
+   * Commit a Space's limits on chain, signed by its own owner.
+   *
+   * Until this existed the product recorded the signature offline and called it
+   * bound, so a Space looked configured and then reverted NotBound on its first
+   * payment. The signature is checked against the same typed data the owner saw
+   * and the contract hashes, so the offline record and the onchain state cannot
+   * end up describing different things.
+   */
+  async bindSpaceBudget({ spaceId, actorAddress, signature, prepared }) {
+    const { binding, digest, typedData, verify } = prepared;
+    const valid = await verify(actorAddress, signature).catch(() => false);
+    if (!valid) {
+      throw new Error('That signature was not made by the address signing in, over these limits');
+    }
+    const { XLayerAdapter } = await import('./xlayer.js');
+    const tx = await new XLayerAdapter().bindSpaceBudgetOnchain({ ...binding, signature });
+    const record = this.recordBudgetBinding({
+      spaceId,
+      actorAddress,
+      signature,
+      // The digest, not a label: the audit trail should name the payload that
+      // was actually signed.
+      message: `eip712:${digest}`,
+      maxPerTransaction: fromBaseUnits(binding.maxPerTransaction),
+      dailyBudget: fromBaseUnits(binding.dailyBudget),
+    });
+    return { ...tx, binding: record, digest };
+  }
+
   recordBudgetBinding({ spaceId, actorAddress, signature, message, maxPerTransaction, dailyBudget }) {
     const space = this._getSpaceOrThrow(spaceId);
     const admin = (space.members || []).find(
@@ -3233,5 +3346,58 @@ export class SpaceStore {
       timestamp: now,
     });
     return { ...space };
+  }
+
+  /**
+   * Put a Space's money where the Space can spend it, on chain.
+   *
+   * Deliberately separate from fundSpace, which only ever touched the ledger.
+   * A ledger credit is a claim; this is the claim becoming a balance the Space
+   * can actually pay from, held in the router and attributed to that Space alone.
+   *
+   * The asset is registered before the deposit because SettlementRouter refuses
+   * a Space whose token it does not know, and the create flow funds before it
+   * binds. Registering is administrative — it grants the Space no authority to
+   * spend; only a bound Space can move money at all, and then only within the
+   * limits its own owner signed.
+   *
+   * The deposit happens before the ledger is credited. The other order would
+   * leave a Space claiming money the chain does not hold if the transfer failed,
+   * and that is the direction the reconciliation cannot repair on its own.
+   */
+  async fundSpaceOnchain({ spaceId, amount, actorId }) {
+    const space = this._getSpaceOrThrow(spaceId);
+    let amountBase;
+    try {
+      amountBase = toBaseUnits(amount);
+    } catch {
+      throw new Error(`Invalid amount '${amount}': must be a USDC decimal string`);
+    }
+    if (amountBase <= 0n) throw new Error('Invalid amount: must be greater than zero');
+    const wanted = String(actorId || '').toLowerCase();
+    const member = (space.members || []).find(
+      (m) => String(m.id || '').toLowerCase() === wanted
+        || String(m.name || '').toLowerCase() === wanted
+        || String(m.address || '').toLowerCase() === wanted,
+    );
+    if (!member || member.role !== 'admin') {
+      throw new Error(`'${actorId}' is not an admin of Space '${spaceId}'`);
+    }
+
+    const { XLayerAdapter } = await import('./xlayer.js');
+    const adapter = new XLayerAdapter();
+    const result = await adapter.depositSpacePool({ spaceId, amount: amountBase });
+
+    const now = new Date().toISOString();
+    space.balance = fromBaseUnits(toBaseUnits(space.balance) + amountBase);
+    this.activity.get(spaceId).push({
+      type: 'SPACE_FUNDED',
+      spaceId,
+      amount: fromBaseUnits(amountBase),
+      fundedBy: actorId,
+      spaceBalance: space.balance,
+      timestamp: now,
+    });
+    return { ...space, onchain: result };
   }
 }

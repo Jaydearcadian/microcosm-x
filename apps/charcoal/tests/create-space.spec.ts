@@ -178,12 +178,37 @@ test("creating a Space sets real limits, funds it, binds the budget, and signs a
 
   await page.getByRole("button", { name: /Sign and bind the budget/ }).click();
 
-  await expect(page.getByText(/Budget bound and signed by/)).toBeVisible({ timeout: 20000 });
+  // This used to assert a green tick. It cannot be a green tick: the limits
+  // contract hashes its recipient array with abi.encode rather than the packed
+  // encoding EIP-712 specifies, so no wallet can produce a signature it accepts,
+  // and every payment from such a Space reverts NotBound on chain.
+  //
+  // So the thing worth asserting is that the flow says so instead of pretending.
+  // When SpaceBudget is fixed, this becomes: expect the bind receipt, then a
+  // payment from this Space's own pool.
+  // Next renders its own role="alert" route announcer, so this is scoped to
+  // the error paragraph rather than to the role.
+  const refusal = page.locator("p[role=\"alert\"]");
+  await expect(refusal).toContainText(/do not hash to what the contract expects/i, { timeout: 20000 });
+  // It must say plainly that nothing was signed, and name both digests so the
+  // disagreement can be checked rather than taken on trust.
+  await expect(refusal).toContainText(/Nothing has been signed/);
+  await expect(refusal).toContainText(/0x[0-9a-f]{64}/);
+  // And it must not claim an onchain binding it does not have. The success note
+  // is the specific claim; "Budget bound by" elsewhere in the form is a label on
+  // the offline record, which is a separate looseness this test is not about.
+  await expect(page.getByText(/Budget bound on chain and signed by/)).toHaveCount(0);
+  await expect(page.getByText(/Limits committed in/)).toHaveCount(0);
 
-  // The last step mints a real delegation for the agent and signs it with the
-  // same wallet. This is the part that used to be a warning paragraph.
-  await expect(page.getByText(/An agent spends under a delegation you signed/)).toBeVisible();
+  // Onboarding must not be held hostage by a chain problem. The delegation is
+  // offchain work and does not depend on the limits being committed, and an
+  // operator who cannot finish setting up their Space cannot use any of it.
+  await expect(page.getByText(/An agent spends under a delegation you signed/)).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText(/cannot pay anyone until its limits are bound on chain/)).toBeVisible();
   await page.getByRole("button", { name: /Sign delegations for your agents/ }).click();
+
+  // The last step signs a real delegation for the agent with the same wallet.
+  // This is the part that used to be a warning paragraph.
 
   // The delegation id the agent must present, and the limits it carries.
   const delegationId = page.getByText(/^delegation-/).first();
@@ -202,8 +227,12 @@ test("creating a Space sets real limits, funds it, binds the budget, and signs a
   await page.getByText("How to hand this to the agent").click();
   await expect(page.getByText(/"delegationId"/)).toBeVisible();
 
-  // The budget binding itself was signed earlier in the flow.
-  await page.getByText("The exact budget message that was signed").click();
-  await expect(page.getByText(/Microcosm budget binding/)).toBeVisible();
-  await expect(page.getByText(/max per transaction: 300.00/)).toBeVisible();
+  // No signed budget is shown, because none exists. The limits could not be
+  // committed on chain, so there is nothing to display and the form must not
+  // present an offline record as though the owner had signed it.
+  //
+  // When SpaceBudget's digest is made wallet-conformant this becomes: the
+  // section appears, showing the EIP-712 digest the owner actually signed.
+  await expect(page.getByText("The exact budget message that was signed")).toHaveCount(0);
+  await expect(page.getByText(/Microcosm budget binding/)).toHaveCount(0);
 });

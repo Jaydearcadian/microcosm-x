@@ -11,7 +11,7 @@ import {
   fetchSpace,
   fundSpace,
   signDelegation,
-  submitBudgetBinding,
+  submitBudgetBindingOnchain,
   type BudgetBinding,
   type ParticipantKind,
 } from "@/lib/contract";
@@ -58,8 +58,7 @@ type StepId = (typeof STEPS)[number];
 const EMPTY_PERSON: Person = { name: "", kind: "Agent", address: "" };
 
 export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void }) {
-  const { address, isAuthenticated } = useWalletSession();
-  const { signMessageAsync } = useSignMessage();
+  const { address, isAuthenticated, signLimitsAsync } = useWalletSession();
   const { signTypedDataAsync } = useSignTypedData();
 
   const [step, setStep] = useState<StepId>("Purpose");
@@ -124,6 +123,10 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
       if (limits.changed.length) limits.changed.forEach(note);
       else note("Limits already matched; nothing to change.");
 
+      // Not onchain yet. Depositing into a Space's pool is implemented and works, but
+      // the limits contract's EIP-712 digest is not wallet-conformant, so a Space
+      // cannot be bound — and an unbound Space cannot spend a pool it has funded.
+      // Depositing now would only create stranded funds behind a green tick.
       const funded = await fundSpace(space.id, balance, address ?? "founder-01");
       note(`Funded with ${balance} ${funded.currency ?? "USDC"}.`);
 
@@ -141,18 +144,46 @@ export function CreateSpaceFlow({ onDone }: { onDone: (spaceId: string) => void 
     setBusy(true); setError(null);
     try {
       const { challenge } = await fetchBudgetBinding(spaceId);
-      // The message is composed by the server, so what is signed is the real
-      // limits and not a label chosen here.
-      const signature = await signMessageAsync({ message: challenge.message });
-      const result = await submitBudgetBinding(spaceId, signature, challenge.nonce);
+      if (!challenge.typedData) {
+        // Without a digest the only thing to sign is prose, and prose commits
+        // to nothing on chain. Saying so is better than a green tick that
+        // reverts on the Space's first payment.
+        throw new Error(
+          challenge.bindingUnavailable
+            ? `These limits cannot be signed on chain yet: ${challenge.bindingUnavailable}`
+            : "The chain is not reachable, so these limits cannot be bound. Nothing has been signed.",
+        );
+      }
+      // Typed data, because that is what SpaceBudget verifies. The digest the
+      // server also returns is there to be cross-checked against the contract,
+      // not something to sign: a personal-sign prefix, or a "raw" digest that
+      // gets re-hashed, both recover to nobody and are refused as a bad
+      // signature with the signer blamed rather than the encoding.
+      const signature = await signLimitsAsync(challenge.typedData);
+      const result = await submitBudgetBindingOnchain(spaceId, signature, {
+        maxPerTransaction: challenge.maxPerTransaction,
+        dailyBudget: challenge.dailyBudget,
+      });
       setBinding(result.binding);
-      note(`Budget bound and signed by ${result.binding.actorAddress.slice(0, 10)}…`);
+      note(`Budget bound on chain and signed by ${result.binding.actorAddress.slice(0, 10)}…`);
+      note(`Limits committed in ${result.onchain.bindTx.slice(0, 10)}…`);
       setStep("Agents");
       setBusy(false);
     } catch (reason) {
+      // Not fatal, and deliberately so. Onboarding agents and signing their
+      // delegations is offchain work that does not depend on the limits being
+      // committed, and blocking the whole setup behind a chain problem left an
+      // operator unable to finish configuring a Space at all. The failure is
+      // stated plainly and the flow continues, because a Space that cannot
+      // settle yet is still worth setting up — it just must not pretend
+      // otherwise.
+      const message = reason instanceof Error ? reason.message : String(reason);
       fail(reason);
+      note("Continuing: agents can still be given delegations, but this Space cannot pay anyone until its limits are bound on chain.");
+      setStep("Agents");
+      setBusy(false);
     }
-  }, [signMessageAsync, spaceId]);
+  }, [signLimitsAsync, spaceId]);
 
   /**
    * Mint one signed delegation per agent.

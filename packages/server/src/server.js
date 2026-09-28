@@ -210,6 +210,25 @@ export function createApp({ store = new SpaceStore(), dataPath = null, corsOrigi
  */
 const budgetChallenges = new Map();
 
+/** BigInts are not JSON, and a wallet needs plain values, not base units. */
+function serialiseTypedData(typedData) {
+  return {
+    domain: {
+      ...typedData.domain,
+      chainId: Number(typedData.domain.chainId),
+    },
+    types: typedData.types,
+    primaryType: typedData.primaryType,
+    message: {
+      ...typedData.message,
+      maxPerTransaction: String(typedData.message.maxPerTransaction),
+      dailyBudget: String(typedData.message.dailyBudget),
+      deadline: String(typedData.message.deadline),
+      nonce: String(typedData.message.nonce),
+    },
+  };
+}
+
 function budgetBindingChallenge(store, spaceId, { fresh = true } = {}) {
   const space = store.getSpace(spaceId);
   const cap = space?.rules?.maxPerTransaction ?? 'unset';
@@ -679,7 +698,61 @@ async function dispatch(app, req, res) {
       needSpace(spaceId);
       // One call returns both what is already bound and the message to sign if
       // it is not, so a client never has to know which of the two verbs to use.
-      return ok(200, { binding: store.getBudgetBinding({ spaceId }), challenge: budgetBindingChallenge(store, spaceId) });
+      const challenge = budgetBindingChallenge(store, spaceId);
+      // The digest is what the owner actually has to sign, and it is read from
+      // the contract. Without it the client can only sign prose, which commits
+      // to nothing on chain — which is how a Space came to look bound and then
+      // revert NotBound on its first payment.
+      let digest = null;
+      let typedData = null;
+      try {
+        const prepared = await store.spaceBudgetBindingFor({
+          spaceId,
+          actorAddress: current.address,
+          maxPerTransaction: challenge.cap,
+          dailyBudget: challenge.daily,
+        });
+        digest = prepared.digest;
+        typedData = serialiseTypedData(prepared.typedData);
+      } catch (err) {
+        // No limits set yet, or no chain reachable: a state the form can
+        // explain, and not a reason to fail the whole request.
+        digest = null;
+        challenge.bindingUnavailable = err.message;
+      }
+      return ok(200, { binding: store.getBudgetBinding({ spaceId }), challenge: { ...challenge, digest, typedData } });
+    }
+
+    m = path.match(/^\/api\/spaces\/([^/]+)\/budget-binding\/onchain$/);
+    if (m && req.method === 'POST') {
+      const current = requireSession();
+      const spaceId = decodeURIComponent(m[1]);
+      needSpace(spaceId);
+      requireFields(body, ['signature']);
+      try {
+        const result = await app.mutate(spaceId, async () => {
+          // Recomputed rather than taken from the request, so the signature is
+          // checked against the limits as they stand and the owner signed.
+          const prepared = await store.spaceBudgetBindingFor({
+            spaceId,
+            actorAddress: current.address,
+            maxPerTransaction: body.maxPerTransaction,
+            dailyBudget: body.dailyBudget,
+          });
+          return store.bindSpaceBudget({
+            spaceId,
+            actorAddress: current.address,
+            signature: body.signature,
+            prepared,
+          });
+        });
+        return ok(201, {
+          binding: result.binding,
+          onchain: { bindTx: result.bindTx, registerSpaceTokenTx: result.registerSpaceTokenTx },
+        });
+      } catch (err) {
+        throwMapped(err);
+      }
     }
     if (m && req.method === 'POST') {
       const current = requireSession();
@@ -802,7 +875,11 @@ async function dispatch(app, req, res) {
       needSpace(spaceId);
       requirePrincipal(spaceId, body);
       try {
-        const space = await app.mutate(spaceId, async () => store.fundSpace({ spaceId, amount: body.amount, actorId: body.actorId }));
+        // `onchain: true` puts the money in the Space's own pool as well as in
+        // the ledger. Default stays off, because a chain call in this path would
+        // otherwise make every existing caller depend on an RPC being up.
+        const fund = body.onchain ? store.fundSpaceOnchain : store.fundSpace;
+        const space = await app.mutate(spaceId, async () => fund.call(store, { spaceId, amount: body.amount, actorId: body.actorId }));
         return ok(200, { space });
       } catch (err) {
         throwMapped(err);

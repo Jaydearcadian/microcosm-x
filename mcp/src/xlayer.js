@@ -22,9 +22,52 @@
  */
 
 import { privateKeyToAccount } from 'viem/accounts';
+import { createPublicClient, createWalletClient, http } from 'viem';
 import { execFileSync } from 'node:child_process';
 import { keccak256, toBytes } from 'viem';
 import { readFileSync, existsSync } from 'node:fs';
+
+/**
+ * The EIP-712 Binding tuple, written out by hand.
+ *
+ * `parseAbi` does not support named tuple components, and an unnamed tuple takes
+ * positional values: an object then encodes into the wrong slots, the digest
+ * changes, and the contract rejects the signature as BadSignature with nothing
+ * pointing at the real mistake. Naming the components is what prevents that.
+ */
+/** The limits contract and chain, which together form the EIP-712 domain. */
+export function addressesForBudget() {
+  return { budget: addresses().SpaceBudget, chainId: chainId() };
+}
+
+const BINDING_TUPLE = {
+  type: 'tuple',
+  components: [
+    { name: 'spaceId', type: 'bytes32' },
+    { name: 'owner', type: 'address' },
+    { name: 'maxPerTransaction', type: 'uint256' },
+    { name: 'dailyBudget', type: 'uint256' },
+    { name: 'recipients', type: 'address[]' },
+    { name: 'deadline', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' },
+  ],
+};
+const BUDGET_ABI = [
+  { type: 'function', name: 'bindingDigestFor', stateMutability: 'view',
+    inputs: [{ name: 'verifyingContract', type: 'address' }, { name: 'chainId', type: 'uint256' }, { name: 'binding', ...BINDING_TUPLE }],
+    outputs: [{ type: 'bytes32' }] },
+  { type: 'function', name: 'bind', stateMutability: 'nonpayable',
+    inputs: [{ name: 'binding', ...BINDING_TUPLE }, { name: 'signature', type: 'bytes' }],
+    outputs: [] },
+];
+const ROUTER_ADMIN_ABI = [
+  { type: 'function', name: 'registerSpaceToken', stateMutability: 'nonpayable',
+    inputs: [{ name: 'spaceId', type: 'bytes32' }, { name: 'token', type: 'address' }], outputs: [] },
+];
+const TOKEN_ABI = [
+  { type: 'function', name: 'approve', stateMutability: 'nonpayable',
+    inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'bool' }] },
+];
 
 /**
  * The bytes32 a Space is known by on chain.
@@ -402,6 +445,135 @@ export class XLayerAdapter {
       txHashes: { direct: receipt.txHash, pool: receipt.txHash },
       spaceIdOnChain: spaceIdToBytes32(spaceId),
       fundedFrom: 'space-pool',
+    };
+  }
+
+  /**
+   * Put funds into a Space's own pool, registering the asset first if needed.
+   *
+   * SettlementRouter refuses a Space whose token it does not know, and the
+   * create flow funds before it binds, so the registration has to happen here
+   * rather than waiting for the bind step.
+   */
+  async depositSpacePool({ spaceId, amount }) {
+    const router = addresses().SettlementRouter;
+    const token = addresses().MockERC20;
+    const account = privateKeyToAccount(privKey());
+    const transport = http(this.rpc);
+    const client = createPublicClient({ transport });
+    const wallet = createWalletClient({ account, transport });
+    const sid = spaceIdToBytes32(spaceId);
+
+    const registered = await client.readContract({
+      address: router, abi: ROUTER_ADMIN_ABI, functionName: 'spaceTokens', args: [sid],
+    }).catch(() => '0x0000000000000000000000000000000000000000');
+    let registerTx = null;
+    if (String(registered).toLowerCase() !== token.toLowerCase()) {
+      const hash = await wallet.writeContract({
+        address: router, abi: ROUTER_ADMIN_ABI, functionName: 'registerSpaceToken', args: [sid, token],
+      });
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error(`registerSpaceToken reverted (${hash})`);
+      registerTx = hash;
+    }
+
+    // Approve exactly this amount, not an unlimited allowance, so a compromised
+    // router cannot draw more than the Space was funded with.
+    const approveHash = await wallet.writeContract({
+      address: token, abi: TOKEN_ABI, functionName: 'approve', args: [router, amount],
+    });
+    await client.waitForTransactionReceipt({ hash: approveHash });
+
+    const depositHash = await wallet.writeContract({
+      address: router,
+      abi: [{ type: 'function', name: 'deposit', stateMutability: 'nonpayable',
+        inputs: [{ name: 'spaceId', type: 'bytes32' }, { name: 'amount', type: 'uint256' }], outputs: [] }],
+      functionName: 'deposit', args: [sid, amount],
+    });
+    const receipt = await client.waitForTransactionReceipt({ hash: depositHash });
+    if (receipt.status !== 'success') throw new Error(`deposit reverted (${depositHash})`);
+
+    return { depositTx: depositHash, registerSpaceTokenTx: registerTx, approveTx: approveHash };
+  }
+
+  /**
+   * Ask the limits contract what it would accept as a signature for these
+   * limits, rather than reproducing its EIP-712 encoding here.
+   *
+   * This is the digest the Space's owner has to sign. It cannot be derived
+   * offchain: the payload is a tuple containing a dynamic array, and a subtly
+   * different encoding produces a valid-looking signature over something nobody
+   * intended. Asking the contract is also the cross-check its own comment asks
+   * callers to make.
+   */
+  async spaceBudgetBindingDigest({ spaceId, owner, maxPerTransaction, dailyBudget, recipients, deadline, nonce }) {
+    const budget = addresses().SpaceBudget;
+    const client = createPublicClient({ transport: http(this.rpc) });
+    return client.readContract({
+      address: budget,
+      abi: BUDGET_ABI,
+      functionName: 'bindingDigestFor',
+      args: [budget, BigInt(this.chainId), {
+        spaceId: spaceIdToBytes32(spaceId),
+        owner,
+        maxPerTransaction: BigInt(maxPerTransaction),
+        dailyBudget: BigInt(dailyBudget),
+        recipients,
+        deadline: BigInt(deadline),
+        nonce: BigInt(nonce),
+      }],
+    });
+  }
+
+  /**
+   * Commit a Space's signed limits on chain, and register the asset the router
+   * will pay from.
+   *
+   * Both are needed before a Space can transact. SpaceBudget refuses an unbound
+   * Space, and SettlementRouter will not touch a Space whose token it does not
+   * know — so a Space that had only ever been recorded offchain looked configured
+   * in the product and reverted on its first payment.
+   */
+  async bindSpaceBudgetOnchain({ spaceId, owner, maxPerTransaction, dailyBudget, recipients, deadline, nonce, signature }) {
+    const budget = addresses().SpaceBudget;
+    const router = addresses().SettlementRouter;
+    const token = addresses().MockERC20;
+    const account = privateKeyToAccount(privKey());
+    const transport = http(this.rpc);
+    const client = createPublicClient({ transport });
+    const wallet = createWalletClient({ account, transport });
+
+    const binding = {
+      spaceId: spaceIdToBytes32(spaceId),
+      owner,
+      maxPerTransaction: BigInt(maxPerTransaction),
+      dailyBudget: BigInt(dailyBudget),
+      recipients,
+      deadline: BigInt(deadline),
+      nonce: BigInt(nonce),
+    };
+
+    // The router is owned by the broadcaster, so registering the asset is an
+    // administrative act. It grants the Space nothing: the router will only pay
+    // out of a pool the Space has deposited into, and only within the limits the
+    // Space's own owner just signed.
+    const registerHash = await wallet.writeContract({
+      address: router, abi: ROUTER_ADMIN_ABI,
+      functionName: 'registerSpaceToken', args: [binding.spaceId, token],
+    });
+    const registerReceipt = await client.waitForTransactionReceipt({ hash: registerHash });
+    if (registerReceipt.status !== 'success') throw new Error(`registerSpaceToken reverted (${registerHash})`);
+
+    const bindHash = await wallet.writeContract({
+      address: budget, abi: BUDGET_ABI, functionName: 'bind', args: [binding, signature],
+    });
+    const bindReceipt = await client.waitForTransactionReceipt({ hash: bindHash });
+    if (bindReceipt.status !== 'success') throw new Error(`SpaceBudget.bind reverted (${bindHash})`);
+
+    return {
+      registerSpaceTokenTx: registerHash,
+      bindTx: bindHash,
+      spaceIdOnChain: binding.spaceId,
     };
   }
 
